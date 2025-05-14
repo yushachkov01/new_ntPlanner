@@ -42,7 +42,6 @@ const WorkTable: FC<Props> = ({ data, onAction, isArchive = false }) => {
     );
     setExpandedKey(null);
   }, [data]);
-
   // 2) По клику на кнопку инкрементим step и зовём внешний onAction
   const handleStep = (id: number, e?: MouseEvent) => {
     e?.stopPropagation();
