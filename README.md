@@ -1,4 +1,4 @@
-# CoreNOC ( "Core Network Operations Center" )
+#   "Core Network Operations Center" 
 
 > Проект для инженеров на **Vite** + **React** + **TypeScript** с архитектурой **FSD** (Feature-Sliced Design) и единой конфигурацией **ESLint** и **Prettier**.
 
