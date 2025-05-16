@@ -4,11 +4,11 @@ export interface Work {
   readonly project: string;
   readonly site: string;
   readonly description: string;
-  readonly timeRange: string;
+  readonly time_range: string;
   status: 'pending' | 'in_progress' | 'done';
-  readonly pprHours: number;
-  readonly workHours: number;
-  readonly overtimeHours: number;
+  readonly ppr_hours: number;
+  readonly work_hours: number;
+  readonly overtime_hours: number;
   data: Work[];
   onAction: (id: number) => void;
 }
