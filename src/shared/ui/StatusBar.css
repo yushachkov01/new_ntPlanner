@@ -1,0 +1,100 @@
+.status-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 0;
+}
+
+/* Ряд лейблов */
+.status-bar-labels {
+  display: grid;
+  grid-template-columns: repeat(4, 50px);
+  column-gap: 8px;
+  align-items: center;
+}
+.status-bar-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+/* Ряд блоков + иконки */
+.status-bar-main {
+  display: grid;
+  grid-template-columns: repeat(4, 50px) auto;
+  column-gap: 8px;
+  align-items: center;
+  margin-left: 4px;
+}
+
+.status-bar-block {
+  width: 40px;
+  height: 8px;
+  background-color: var(--status-empty-color);
+  border-radius: 2px;
+}
+.status-bar-block--filled {
+  background-color: currentColor;
+}
+
+.status-bar-block--filled:nth-child(1) {
+  color: var(--status-plan-color);
+}
+.status-bar-block--filled:nth-child(2) {
+  color: var(--status-ppr-color);
+}
+.status-bar-block--filled:nth-child(3) {
+  color: var(--status-request-color);
+}
+.status-bar-block--filled:nth-child(4) {
+  color: var(--status-work-color);
+}
+
+@keyframes spin {
+  100% {
+    transform: rotate(360deg);
+  }
+}
+.gear-icon {
+  color: var(--text-secondary) !important;
+  animation: spin 2s linear infinite;
+}
+
+.status-bar-icon .anticon-share-alt {
+  color: orange !important;
+  animation: glow 0.5s ease-in-out infinite;
+  width: 14px;
+  height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-header);
+  border: 1px solid var(--text-secondary);
+  border-radius: 4px;
+}
+@keyframes glow {
+  10%,
+  100% {
+    filter: drop-shadow(0 0 4px orange);
+  }
+  100% {
+    filter: drop-shadow(0 0 10px orange);
+  }
+}
+
+.status-bar-action-wrapper {
+  display: flex;
+}
+.status-bar-action {
+  background: none;
+  border: none;
+  color: var(--accent-red);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0;
+}
+
+body.dark .worktable.archive .ant-table-container .ant-table-tbody > tr > td {
+  background-color: #2b2f37 !important;
+  color: #f5f5f5 !important;
+}

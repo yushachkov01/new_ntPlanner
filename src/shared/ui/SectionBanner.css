@@ -1,0 +1,17 @@
+.section-banner {
+  display: flex;
+  align-items: center;
+  margin: 16px 0;
+}
+
+.section-banner-icon {
+  font-size: 24px;
+  color: #555;
+  margin-right: 8px;
+}
+
+.section-banner-text {
+  font-size: 18px;
+  font-weight: 500;
+  color: #333;
+}

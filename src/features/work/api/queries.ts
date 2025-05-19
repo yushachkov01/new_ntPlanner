@@ -8,11 +8,13 @@ export const GET_WORKS = gql`
       project
       site
       description
-      time_range
+      # алиас для time_range → timeRange
+      timeRange: time_range
       status
-      ppr_hours
-      work_hours
-      overtime_hours
+      # и для остальных полей:
+      pprHours: ppr_hours
+      workHours: work_hours
+      overtimeHours: overtime_hours
     }
   }
 `;

@@ -5,8 +5,9 @@ import { BrowserRouter } from 'react-router-dom';
 import App from './app/App';
 import { ThemeProvider } from './app/providers/ThemeProvider';
 import { store } from './app/store';
+
 import './assets/styles/global.css';
-import {GraphQLProvider} from "@app/providers/GraphQLProvider.tsx";
+import { GraphQLProvider } from '@app/providers/GraphQLProvider.tsx';
 
 const root = ReactDOM.createRoot(document.getElementById('root')!);
 root.render(

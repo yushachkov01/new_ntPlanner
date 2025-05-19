@@ -1,11 +1,82 @@
 @import './variables.css';
 
-* {
+body {
   margin: 0;
   padding: 0;
-  box-sizing: border-box;
+  font-family: sans-serif;
+  --bg-image: url('../Logo_color.png');
+  background-color: var(--bg-page);
+  color: var(--text-primary);
+  background-image: var(--bg-image);
+  background-repeat: no-repeat;
+  background-position: center top;
+  background-size: 60%;
+  background-attachment: fixed;
 }
-body {
-  font-family: var(--font-family);
-  background-color: var(--color-bg);
+
+body.dark {
+  --bg-image: url('../Logo_dark_background.png');
+  background-color: #252a33;
+}
+
+.ant-layout-header {
+  padding: 0 !important;
+}
+
+.app-content,
+.dashboard-content,
+.dashboard-page,
+.ant-layout-content {
+  background: transparent !important;
+}
+
+.section-banner,
+.section-banner.archive {
+  background: rgba(250, 250, 250, 0.8);
+  margin-bottom: 0;
+}
+
+.worktable .ant-table-thead > tr > th {
+  background-color: rgba(169, 169, 169, 0.9) !important;
+  color: var(--text-primary);
+  border-top: none !important;
+}
+
+.section-banner + .worktable .ant-table-container,
+.section-banner.archive + .worktable .ant-table-container {
+  background: transparent !important;
+  margin-top: 0 !important;
+  padding-top: 0 !important;
+}
+
+.section-banner + .worktable .ant-table-container .ant-table-body,
+.section-banner.archive + .worktable .ant-table-container .ant-table-body,
+.section-banner + .worktable .ant-table-container .ant-table-placeholder,
+.section-banner.archive + .worktable .ant-table-container .ant-table-placeholder {
+  background: transparent !important;
+}
+
+body.dark .app-header {
+  background-color: #000 !important;
+  color: #fff !important;
+}
+
+body.dark .app-header .header-title,
+body.dark .app-header .header-time,
+body.dark .app-header .header-user {
+  color: #fff !important;
+}
+
+body.dark .app-header .header-icon {
+  color: #fff !important;
+}
+
+body.dark .app-header .header-time,
+body.dark .app-header .header-user {
+  background: transparent !important;
+}
+
+body.dark .app-header,
+body.dark .ant-layout-header {
+  background-color: #252a33 !important;
 }

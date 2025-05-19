@@ -1,7 +1,7 @@
 import type { FC } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 
-import DashboardPage from '@pages/DashboardPage';
+import DashboardPage from '../pages/DashboardPage';
 
 const AppRouter: FC = () => (
   <Routes>

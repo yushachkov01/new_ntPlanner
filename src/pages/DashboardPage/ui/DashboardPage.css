@@ -1,5 +1,76 @@
+.dashboard-page {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
 .dashboard-content {
-  height: calc(100vh - 150px);
-  padding: 0;
-  margin-top: 64px;
+  flex: 1;
+  padding: 16px;
+  background: var(--bg-page);
+}
+
+.folder-tabs {
+  display: flex;
+  margin-bottom: -1px;
+}
+
+.folder-tab {
+  padding: 10px 24px;
+  margin-right: 4px;
+  cursor: pointer;
+  border: 1px solid #ccc;
+  border-bottom: none;
+  border-top-left-radius: 8px;
+  border-top-right-radius: 8px;
+  transition:
+    background 0.2s,
+    color 0.2s;
+  user-select: none;
+}
+
+.folder-tab.inactive {
+  background: #e0e0e0;
+  color: #333;
+}
+
+.folder-tab.active {
+  background: #fff;
+  color: #000;
+  border-color: #ccc;
+  border-bottom: 1px solid #fff;
+  z-index: 2;
+}
+
+.folder-content {
+  border: 1px solid #ccc;
+  border-radius: 0 8px 8px 8px;
+  background: #fff;
+  padding: 24px;
+  position: relative;
+  top: -1px;
+  z-index: 1;
+  transition: all 0.3s ease;
+}
+
+body.dark .folder-tab.inactive {
+  background: #2b2b2b;
+  color: #aaa;
+  border-color: #444;
+}
+body.dark .folder-tab.active {
+  background: #424d57;
+  color: #fff;
+  border-color: white;
+  border-bottom-color: #424d57;
+}
+body.dark .folder-content {
+  background: #424d57;
+  border-color: white;
+}
+
+.loading,
+.error {
+  text-align: center;
+  margin-top: 40px;
+  color: var(--text-secondary);
 }

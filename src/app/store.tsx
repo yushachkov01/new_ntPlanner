@@ -1,6 +1,6 @@
 import { configureStore } from '@reduxjs/toolkit';
 
-import { workReducer } from '@features/work/model/workSlice.ts';
+import { workReducer } from '../entities/work/model/workSlice';
 
 export const store = configureStore({
   reducer: {

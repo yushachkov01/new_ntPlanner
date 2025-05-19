@@ -1,8 +1,9 @@
 import type { FC } from 'react';
 
 import { useTheme } from './providers/ThemeProvider';
-import AppRouter from './routes/Router.tsx';
-import Header from '../shared/ui/Header/Header.tsx';
+import AppRouter from './Router';
+import Header from '../shared/ui/Header';
+
 import './App.css';
 
 const App: FC = () => {

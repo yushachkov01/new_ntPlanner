@@ -1,7 +1,7 @@
 import { Card, Button } from 'antd';
 import type { FC } from 'react';
 
-import StatusBar from '../../../shared/ui/StatusBar/StatusBar.tsx';
+import StatusBar from '../../../shared/ui/StatusBar';
 import type { Work } from '../model/work.ts';
 
 interface Props {
