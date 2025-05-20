@@ -31,7 +31,6 @@ const workSlice = createSlice({
       state.loading = false;
       state.error = action.payload;
     },
-    // Пример локального действия:
     updateStatus(state, action: PayloadAction<{ id: number; status: Work['status'] }>) {
       const w = state.items.find((item) => item.id === action.payload.id);
       if (w) w.status = action.payload.status;

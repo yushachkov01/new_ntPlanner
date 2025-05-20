@@ -1,11 +1,12 @@
 import { Layout, Empty } from 'antd';
-import type { FC } from 'react';
-import { useState } from 'react';
 
 import { useWorks } from '../../../features/work/api/useWorks';
 import type { RowWithStep } from '../../../widgets/WorkTable/ui/WorkTable';
 import WorkTable from '../../../widgets/WorkTable/ui/WorkTable';
+
 import './DashboardPage.css';
+import type { FC } from 'react';
+import { useState } from 'react';
 
 const { Content } = Layout;
 type TabKey = 'all' | 'plan' | 'archive';

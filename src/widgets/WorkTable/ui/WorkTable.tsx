@@ -1,12 +1,13 @@
 import { ShareAltOutlined } from '@ant-design/icons';
 import { Table, Button, Empty } from 'antd';
 import type { ColumnsType } from 'antd/lib/table';
-import { useState, useEffect } from 'react';
-import type { FC, MouseEvent } from 'react';
 
 import type { Work } from '../../../entities/work/model/work';
 import StatusBar from '../../../shared/ui/StatusBar';
+
 import './WorkTable.css';
+import type { FC, MouseEvent } from 'react';
+import { useState, useEffect } from 'react';
 
 export interface RowWithStep extends Work {
   plan: number;
@@ -24,6 +25,11 @@ interface Props {
 const WorkTable: FC<Props> = ({ data, isArchive = false }) => {
   const [rows, setRows] = useState<RowWithStep[]>([]);
   const [expandedKey, setExpandedKey] = useState<number | null>(null);
+
+  // для пагинации
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(5);
+
   const today = new Date().toISOString().slice(0, 10);
   const SEGMENTS = 4;
 
@@ -107,7 +113,6 @@ const WorkTable: FC<Props> = ({ data, isArchive = false }) => {
         ]
       : []),
   ];
-
   return (
     <Table<RowWithStep>
       className={`worktable${isArchive ? ' archive' : ''}`}
@@ -116,13 +121,9 @@ const WorkTable: FC<Props> = ({ data, isArchive = false }) => {
       rowKey="id"
       dataSource={rows}
       columns={columns}
-      pagination={false}
       locale={{
         emptyText: <Empty description={isArchive ? 'Нет архивных задач' : 'Нет задач'} />,
       }}
-      onRow={(record) => ({
-        onClick: () => toggleExpand(record.id),
-      })}
       expandable={{
         expandedRowRender: (record) => {
           const overtime = record.plan - record.ppr - record.work;
@@ -132,7 +133,6 @@ const WorkTable: FC<Props> = ({ data, isArchive = false }) => {
               <strong>{record.ppr}ч (ППР)</strong>,&nbsp;
               <strong>{record.work}ч (Работы)</strong>,&nbsp;
               <strong>{overtime}ч (Сверхурочные)</strong>
-              <strong>{overtime}ч (Сверхурочные)</strong>
             </div>
           );
         },
@@ -141,6 +141,20 @@ const WorkTable: FC<Props> = ({ data, isArchive = false }) => {
         expandIcon: () => null,
       }}
       rowClassName={(r) => (!isArchive && r.date === today ? 'row-today' : '')}
+      pagination={{
+        current: currentPage,
+        pageSize,
+        pageSizeOptions: ['5', '10', '20'],
+        showSizeChanger: true,
+        showQuickJumper: false,
+        onChange: (page, size) => {
+          setCurrentPage(page);
+          setPageSize(size);
+        },
+      }}
+      onRow={(record) => ({
+        onClick: () => toggleExpand(record.id),
+      })}
     />
   );
 };

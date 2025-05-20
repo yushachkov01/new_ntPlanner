@@ -8,16 +8,10 @@
   color: var(--text-primary) !important;
 }
 
-.worktable .ant-table-tbody > tr:nth-child(even) > td {
-  background: var(--bg-table-row-even) !important;
-}
-
-/* сегодняшняя строка (бледно-красная заливка в светлой теме) */
 .worktable .ant-table-tbody > tr.row-today > td {
   background: var(--bg-row-today) !important;
 }
 
-/* общий цвет текста в ячейках */
 .worktable .ant-table-cell {
   color: var(--text-primary);
 }
@@ -35,18 +29,34 @@ body.dark .worktable .ant-table-thead > tr > th {
   border-bottom: 1px solid #2b2f37 !important;
 }
 
-/* тёмная тема: все не-сегодняшние строки (плановые) */
 body.dark .worktable:not(.archive) .ant-table-body tr:not(.row-today) > td {
   background-color: #2b2f37 !important;
   color: #f5f5f5 !important;
 }
 
-/* тёмная тема: архив (аналогично заголовку/чёрной теме шапки) */
 body.dark .worktable.archive .ant-table-thead > tr > th {
   background-color: #3a3f47 !important;
   color: #fff !important;
 }
+
 body.dark .worktable.archive .ant-table-body tr > td {
   background-color: #2b2f37 !important;
   color: #f5f5f5 !important;
+}
+
+.ant-pagination-options-quick-jumper {
+  display: none !important;
+}
+
+.ant-pagination-options-size-changer .anticon-search {
+  display: none !important;
+}
+
+.ant-pagination-options-size-changer .ant-select-selector .ant-select-selection-search-input {
+  display: none !important;
+  pointer-events: none !important;
+}
+
+.ant-pagination-options-size-changer .ant-select-selector {
+  user-select: none;
 }
