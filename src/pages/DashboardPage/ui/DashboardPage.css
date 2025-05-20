@@ -74,3 +74,18 @@ body.dark .folder-content {
   margin-top: 40px;
   color: var(--text-secondary);
 }
+/* === Иконка фонарика === */
+.filter-icon {
+  margin-left: auto;
+  font-size: 18px;
+  color: #aaa;
+  cursor: pointer;
+  padding: 4px;
+  transition: color 0.2s;
+  margin-top: 5px;
+}
+.filter-icon.on,
+.filter-icon:hover {
+  color: #fadb14;
+  margin-top: 5px;
+}
