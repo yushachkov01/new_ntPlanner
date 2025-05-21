@@ -104,10 +104,6 @@ body.dark .popover-title {
   color: white;
 }
 
-body.dark .folder-content .ant-pagination-item-active {
-  background-color: #555;
-  border-color: #555;
-}
 body.dark .folder-content .ant-pagination-item-active a {
   color: #fff;
 }
