@@ -84,8 +84,106 @@ body.dark .folder-content {
   transition: color 0.2s;
   margin-top: 5px;
 }
+
 .filter-icon.on,
 .filter-icon:hover {
   color: #fadb14;
   margin-top: 5px;
+}
+
+body.dark .ant-popover-inner {
+  background: #424d57;
+  color: #f5f5f5;
+  border: 1px solid #555;
+}
+body.dark .ant-popover-inner .ant-popover-inner-content {
+  background: #333;
+  padding: 12px 16px 16px;
+}
+body.dark .popover-title {
+  color: white;
+}
+
+body.dark .folder-content .ant-pagination-item-active {
+  background-color: #555;
+  border-color: #555;
+}
+body.dark .folder-content .ant-pagination-item-active a {
+  color: #fff;
+}
+
+body.dark .folder-content .ant-pagination-options .ant-select-selector {
+  background-color: #555;
+  color: #fff;
+  border-color: #444;
+}
+
+body.dark .folder-content .ant-pagination-item {
+  background-color: #333;
+  border-color: #444;
+}
+
+/* фон для неактивных страниц (чисел) */
+body.dark .folder-content .ant-pagination-item a {
+  color: #ccc;
+}
+
+body.dark .folder-content .ant-pagination-item-active {
+  background-color: #555 !important;
+  border-color: white !important;
+}
+
+/* хедер календаря (месяц/год и стрелки) */
+body.dark .ant-picker-panel .ant-picker-header {
+  background: #424d57;
+  border-bottom: 1px solid #444;
+}
+
+/* Вся цифры в панели выбора диапазона даты — белые */
+body.dark .ant-picker-panel .ant-picker-cell-inner {
+  color: #fff !important;
+}
+
+/* --- календарь: общий фон и обводка в тёмном режиме --- */
+body.dark .ant-picker-dropdown .ant-picker-panel-container {
+  background: #2b2b2b !important;
+  border: 1px solid white !important;
+}
+body.dark .ant-picker-panel .ant-picker-header {
+  background: #424d57 !important;
+  border-bottom: 1px solid white !important;
+}
+
+/* --- календарь: цвет всех невыбранных ячеек (чисел) — белый --- */
+body.dark .ant-picker-panel .ant-picker-cell {
+  color: #fff !important;
+}
+
+/* --- календарь: выделенные и ховер-диапазоны — чёрные --- */
+body.dark .ant-picker-panel .ant-picker-cell-selected .ant-picker-cell-inner,
+body.dark .ant-picker-panel .ant-picker-cell-in-range .ant-picker-cell-inner,
+body.dark .ant-picker-panel .ant-picker-cell-range-start .ant-picker-cell-inner,
+body.dark .ant-picker-panel .ant-picker-cell-range-end .ant-picker-cell-inner,
+body.dark .ant-picker-panel .ant-picker-cell-range-hover .ant-picker-cell-inner,
+body.dark .ant-picker-panel .ant-picker-cell-range-hover-in-range .ant-picker-cell-inner {
+  color: #000 !important;
+}
+
+/* для темной темы — чёрный текст в инпуте фильтра */
+body.dark .light-range-picker .ant-picker-input > input {
+  color: #000 !important;
+}
+
+.filter-wrapper {
+  margin-left: 8px;
+  position: relative;
+  z-index: 11;
+}
+
+/* фильтр по колонкам */
+.cols-popover .cols-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
 }

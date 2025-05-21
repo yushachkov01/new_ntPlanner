@@ -1,17 +1,31 @@
-import { Layout, Empty, DatePicker, Popover } from 'antd';
-import { useWorks } from '../../../features/work/api/useWorks';
-import './DashboardPage.css';
-import type { FC } from 'react';
-import React, { useState } from 'react';
+import { Layout, Empty, DatePicker, Popover, Checkbox } from 'antd';
 import type { Dayjs } from 'dayjs';
 import dayjs from 'dayjs';
-import { FilterOutlined } from '@ant-design/icons';
+import type { FC } from 'react';
+import { useState } from 'react';
+import 'dayjs/locale/ru';
+import ruRU from 'antd/es/date-picker/locale/ru_RU';
+import { FilterOutlined, AppstoreAddOutlined } from '@ant-design/icons';
 
+import { useWorks } from '../../../features/work/api/useWorks';
 import type { RowWithStep } from '../../../widgets/WorkTable/ui/WorkTable';
 import WorkTable from '../../../widgets/WorkTable/ui/WorkTable';
+import './DashboardPage.css';
 
 const { Content } = Layout;
 const { RangePicker } = DatePicker;
+
+// полный список колонок
+const ALL_COLUMNS = [
+  { key: 'id', label: '#' },
+  { key: 'date', label: 'Дата' },
+  { key: 'project', label: 'Проект' },
+  { key: 'site', label: 'Площадка' },
+  { key: 'description', label: 'Описание' },
+  { key: 'timeRange', label: 'Время проведения работ' },
+  { key: 'status', label: 'Текущий статус' },
+  { key: 'actions', label: 'Действия' },
+];
 
 type TabKey = 'all' | 'plan' | 'archive';
 
@@ -20,6 +34,8 @@ const DashboardPage: FC = () => {
   const [activeTab, setActiveTab] = useState<TabKey>('all');
   const [dateRange, setDateRange] = useState<[Dayjs, Dayjs] | null>(null);
   const [filterVisible, setFilterVisible] = useState(false);
+  const [colsVisible, setColsVisible] = useState(false);
+  const [visibleCols, setVisibleCols] = useState<string[]>(ALL_COLUMNS.map((c) => c.key));
 
   if (loading) return <div className="loading">Загружаем задачи…</div>;
   if (error) return <div className="error">Ошибка: {error.message}</div>;
@@ -35,62 +51,53 @@ const DashboardPage: FC = () => {
   }));
 
   const planRows = rows.filter((r) => r.date >= today);
-  const archiveRows = rows.filter((r) => r.date < today);
-  const allRows = [...planRows, ...archiveRows];
+  const archRows = rows.filter((r) => r.date < today);
+  const allRows = [...planRows, ...archRows];
 
   const applyDateFilter = (data: RowWithStep[]) => {
     if (!dateRange) return data;
     const [from, to] = dateRange;
-    return data.filter((r) => {
-      const d = dayjs(r.date, 'YYYY-MM-DD');
-      return d.isSameOrAfter(from, 'day') && d.isSameOrBefore(to, 'day');
-    });
+    const f = from.format('YYYY-MM-DD'),
+      t = to.format('YYYY-MM-DD');
+    return data.filter((r) => r.date >= f && r.date <= t);
   };
 
-  let displayRows =
-    activeTab === 'plan' ? planRows : activeTab === 'archive' ? archiveRows : allRows;
+  let displayRows = activeTab === 'plan' ? planRows : activeTab === 'archive' ? archRows : allRows;
   displayRows = applyDateFilter(displayRows);
+
+  const toggleCol = (key: string) => {
+    setVisibleCols((v) => (v.includes(key) ? v.filter((x) => x !== key) : [...v, key]));
+  };
 
   return (
     <Layout className="dashboard-page">
       <Content className="dashboard-content">
         <div className="folder-tabs">
-          <div
-            className={`folder-tab ${activeTab === 'all' ? 'active' : 'inactive'}`}
-            onClick={() => {
-              setActiveTab('all');
-              setFilterVisible(false);
-            }}
-          >
-            Все работы
-          </div>
-          <div
-            className={`folder-tab ${activeTab === 'plan' ? 'active' : 'inactive'}`}
-            onClick={() => {
-              setActiveTab('plan');
-              setFilterVisible(false);
-            }}
-          >
-            План работ
-          </div>
-          <div
-            className={`folder-tab ${activeTab === 'archive' ? 'active' : 'inactive'}`}
-            onClick={() => {
-              setActiveTab('archive');
-              setFilterVisible(false);
-            }}
-          >
-            Архив
-          </div>
+          {(['all', 'plan', 'archive'] as TabKey[]).map((tab) => (
+            <div
+              key={tab}
+              className={`folder-tab ${activeTab === tab ? 'active' : 'inactive'}`}
+              onClick={() => {
+                setActiveTab(tab);
+                setFilterVisible(false);
+                setColsVisible(false);
+              }}
+            >
+              {{ all: 'Все работы', plan: 'План работ', archive: 'Архив' }[tab]}
+            </div>
+          ))}
           <div className="filter-wrapper">
             <Popover
               content={
                 <div className="popover-inner">
                   <div className="popover-title">Фильтр по дате</div>
                   <RangePicker
+                    locale={ruRU}
                     allowClear
-                    className="light-range-picker"
-                    onChange={(vals) => setDateRange(vals as never)}
+                    onChange={(vals) => {
+                      if (vals && vals[0] && vals[1]) setDateRange(vals as any);
+                      else setDateRange(null);
+                    }}
                   />
                 </div>
               }
@@ -105,10 +112,43 @@ const DashboardPage: FC = () => {
               />
             </Popover>
           </div>
+          <div className="filter-wrapper">
+            <Popover
+              content={
+                <div className="popover-inner cols-popover">
+                  <div className="popover-title">Настройка колонок</div>
+                  <div className="cols-list">
+                    {ALL_COLUMNS.map((col) => (
+                      <Checkbox
+                        key={col.key}
+                        checked={visibleCols.includes(col.key)}
+                        onChange={() => toggleCol(col.key)}
+                      >
+                        {col.label}
+                      </Checkbox>
+                    ))}
+                  </div>
+                </div>
+              }
+              trigger="click"
+              visible={colsVisible}
+              onVisibleChange={setColsVisible}
+              placement="bottom"
+            >
+              <AppstoreAddOutlined
+                className={`filter-icon ${colsVisible ? 'on' : ''}`}
+                onClick={(e) => e.stopPropagation()}
+              />
+            </Popover>
+          </div>
         </div>
         <div className="folder-content">
           {displayRows.length > 0 ? (
-            <WorkTable data={displayRows} isArchive={activeTab === 'archive'} />
+            <WorkTable
+              data={displayRows}
+              isArchive={activeTab === 'archive'}
+              visibleColumns={visibleCols}
+            />
           ) : (
             <Empty description="Нет задач" />
           )}

@@ -1,13 +1,12 @@
 import { ShareAltOutlined } from '@ant-design/icons';
 import { Table, Button, Empty } from 'antd';
 import type { ColumnsType } from 'antd/lib/table';
+import React, { useState, useEffect } from 'react';
+import type { FC, MouseEvent } from 'react';
 
 import type { Work } from '../../../entities/work/model/work';
 import StatusBar from '../../../shared/ui/StatusBar';
-
 import './WorkTable.css';
-import type { FC, MouseEvent } from 'react';
-import { useState, useEffect } from 'react';
 
 export interface RowWithStep extends Work {
   plan: number;
@@ -18,32 +17,35 @@ export interface RowWithStep extends Work {
 }
 
 interface Props {
-  data: Work[];
+  data: RowWithStep[];
   isArchive?: boolean;
+  visibleColumns?: string[];
 }
 
-const WorkTable: FC<Props> = ({ data, isArchive = false }) => {
+const WorkTable: FC<Props> = ({
+  data,
+  isArchive = false,
+  visibleColumns = [
+    'id',
+    'date',
+    'project',
+    'site',
+    'description',
+    'timeRange',
+    'status',
+    'actions',
+  ],
+}) => {
   const [rows, setRows] = useState<RowWithStep[]>([]);
   const [expandedKey, setExpandedKey] = useState<number | null>(null);
-
-  // для пагинации
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(5);
+  const [page, setPage] = useState(1);
+  const [size, setSize] = useState(5);
 
   const today = new Date().toISOString().slice(0, 10);
   const SEGMENTS = 4;
 
   useEffect(() => {
-    setRows(
-      data.map((w) => ({
-        ...w,
-        plan: w.pprHours + w.workHours + w.overtimeHours,
-        ppr: w.pprHours,
-        request: 1,
-        work: w.workHours,
-        step: w.status === 'in_progress' ? 2 : 0,
-      })),
-    );
+    setRows(data);
   }, [data]);
 
   const handleStep = (id: number, e: MouseEvent) => {
@@ -56,8 +58,7 @@ const WorkTable: FC<Props> = ({ data, isArchive = false }) => {
   const toggleExpand = (id: number) => {
     setExpandedKey((prev) => (prev === id ? null : id));
   };
-
-  const columns: ColumnsType<RowWithStep> = [
+  const baseCols: ColumnsType<RowWithStep> = [
     { title: '#', dataIndex: 'id', key: 'id', width: 50 },
     { title: 'Дата', dataIndex: 'date', key: 'date', width: 120 },
     { title: 'Проект', dataIndex: 'project', key: 'project' },
@@ -83,9 +84,7 @@ const WorkTable: FC<Props> = ({ data, isArchive = false }) => {
             work={r.work}
             step={r.step}
             onStep={r.date === today ? (e) => handleStep(r.id, e as any) : undefined}
-            customIcon={
-              isFuture ? <ShareAltOutlined className="status-bar-network-icon" /> : undefined
-            }
+            customIcon={isFuture ? <ShareAltOutlined /> : undefined}
           />
         );
       },
@@ -96,16 +95,14 @@ const WorkTable: FC<Props> = ({ data, isArchive = false }) => {
             title: 'Действия',
             key: 'actions',
             width: 160,
-            render: (_: any, r: RowWithStep) =>
+            render: (_: any, r) =>
               r.date === today ? (
-                <Button onClick={(e) => handleStep(r.id, e)} type="primary">
+                <Button type="primary" onClick={(e) => handleStep(r.id, e)}>
                   Приступить
                 </Button>
               ) : (
                 <div className="action-links">
-                  <a onClick={(e) => handleStep(r.id, e)} style={{ paddingRight: '10px' }}>
-                    К ППР
-                  </a>
+                  <a onClick={(e) => handleStep(r.id, e)}>К ППР</a>
                   <a onClick={(e) => handleStep(r.id, e)}>Отменить</a>
                 </div>
               ),
@@ -113,6 +110,7 @@ const WorkTable: FC<Props> = ({ data, isArchive = false }) => {
         ]
       : []),
   ];
+  const columnsToRender = baseCols.filter((col) => visibleColumns!.includes(col.key as string));
   return (
     <Table<RowWithStep>
       className={`worktable${isArchive ? ' archive' : ''}`}
@@ -120,19 +118,16 @@ const WorkTable: FC<Props> = ({ data, isArchive = false }) => {
       sticky={{ offsetHeader: 0 }}
       rowKey="id"
       dataSource={rows}
-      columns={columns}
-      locale={{
-        emptyText: <Empty description={isArchive ? 'Нет архивных задач' : 'Нет задач'} />,
-      }}
+      columns={columnsToRender}
       expandable={{
-        expandedRowRender: (record) => {
-          const overtime = record.plan - record.ppr - record.work;
+        expandedRowRender: (rec) => {
+          const ot = rec.plan - rec.ppr - rec.work;
           return (
             <div className="time-estimate-row">
               Плановая оценка времени:&nbsp;
-              <strong>{record.ppr}ч (ППР)</strong>,&nbsp;
-              <strong>{record.work}ч (Работы)</strong>,&nbsp;
-              <strong>{overtime}ч (Сверхурочные)</strong>
+              <strong>{rec.ppr}ч (ППР)</strong>,&nbsp;
+              <strong>{rec.work}ч (Работы)</strong>,&nbsp;
+              <strong>{ot}ч (Сверхурочные)</strong>
             </div>
           );
         },
@@ -142,19 +137,19 @@ const WorkTable: FC<Props> = ({ data, isArchive = false }) => {
       }}
       rowClassName={(r) => (!isArchive && r.date === today ? 'row-today' : '')}
       pagination={{
-        current: currentPage,
-        pageSize,
-        pageSizeOptions: ['5', '10', '20'],
+        current: page,
+        pageSize: size,
         showSizeChanger: true,
-        showQuickJumper: false,
-        onChange: (page, size) => {
-          setCurrentPage(page);
-          setPageSize(size);
+        pageSizeOptions: ['5', '10', '20'],
+        onChange: (p, s) => {
+          setPage(p);
+          setSize(s);
         },
       }}
-      onRow={(record) => ({
-        onClick: () => toggleExpand(record.id),
-      })}
+      onRow={(rec) => ({ onClick: () => toggleExpand(rec.id) })}
+      locale={{
+        emptyText: <Empty description={isArchive ? 'Нет архивных задач' : 'Нет задач'} />,
+      }}
     />
   );
 };
