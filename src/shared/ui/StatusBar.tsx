@@ -1,19 +1,10 @@
 import { SettingOutlined } from '@ant-design/icons';
 import type { FC, MouseEvent } from 'react';
-import React from 'react';
+
 import './StatusBar.css';
+import type { Props } from '@/shared/ui/types/props.tsx';
 
-interface Props {
-  plan: number;
-  ppr: number;
-  request: number;
-  work: number;
-  step: number;
-  onStep?: () => void;
-  customIcon?: React.ReactNode;
-}
-
-const StatusBar: FC<Props> = ({ plan, ppr, request, work, step, onStep, customIcon }) => {
+const StatusBar: FC<Props> = ({ step, onStep, customIcon }) => {
   const segments = [
     { key: 'plan', label: 'План' },
     { key: 'ppr', label: 'ППР' },

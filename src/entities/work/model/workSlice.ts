@@ -1,13 +1,7 @@
 import type { PayloadAction } from '@reduxjs/toolkit';
 import { createSlice } from '@reduxjs/toolkit';
 
-import type { Work } from './work';
-
-interface WorkState {
-  items: Work[];
-  loading: boolean;
-  error: string | null;
-}
+import type { Work, WorkState } from './work';
 
 const initialState: WorkState = {
   items: [],

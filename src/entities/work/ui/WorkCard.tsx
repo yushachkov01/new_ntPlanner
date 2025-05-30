@@ -1,15 +1,11 @@
 import { Card, Button } from 'antd';
 import type { FC } from 'react';
 
+import type { WorkCardProps } from '@entities/work/ui/types/WorkCardProps.ts';
+
 import StatusBar from '../../../shared/ui/StatusBar';
-import type { Work } from '../model/work.ts';
 
-interface Props {
-  work: Work;
-  onAction: (id: number) => void;
-}
-
-const WorkCard: FC<Props> = ({ work, onAction }) => (
+const WorkCard: FC<WorkCardProps> = ({ work, onAction }) => (
   <Card title={`${work.date} — ${work.project}`} style={{ marginBottom: 16 }}>
     <p>
       <strong>Площадка:</strong> {work.site}

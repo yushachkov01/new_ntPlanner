@@ -2,10 +2,10 @@ import { Layout, Empty, DatePicker, Popover, Checkbox } from 'antd';
 import type { Dayjs } from 'dayjs';
 import dayjs from 'dayjs';
 import type { FC } from 'react';
-import { useState } from 'react';
+import React, { useState } from 'react';
 import 'dayjs/locale/ru';
 import ruRU from 'antd/es/date-picker/locale/ru_RU';
-import { FilterOutlined, AppstoreAddOutlined } from '@ant-design/icons';
+import { CalendarOutlined, AppstoreAddOutlined } from '@ant-design/icons';
 
 import { useWorks } from '../../../features/work/api/useWorks';
 import type { RowWithStep } from '../../../widgets/WorkTable/ui/WorkTable';
@@ -15,7 +15,6 @@ import './DashboardPage.css';
 const { Content } = Layout;
 const { RangePicker } = DatePicker;
 
-// полный список колонок
 const ALL_COLUMNS = [
   { key: 'id', label: '#' },
   { key: 'date', label: 'Дата' },
@@ -25,15 +24,16 @@ const ALL_COLUMNS = [
   { key: 'timeRange', label: 'Время проведения работ' },
   { key: 'status', label: 'Текущий статус' },
   { key: 'actions', label: 'Действия' },
-];
+] as const;
 
 type TabKey = 'all' | 'plan' | 'archive';
 
 const DashboardPage: FC = () => {
   const { works, loading, error } = useWorks();
+
   const [activeTab, setActiveTab] = useState<TabKey>('all');
   const [dateRange, setDateRange] = useState<[Dayjs, Dayjs] | null>(null);
-  const [filterVisible, setFilterVisible] = useState(false);
+  const [dateFilterVisible, setDateFilterVisible] = useState(false);
   const [colsVisible, setColsVisible] = useState(false);
   const [visibleCols, setVisibleCols] = useState<string[]>(ALL_COLUMNS.map((c) => c.key));
 
@@ -54,19 +54,19 @@ const DashboardPage: FC = () => {
   const archRows = rows.filter((r) => r.date < today);
   const allRows = [...planRows, ...archRows];
 
-  const applyDateFilter = (data: RowWithStep[]) => {
+  function applyDateFilter(data: RowWithStep[]) {
     if (!dateRange) return data;
     const [from, to] = dateRange;
     const f = from.format('YYYY-MM-DD'),
       t = to.format('YYYY-MM-DD');
     return data.filter((r) => r.date >= f && r.date <= t);
-  };
+  }
 
   let displayRows = activeTab === 'plan' ? planRows : activeTab === 'archive' ? archRows : allRows;
   displayRows = applyDateFilter(displayRows);
 
   const toggleCol = (key: string) => {
-    setVisibleCols((v) => (v.includes(key) ? v.filter((x) => x !== key) : [...v, key]));
+    setVisibleCols((vc) => (vc.includes(key) ? vc.filter((x) => x !== key) : [...vc, key]));
   };
 
   return (
@@ -79,7 +79,7 @@ const DashboardPage: FC = () => {
               className={`folder-tab ${activeTab === tab ? 'active' : 'inactive'}`}
               onClick={() => {
                 setActiveTab(tab);
-                setFilterVisible(false);
+                setDateFilterVisible(false);
                 setColsVisible(false);
               }}
             >
@@ -102,12 +102,12 @@ const DashboardPage: FC = () => {
                 </div>
               }
               trigger="click"
-              visible={filterVisible}
-              onVisibleChange={setFilterVisible}
+              visible={dateFilterVisible}
+              onVisibleChange={setDateFilterVisible}
               placement="bottom"
             >
-              <FilterOutlined
-                className={`filter-icon ${filterVisible ? 'on' : ''}`}
+              <CalendarOutlined
+                className={`calendar-icon ${dateFilterVisible ? 'on' : ''}`}
                 onClick={(e) => e.stopPropagation()}
               />
             </Popover>
@@ -142,6 +142,7 @@ const DashboardPage: FC = () => {
             </Popover>
           </div>
         </div>
+
         <div className="folder-content">
           {displayRows.length > 0 ? (
             <WorkTable

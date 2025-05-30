@@ -1,11 +1,11 @@
-import { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState } from 'react';
 
-export type Theme = 'light' | 'dark';
-interface ThemeContextValue {
-  theme: Theme;
-  toggle(): void;
-}
-const ThemeContext = createContext<ThemeContextValue>({ theme: 'light', toggle() {} });
+import type { ThemeContextValue, Theme } from '@app/providers/types/ThemeContextValue.ts';
+
+const ThemeContext = createContext<ThemeContextValue>({
+  theme: 'light',
+  toggle() {},
+});
 export const useTheme = () => useContext(ThemeContext);
 
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {

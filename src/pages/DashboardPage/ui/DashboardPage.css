@@ -104,6 +104,11 @@ body.dark .popover-title {
   color: white;
 }
 
+/* Активный пункт */
+body.dark .folder-content .ant-pagination-item-active {
+  background-color: #555;
+  border-color: #555;
+}
 body.dark .folder-content .ant-pagination-item-active a {
   color: #fff;
 }
@@ -114,16 +119,17 @@ body.dark .folder-content .ant-pagination-options .ant-select-selector {
   border-color: #444;
 }
 
+/* фон для всех элементов-чисел */
 body.dark .folder-content .ant-pagination-item {
   background-color: #333;
   border-color: #444;
 }
 
-/* фон для неактивных страниц (чисел) */
 body.dark .folder-content .ant-pagination-item a {
   color: #ccc;
 }
 
+/* фон и текст для активного номера */
 body.dark .folder-content .ant-pagination-item-active {
   background-color: #555 !important;
   border-color: white !important;
@@ -135,12 +141,10 @@ body.dark .ant-picker-panel .ant-picker-header {
   border-bottom: 1px solid #444;
 }
 
-/* Вся цифры в панели выбора диапазона даты — белые */
 body.dark .ant-picker-panel .ant-picker-cell-inner {
   color: #fff !important;
 }
 
-/* --- календарь: общий фон и обводка в тёмном режиме --- */
 body.dark .ant-picker-dropdown .ant-picker-panel-container {
   background: #2b2b2b !important;
   border: 1px solid white !important;
@@ -150,12 +154,10 @@ body.dark .ant-picker-panel .ant-picker-header {
   border-bottom: 1px solid white !important;
 }
 
-/* --- календарь: цвет всех невыбранных ячеек (чисел) — белый --- */
 body.dark .ant-picker-panel .ant-picker-cell {
   color: #fff !important;
 }
 
-/* --- календарь: выделенные и ховер-диапазоны — чёрные --- */
 body.dark .ant-picker-panel .ant-picker-cell-selected .ant-picker-cell-inner,
 body.dark .ant-picker-panel .ant-picker-cell-in-range .ant-picker-cell-inner,
 body.dark .ant-picker-panel .ant-picker-cell-range-start .ant-picker-cell-inner,
@@ -165,7 +167,6 @@ body.dark .ant-picker-panel .ant-picker-cell-range-hover-in-range .ant-picker-ce
   color: #000 !important;
 }
 
-/* для темной темы — чёрный текст в инпуте фильтра */
 body.dark .light-range-picker .ant-picker-input > input {
   color: #000 !important;
 }
@@ -182,4 +183,30 @@ body.dark .light-range-picker .ant-picker-input > input {
   flex-direction: column;
   gap: 8px;
   margin-bottom: 16px;
+}
+
+body.dark .cols-popover .ant-checkbox-wrapper span {
+  color: #fff !important;
+}
+
+.calendar-icon {
+  font-size: 20px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  margin-left: 8px;
+  transition: color 0.2s;
+  margin-top: 7px;
+}
+
+.calendar-icon:hover,
+.calendar-icon.on {
+  color: var(--primary-color);
+}
+
+body.dark .calendar-icon {
+  color: #aaa;
+}
+body.dark .calendar-icon:hover,
+body.dark .calendar-icon.on {
+  color: #fadb14;
 }

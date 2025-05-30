@@ -1,10 +1,8 @@
 import { ExceptionOutlined } from '@ant-design/icons';
 import type { FC } from 'react';
-import './WorkPlanBanner.css';
 
-interface Props {
-  title?: string;
-}
+import './WorkPlanBanner.css';
+import type { Props } from '@/shared/ui/types/props.tsx';
 
 const WorkPlanBanner: FC<Props> = ({ title = 'План твоих работ:' }) => (
   <div className="work-plan-banner">

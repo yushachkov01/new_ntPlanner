@@ -4,25 +4,12 @@ import type { ColumnsType } from 'antd/lib/table';
 import React, { useState, useEffect } from 'react';
 import type { FC, MouseEvent } from 'react';
 
-import type { Work } from '../../../entities/work/model/work';
 import StatusBar from '../../../shared/ui/StatusBar';
+
 import './WorkTable.css';
+import type { PropsWorkTable, RowWithStep } from '@widgets/WorkTable/types/RowWithStep.ts';
 
-export interface RowWithStep extends Work {
-  plan: number;
-  ppr: number;
-  request: number;
-  work: number;
-  step: number;
-}
-
-interface Props {
-  data: RowWithStep[];
-  isArchive?: boolean;
-  visibleColumns?: string[];
-}
-
-const WorkTable: FC<Props> = ({
+const WorkTable: FC<PropsWorkTable> = ({
   data,
   isArchive = false,
   visibleColumns = [
@@ -59,7 +46,7 @@ const WorkTable: FC<Props> = ({
     setExpandedKey((prev) => (prev === id ? null : id));
   };
   const baseCols: ColumnsType<RowWithStep> = [
-    { title: '#', dataIndex: 'id', key: 'id', width: 50 },
+    { title: '#', dataIndex: 'id', key: 'id', width: 80 },
     { title: 'Дата', dataIndex: 'date', key: 'date', width: 120 },
     { title: 'Проект', dataIndex: 'project', key: 'project' },
     { title: 'Площадка', dataIndex: 'site', key: 'site' },
@@ -102,7 +89,9 @@ const WorkTable: FC<Props> = ({
                 </Button>
               ) : (
                 <div className="action-links">
-                  <a onClick={(e) => handleStep(r.id, e)}>К ППР</a>
+                  <a onClick={(e) => handleStep(r.id, e)} style={{ paddingRight: '10px' }}>
+                    К ППР
+                  </a>
                   <a onClick={(e) => handleStep(r.id, e)}>Отменить</a>
                 </div>
               ),
@@ -120,6 +109,7 @@ const WorkTable: FC<Props> = ({
       dataSource={rows}
       columns={columnsToRender}
       expandable={{
+        expandIconColumnIndex: -1,
         expandedRowRender: (rec) => {
           const ot = rec.plan - rec.ppr - rec.work;
           return (
