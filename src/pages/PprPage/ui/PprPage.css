@@ -1,0 +1,313 @@
+ppr-page {
+  padding: 1rem;
+  background-color: var(--bg-page, #ffffff);
+  color: var(--text-primary, #1f2937);
+  font-family: Arial, sans-serif;
+}
+
+.ppr-page__title {
+  margin-bottom: 1rem;
+  font-size: 1.5rem;
+  text-align: center;
+}
+
+/* ============================
+   2. Контейнер таймлайна
+   ============================ */
+.timeline-container {
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  overflow: visible;
+  width: 100%;
+  margin: 0 auto;
+}
+
+/* ---------------------------------
+   2.1. Шапка: метки часов 00:00–23:00
+   --------------------------------- */
+.timeline-header {
+  display: grid;
+  grid-template-columns: 4rem 4rem repeat(24, 1fr);
+  background-color: var(--bg-header, #f9f9f9);
+  border-bottom: 1px solid #e0e0e0;
+  align-items: center;
+  height: 2.5rem;
+}
+
+.timeline-header__hour {
+  font-size: 0.75rem;
+  color: var(--text-secondary, #4b5563);
+  text-align: center;
+  border-left: 1px solid #f0f0f0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.timeline-header__hour:first-child {
+  border-left: none;
+}
+
+/* ---------------------------------
+   2.2. Тело: ряды (4rem / 4rem / 1fr)
+   --------------------------------- */
+.timeline-body {
+  display: flex;
+  flex-direction: column;
+}
+
+.timeline-row {
+  display: grid;
+  grid-template-columns: 4rem 4rem 1fr;
+  border-bottom: 1px solid #f0f0f0;
+  min-height: 3rem;
+  overflow: visible;
+}
+
+/* ---------------------------------
+   2.2.1. Первая колонка (4rem): аватарки / extra-блок
+   --------------------------------- */
+.timeline-row__icon-cell {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+  padding-left: 0.25rem;
+  padding-top: 0.25rem;
+  cursor: pointer;
+}
+.timeline-row__icon-cell:hover {
+  background-color: rgba(0, 0, 0, 0.03);
+}
+
+/* Extra-блок (две перекрывающиеся аватарки + “+N”) */
+.timeline-row__extra-block {
+  margin-right: 0.4rem;
+  display: flex;
+  align-items: center;
+}
+
+.timeline-row__extra-block .avatar-combined {
+  position: relative;
+  width: 3.5rem;
+  height: 2rem;
+}
+.timeline-row__extra-block .avatar-combined__circle {
+  position: absolute;
+  top: 0;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  background-color: #ccc;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid #fff;
+}
+.timeline-row__extra-block .avatar-combined__more {
+  background-color: #888;
+  color: #fff;
+  font-size: 0.75rem;
+}
+
+/* Основной “avatar-combined” (для клика раскрытия списка пользователей) */
+.avatar-combined {
+  position: relative;
+  width: 3.5rem;
+  height: 2rem;
+}
+.avatar-combined__circle {
+  position: absolute;
+  top: 0;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  background-color: #ccc;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid #fff;
+}
+.avatar-combined__more {
+  background-color: #888;
+  color: #fff;
+  font-size: 0.75rem;
+}
+
+/* Одиночная аватарка (для user-строк id>0) */
+.avatar-single {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  background-color: #ccc;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.avatar-icon {
+  font-size: 1rem;
+}
+
+.timeline-row__label-cell {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+  padding-left: 0.5rem;
+  padding-top: 0.5rem;
+}
+
+.timeline-row__day-label {
+  font-size: 0.95rem;
+  font-weight: bold;
+  color: var(--text-primary, #1f2937);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.timeline-row__day-label:hover {
+  text-decoration: underline;
+}
+
+.timeline-row__blocks {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(24, 1fr);
+}
+
+.timeline-row__grid-cell {
+  border-left: 1px solid #fafafa;
+  background-color: var(--bg-page, #ffffff);
+  min-height: 3rem;
+}
+
+/* ============================
+   3. Блоки (TimelineBlock)
+   ============================ */
+.timeline-block {
+  position: absolute;
+  top: 0.4rem;
+  height: 2rem;
+  background-color: #4285f4;
+  border-radius: 4px;
+  color: #fff;
+  font-size: 0.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
+  z-index: 1;
+}
+
+.timeline-block:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  z-index: 10;
+}
+
+.timeline-block__hover-text {
+  position: absolute;
+  font-size: 0.75rem;
+  font-weight: 500;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.timeline-block:hover .timeline-block__hover-text {
+  opacity: 1;
+}
+
+.timeline-block__popover {
+  position: absolute;
+  bottom: calc(100% + 0.4rem);
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: #f7f7f7;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  min-width: 120px;
+  z-index: 1000;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.popover-arrow {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-top: 6px solid #f7f7f7;
+  z-index: 1000;
+}
+
+.popover-content {
+  padding: 0.5rem;
+}
+
+.popover-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+  color: #333;
+}
+
+.popover-time {
+  font-size: 0.75rem;
+  color: #555;
+}
+
+.all-tasks-container {
+  margin-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+/* ============================
+   5. Тёмная тема (если body.dark)
+   ============================ */
+body.dark .timeline-header {
+  background-color: #2a2a2a;
+  border-bottom: 1px solid #444;
+}
+
+body.dark .timeline-header__hour {
+  color: rgba(255, 255, 255, 0.65);
+  border-left: 1px solid #444;
+}
+
+body.dark .timeline-row {
+  border-bottom: 1px solid #444;
+}
+
+body.dark .timeline-row__grid-cell {
+  background-color: #1e1e1e;
+  border-left: 1px solid #333;
+}
+
+body.dark .timeline-block {
+  background-color: #3367d6;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+}
+
+body.dark .timeline-block:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.75);
+}
+
+body.dark .timeline-block__popover {
+  background-color: #3a3f47;
+  border-color: #555;
+}
+
+body.dark .popover-content {
+  color: #f5f5f5;
+}
+
+body.dark .popover-arrow {
+  border-top-color: #3a3f47;
+}
