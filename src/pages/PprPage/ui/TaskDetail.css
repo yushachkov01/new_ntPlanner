@@ -56,8 +56,8 @@
   border-bottom: 0.1rem solid var(--task-text-secondary, #4b5563);
   transform: rotate(45deg);
   transition:
-    transform 0.2s,
-    border-color 0.2s;
+          transform 0.2s,
+          border-color 0.2s;
 }
 
 .toggle-arrow.up {
@@ -132,8 +132,8 @@
   border-radius: 0.75rem;
   cursor: pointer;
   transition:
-    background-color 0.2s,
-    color 0.2s;
+          background-color 0.2s,
+          color 0.2s;
 }
 
 .task-detail__done-btn:hover {
@@ -213,8 +213,8 @@
   border-radius: 0.5rem;
   cursor: pointer;
   transition:
-    background-color 0.2s,
-    color 0.2s;
+          background-color 0.2s,
+          color 0.2s;
 }
 
 .subtask-item__comments:hover {
@@ -290,3 +290,34 @@ body.dark .subtask-item__comments:hover {
   background-color: var(--subtask-btn-text, #e5e5e5);
   color: var(--subtask-bg, #2f3136);
 }
+.task-detail__badge{
+  display:inline-block;
+  padding:.3rem .7rem;
+  border-radius:.5rem;
+  font-size:.8rem;
+  font-weight:600;
+  white-space:pre-line;
+}
+
+.badge--ok{
+  color:#16c784;
+  background:rgba(22,199,132,.15);
+  border:1px solid #16c784;
+}
+.badge--fail{
+  color:#ff5252;
+  background:rgba(255,82,82,.15);
+  border:1px solid #ff5252;
+}
+.task-detail__badge{
+  display:inline-block;
+  border-radius:.3rem;
+  padding:.45rem 1rem;
+  font-size:.85rem;
+  line-height:1.25;
+  color:#fff;
+  white-space:pre-line;
+}
+.badge--ok   {background:#059669;}
+.badge--fail {background:#dc2626;}
+

@@ -1,70 +1,166 @@
 .timeline-block {
   position: absolute;
   height: 2rem;
-  background-color: #2979ff;
-  border-radius: 0.25rem;
-  cursor: pointer;
-  overflow: hidden;
+  background-color: #4285f4;
+  border-radius: 4px;
+  color: #fff !important;
+  font-size: 0.75rem;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
 .timeline-block__hover-text {
-  display: none;
   position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  color: white;
-  font-size: 0.85rem;
-  font-weight: bold;
-  white-space: nowrap;
+  font-size: 0.75rem;
+  font-weight: 500;
   pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s;
 }
 
 .timeline-block:hover .timeline-block__hover-text {
-  display: block;
+  opacity: 1;
 }
 
 .timeline-block__popover {
   position: absolute;
-  top: -3.2rem;
+  bottom: calc(100% + 0.4rem);
   left: 50%;
   transform: translateX(-50%);
-  background-color: #fff;
+  background-color: #f7f7f7;
   border: 1px solid #ccc;
-  border-radius: 0.25rem;
-  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  min-width: 140px;
+  z-index: 1000;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-  z-index: 10;
-  white-space: nowrap;
 }
 
 .popover-arrow {
   position: absolute;
-  bottom: -0.4rem;
+  top: 100%;
   left: 50%;
   transform: translateX(-50%);
   width: 0;
   height: 0;
-  border-left: 0.4rem solid transparent;
-  border-right: 0.4rem solid transparent;
-  border-top: 0.4rem solid #fff;
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-top: 6px solid #f7f7f7;
+  z-index: 1000;
 }
 
 .popover-content {
-  text-align: center;
+  padding: 0.5rem;
+  color: #ffffff !important;
 }
 
 .popover-title {
-  font-weight: bold;
+  font-size: 0.85rem;
+  font-weight: 600;
   margin-bottom: 0.25rem;
-  font-size: 0.9rem;
   color: #333;
 }
 
 .popover-time {
-  font-size: 0.85rem;
-  color: #555;
+  font-size: 0.75rem;
+  color: #ddd !important;
+}
+
+.timeline-block--info {
+  background-color: #cecece !important;
+  color: #333 !important;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15) !important;
+}
+.timeline-block--info:hover {
+  background-color: #dadada !important;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2) !important;
+}
+
+.timeline-block--covered {
+  height: 2.4rem !important;
+  top: 0.2rem !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25) !important;
+}
+.timeline-block--ontime {
+  position: relative;
+  overflow: visible;
+}
+
+.timeline-block--ontime::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+
+  background-image: repeating-linear-gradient(
+          135deg,
+          rgba(0, 200, 83, 0.7) 0 4px,
+          transparent 4px 12px
+  );
+}
+.timeline-block--notdone {
+  position: relative;
+  overflow: visible;
+}
+.timeline-block--notdone::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+
+  background-image: repeating-linear-gradient(
+          135deg,
+          rgba(255, 0, 0, 0.75) 0 4px,
+          transparent 4px 4px
+  );
+}
+
+.timeline-block--ontime::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+
+  background-image: repeating-linear-gradient(
+          135deg,
+          rgba(0, 200, 83, 0.7) 0 4px,
+          transparent 2px 4px
+  );
+}
+
+.timeline-block__hover-text,
+.timeline-block > span,
+.timeline-block > div:not([class^="timeline-block__popover"]) {
+  position: relative;
+  z-index: 2;
+}
+@keyframes overtime-blink {
+  0%, 55%   { opacity: .15; }
+  70%       { opacity: .80; }
+  100%      { opacity: .15; }
+}
+
+.timeline-block--overtime {
+  position: relative;
+  overflow: hidden;
+}
+
+.timeline-block--overtime::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgb(255 48 48 / .85);
+  animation: overtime-blink 1s linear infinite;
+  border-radius: inherit;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.timeline-block__hover-text,
+.timeline-block > span,
+.timeline-block > div:not([class^="timeline-block__popover"]) {
+  position: relative;
+  z-index: 2;
 }

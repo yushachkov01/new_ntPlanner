@@ -187,121 +187,121 @@ const PprPage: FC = () => {
   const totalWindowMin = spanHours * 60;
 
   return (
-    <div className="ppr-page">
-      <h2 className="ppr-page__title">Таймлайн (00:00–23:00)</h2>
+      <div className="ppr-page">
+        <h2 className="ppr-page__title">Таймлайн (00:00–23:00)</h2>
 
-      <div className="timeline-container">
-        <div className="timeline-header">
-          <div className="timeline-header__spacer" />
-          <div className="timeline-header__label-spacer" />
-          {hours.map((h) => (
-            <div key={h} className="timeline-header__hour">
-              {h.toString().padStart(2, '0')}:00
-            </div>
-          ))}
-        </div>
+        <div className="timeline-container">
+          <div className="timeline-header">
+            <div className="timeline-header__spacer" />
+            <div className="timeline-header__label-spacer" />
+            {hours.map((h) => (
+                <div key={h} className="timeline-header__hour">
+                  {h.toString().padStart(2, '0')}:00
+                </div>
+            ))}
+          </div>
 
-        <div className="timeline-body">
-          {rowsData.map((rowItem) => (
-            <div key={rowItem.id} className="timeline-row">
-              <div className="timeline-row__icon-cell">
-                {rowItem.id === 0 ? (
-                  <div
-                    className="avatar-combined"
-                    onClick={() => {
-                      setExpandedUsers((prev) => !prev);
-                      setShowAllTasks(false);
-                      setExpandedTaskId(null);
-                    }}
-                  >
-                    {users.slice(0, 2).map((u, idx) => (
-                      <div
-                        key={u.id}
-                        className="avatar-combined__circle"
-                        style={{ left: `${idx * 0.75}rem` }}
-                      >
-                        <span className="avatar-icon">👤</span>
-                      </div>
-                    ))}
-                    {users.length > 2 && (
-                      <div
-                        className="avatar-combined__circle avatar-combined__more"
-                        style={{ left: `${2 * 0.75}rem` }}
-                      >
-                        +{users.length - 2}
-                      </div>
+          <div className="timeline-body">
+            {rowsData.map((rowItem) => (
+                <div key={rowItem.id} className="timeline-row">
+                  <div className="timeline-row__icon-cell">
+                    {rowItem.id === 0 ? (
+                        <div
+                            className="avatar-combined"
+                            onClick={() => {
+                              setExpandedUsers((prev) => !prev);
+                              setShowAllTasks(false);
+                              setExpandedTaskId(null);
+                            }}
+                        >
+                          {users.slice(0, 2).map((u, idx) => (
+                              <div
+                                  key={u.id}
+                                  className="avatar-combined__circle"
+                                  style={{ left: `${idx * 0.75}rem` }}
+                              >
+                                <span className="avatar-icon">👤</span>
+                              </div>
+                          ))}
+                          {users.length > 2 && (
+                              <div
+                                  className="avatar-combined__circle avatar-combined__more"
+                                  style={{ left: `${2 * 0.75}rem` }}
+                              >
+                                +{users.length - 2}
+                              </div>
+                          )}
+                        </div>
+                    ) : (
+                        <div className="avatar-with-name">
+                          <div className="avatar-single">
+                            <img src={accountIcon} alt="User" className="avatar-single__img" />
+                          </div>
+                          <div className="avatar-name">{rowItem.name.split(' ')[0]}</div>
+                        </div>
                     )}
                   </div>
-                ) : (
-                  <div className="avatar-with-name">
-                    <div className="avatar-single">
-                      <img src={accountIcon} alt="User" className="avatar-single__img" />
-                    </div>
-                    <div className="avatar-name">{rowItem.name.split(' ')[0]}</div>
-                  </div>
-                )}
-              </div>
-              <div className="timeline-row__label-cell">
-                {rowItem.id === 0 && (
-                  <span
-                    className="timeline-row__day-label"
-                    onClick={() => {
-                      setShowAllTasks((prev) => !prev);
-                      setExpandedUsers(false);
-                      setExpandedTaskId(null);
-                    }}
-                  >
+                  <div className="timeline-row__label-cell">
+                    {rowItem.id === 0 && (
+                        <span
+                            className="timeline-row__day-label"
+                            onClick={() => {
+                              setShowAllTasks((prev) => !prev);
+                              setExpandedUsers(false);
+                              setExpandedTaskId(null);
+                            }}
+                        >
                     Весь
                     <br />
                     день
                   </span>
-                )}
-              </div>
-              <div className="timeline-row__blocks">
-                {hours.map((_, i) => (
-                  <div key={i} className="timeline-row__grid-cell" />
-                ))}
-                {(rowItem as any).blocks.map((block: BlockData) => (
-                  <TimelineBlock
-                    key={block.id}
-                    block={block}
-                    totalWindowMin={totalWindowMin}
-                    expandedBlockId={expandedBlockId}
-                    setExpandedBlockId={setExpandedBlockId}
-                    onDoubleClickBlock={handleBlockDouble}
-                  />
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-      {showAllTasks && (
-        <div className="all-tasks-container">
-          {users
-            .flatMap((u) => u.blocks)
-            .map((block) => (
-              <TaskDetail
-                key={block.id}
-                label={block.label}
-                startTime={block.startTime}
-                endTime={block.endTime}
-                subSteps={block.subSteps}
-                onClose={() => {}}
-              />
+                    )}
+                  </div>
+                  <div className="timeline-row__blocks">
+                    {hours.map((_, i) => (
+                        <div key={i} className="timeline-row__grid-cell" />
+                    ))}
+                    {(rowItem as any).blocks.map((block: BlockData) => (
+                        <TimelineBlock
+                            key={block.id}
+                            block={block}
+                            totalWindowMin={totalWindowMin}
+                            expandedBlockId={expandedBlockId}
+                            setExpandedBlockId={setExpandedBlockId}
+                            onDoubleClickBlock={handleBlockDouble}
+                        />
+                    ))}
+                  </div>
+                </div>
             ))}
+          </div>
         </div>
-      )}
-      {taskDetailData && (
-        <TaskDetail
-          label={taskDetailData.label}
-          startTime={taskDetailData.startTime}
-          endTime={taskDetailData.endTime}
-          subSteps={taskDetailData.subSteps}
-          onClose={() => setExpandedTaskId(null)}
-        />
-      )}
-    </div>
+        {showAllTasks && (
+            <div className="all-tasks-container">
+              {users
+                  .flatMap((u) => u.blocks)
+                  .map((block) => (
+                      <TaskDetail
+                          key={block.id}
+                          label={block.label}
+                          startTime={block.startTime}
+                          endTime={block.endTime}
+                          subSteps={block.subSteps}
+                          onClose={() => {}}
+                      />
+                  ))}
+            </div>
+        )}
+        {taskDetailData && (
+            <TaskDetail
+                label={taskDetailData.label}
+                startTime={taskDetailData.startTime}
+                endTime={taskDetailData.endTime}
+                subSteps={taskDetailData.subSteps}
+                onClose={() => setExpandedTaskId(null)}
+            />
+        )}
+      </div>
   );
 };
 

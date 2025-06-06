@@ -1,12 +1,6 @@
-import type { FC, MouseEvent } from 'react';
-import { useState } from 'react';
-
-export interface BlockData {
-  id: number;
-  startTime: string;
-  endTime: string;
-  label: string;
-}
+import React, { FC, useState, useEffect, useRef } from "react";
+import "./TimelineBlock.css";
+import { BlockData } from "./PprPage";
 
 interface TimelineBlockProps {
   block: BlockData;
@@ -14,61 +8,97 @@ interface TimelineBlockProps {
   expandedBlockId: number | null;
   setExpandedBlockId: (id: number | null) => void;
   onDoubleClickBlock: (id: number) => void;
+  isCovered: boolean;
 }
 
 const TimelineBlock: FC<TimelineBlockProps> = ({
-  block,
-  totalWindowMin,
-  expandedBlockId,
-  setExpandedBlockId,
-  onDoubleClickBlock,
-}) => {
-  const [hStart, mStart] = block.startTime.split(':').map(Number);
-  const [hEnd, mEnd] = block.endTime.split(':').map(Number);
-  const startMin = hStart * 60 + mStart;
-  const endMin = hEnd * 60 + mEnd;
-  const durationMin = endMin - startMin;
-  const leftPerc = (startMin / totalWindowMin) * 100;
-  const widthPerc = (durationMin / totalWindowMin) * 100;
+                                                 block,
+                                                 totalWindowMin,
+                                                 expandedBlockId,
+                                                 setExpandedBlockId,
+                                                 onDoubleClickBlock,
+                                                 isCovered,
+                                               }) => {
+  const [showPopover, setShowPopover] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
 
-  const [isHovered, setIsHovered] = useState(false);
+  const [sH, sM] = block.startTime.split(":").map(Number);
+  const [eH, eM] = block.endTime.split(":").map(Number);
+  const startMin = sH * 60 + sM;
+  const endMin = eH * 60 + eM;
 
-  const handleClick = (e: MouseEvent) => {
-    e.stopPropagation();
-    expandedBlockId === block.id ? setExpandedBlockId(null) : setExpandedBlockId(block.id);
+  const leftPercent = (startMin / totalWindowMin) * 100;
+  const widthPercent = ((endMin - startMin) / totalWindowMin) * 100;
+
+  /* показать/скрыть popover */
+  const handleClick = () => {
+    setShowPopover((prev) => {
+      const next = !prev;
+      setExpandedBlockId(next ? block.id : null);
+      return next;
+    });
   };
 
-  const handleDoubleClick = (e: MouseEvent) => {
-    e.stopPropagation();
-    setExpandedBlockId(block.id);
-    onDoubleClickBlock(block.id);
-  };
+  /* если открыли чужой popover — закрываем свой */
+  useEffect(() => {
+    if (expandedBlockId !== block.id) setShowPopover(false);
+  }, [expandedBlockId, block.id]);
+
+  const handleDoubleClick = () => onDoubleClickBlock(block.id);
+
+  const statusClass =
+      /* невыполненные технические этапы → красная штриховка */
+      block.status === "pending_manual" ||
+      block.status === "pending_auto"   ||
+      block.status === "pending_cmr"
+          ? "timeline-block--notdone"
+
+          /* информационный, ещё не выполнен → серый фон */
+          : block.status === "info"
+              ? "timeline-block--info"
+
+              /* выполнено вовремя / раньше → зелёная штриховка */
+              : block.status === "done_on_time"
+                  ? "timeline-block--ontime"
+                  : block.status === "overtime"
+                      ? "timeline-block--overtime"
+                      : "";
+
+
+  const isActive = expandedBlockId === block.id;
+
+  const className = [
+    "timeline-block",
+    statusClass,
+    isActive ? "timeline-block--active" : "",
+    isCovered ? "timeline-block--covered" : "",
+  ].join(" ");
 
   return (
-    <div
-      className="timeline-block"
-      style={{ left: `${leftPerc}%`, width: `${widthPerc}%` }}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-      onClick={handleClick}
-      onDoubleClick={handleDoubleClick}
-    >
-      {/* при наведении показываем длительность */}
-      {isHovered && <span className="timeline-block__hover-text">{durationMin} мин</span>}
+      <div
+          ref={ref}
+          className={className}
+          style={{ left: `${leftPercent}%`, width: `${widthPercent}%` }}
+          onClick={handleClick}
+          onDoubleClick={handleDoubleClick}
+      >
+        <div className="timeline-block__hover-text">{endMin - startMin} мин</div>
 
-      {/* popover (одинарный клик) */}
-      {expandedBlockId === block.id && (
-        <div className="timeline-block__popover">
-          <div className="popover-arrow" />
-          <div className="popover-content">
-            <div className="popover-title">“{block.label}”</div>
-            <div className="popover-time">
-              {block.startTime} – {block.endTime}
+        {showPopover && (
+            <div className="timeline-block__popover">
+              <div className="popover-arrow" />
+              <div className="popover-content">
+                <div className="popover-title">“{block.label}”</div>
+                <div className="popover-time">
+                  {block.startTime} – {block.endTime}
+                  {block.status === "pending_manual" && " (Ручной, не выполнен)"}
+                  {block.status === "pending_auto" && " (Авто, не выполнен)"}
+                  {block.status === "info" && " (Инфо, не выполнено)"}
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
-      )}
-    </div>
+        )}
+      </div>
   );
 };
 

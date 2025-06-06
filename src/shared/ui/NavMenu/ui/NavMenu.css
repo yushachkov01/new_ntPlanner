@@ -33,12 +33,12 @@
 .nav-menu__item {
   display: flex;
   align-items: center;
-  padding: 1rem 1.25rem;
+  padding: 1px 1rem;
   cursor: pointer;
   background-color: transparent;
   transition:
-    transform 0.2s ease,
-    box-shadow 0.2s ease;
+          transform 0.2s ease,
+          box-shadow 0.2s ease;
 }
 
 .nav-menu__item + .nav-menu__item {
@@ -46,7 +46,7 @@
 }
 
 .nav-menu__label {
-  font-size: 1rem;
+  /*font-size: 1rem;*/
   color: #333333;
 }
 
