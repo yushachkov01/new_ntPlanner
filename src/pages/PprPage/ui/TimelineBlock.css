@@ -87,16 +87,16 @@
 }
 
 .timeline-block--ontime::after {
-  content: "";
+  content: '';
   position: absolute;
   inset: 0;
   pointer-events: none;
   border-radius: inherit;
 
   background-image: repeating-linear-gradient(
-          135deg,
-          rgba(0, 200, 83, 0.7) 0 4px,
-          transparent 4px 12px
+    135deg,
+    rgba(0, 200, 83, 0.7) 0 4px,
+    transparent 4px 12px
   );
 }
 .timeline-block--notdone {
@@ -104,35 +104,35 @@
   overflow: visible;
 }
 .timeline-block--notdone::after {
-  content: "";
+  content: '';
   position: absolute;
   inset: 0;
   pointer-events: none;
   border-radius: inherit;
 
   background-image: repeating-linear-gradient(
-          135deg,
-          rgba(255, 0, 0, 0.75) 0 4px,
-          transparent 4px 4px
+    135deg,
+    rgba(255, 0, 0, 0.75) 0 4px,
+    transparent 4px 4px
   );
 }
 
 .timeline-block--ontime::after {
-  content: "";
+  content: '';
   position: absolute;
   inset: 0;
   pointer-events: none;
 
   background-image: repeating-linear-gradient(
-          135deg,
-          rgba(0, 200, 83, 0.7) 0 4px,
-          transparent 2px 4px
+    135deg,
+    rgba(0, 200, 83, 0.7) 0 4px,
+    transparent 2px 4px
   );
 }
 
 .timeline-block__hover-text,
 .timeline-block > span,
-.timeline-block > div:not([class^="timeline-block__popover"]) {
+.timeline-block > div:not([class^='timeline-block__popover']) {
   position: relative;
   z-index: 2;
 }
@@ -148,10 +148,10 @@
 }
 
 .timeline-block--overtime::after {
-  content: "";
+  content: '';
   position: absolute;
   inset: 0;
-  background: rgb(255 48 48 / .85);
+  background: rgb(255 48 48 / 0.85);
   animation: overtime-blink 1s linear infinite;
   border-radius: inherit;
   z-index: 1;
@@ -160,7 +160,7 @@
 
 .timeline-block__hover-text,
 .timeline-block > span,
-.timeline-block > div:not([class^="timeline-block__popover"]) {
+.timeline-block > div:not([class^='timeline-block__popover']) {
   position: relative;
   z-index: 2;
 }
