@@ -137,9 +137,16 @@
   z-index: 2;
 }
 @keyframes overtime-blink {
-  0%, 55%   { opacity: .15; }
-  70%       { opacity: .80; }
-  100%      { opacity: .15; }
+  0%,
+  55% {
+    opacity: 0.15;
+  }
+  70% {
+    opacity: 0.8;
+  }
+  100% {
+    opacity: 0.15;
+  }
 }
 
 .timeline-block--overtime {

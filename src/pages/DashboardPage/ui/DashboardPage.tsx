@@ -4,12 +4,12 @@ import dayjs from 'dayjs';
 import type { FC } from 'react';
 import React, { useState } from 'react';
 import 'dayjs/locale/ru';
-import ruRU from 'antd/es/date-picker/locale/ru_RU';
 import { CalendarOutlined, AppstoreAddOutlined } from '@ant-design/icons';
+import ruRU from 'antd/es/date-picker/locale/ru_RU';
 
-import { useWorks } from '../../../features/work/api/useWorks';
-import type { RowWithStep } from '../../../widgets/WorkTable/ui/WorkTable';
-import WorkTable from '../../../widgets/WorkTable/ui/WorkTable';
+import { useGetWorksQuery } from '@features/work/api/workApi';
+import type { RowWithStep } from '@widgets/WorkTable/types/RowWithStep';
+import WorkTable from '@widgets/WorkTable/ui/WorkTable';
 import './DashboardPage.css';
 
 const { Content } = Layout;
@@ -29,7 +29,7 @@ const ALL_COLUMNS = [
 type TabKey = 'all' | 'plan' | 'archive';
 
 const DashboardPage: FC = () => {
-  const { works, loading, error } = useWorks();
+  const { data: works = [], isLoading, error } = useGetWorksQuery();
 
   const [activeTab, setActiveTab] = useState<TabKey>('all');
   const [dateRange, setDateRange] = useState<[Dayjs, Dayjs] | null>(null);
@@ -37,8 +37,8 @@ const DashboardPage: FC = () => {
   const [colsVisible, setColsVisible] = useState(false);
   const [visibleCols, setVisibleCols] = useState<string[]>(ALL_COLUMNS.map((c) => c.key));
 
-  if (loading) return <div className="loading">Загружаем задачи…</div>;
-  if (error) return <div className="error">Ошибка: {error.message}</div>;
+  if (isLoading) return <div className="loading">Загружаем задачи…</div>;
+  if (error) return <div className="error">Ошибка: {String(error)}</div>;
 
   const today = dayjs().format('YYYY-MM-DD');
   const rows: RowWithStep[] = works.map((w) => ({
@@ -57,17 +57,16 @@ const DashboardPage: FC = () => {
   function applyDateFilter(data: RowWithStep[]) {
     if (!dateRange) return data;
     const [from, to] = dateRange;
-    const f = from.format('YYYY-MM-DD'),
-      t = to.format('YYYY-MM-DD');
+    const f = from.format('YYYY-MM-DD');
+    const t = to.format('YYYY-MM-DD');
     return data.filter((r) => r.date >= f && r.date <= t);
   }
 
   let displayRows = activeTab === 'plan' ? planRows : activeTab === 'archive' ? archRows : allRows;
   displayRows = applyDateFilter(displayRows);
 
-  const toggleCol = (key: string) => {
+  const toggleCol = (key: string) =>
     setVisibleCols((vc) => (vc.includes(key) ? vc.filter((x) => x !== key) : [...vc, key]));
-  };
 
   return (
     <Layout className="dashboard-page">

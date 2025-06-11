@@ -1,11 +1,12 @@
 import { configureStore } from '@reduxjs/toolkit';
 
-import { workReducer } from '../entities/work/model/workSlice';
+import { workApi } from '@features/work/api/workApi.ts';
 
 export const store = configureStore({
   reducer: {
-    work: workReducer,
+    [workApi.reducerPath]: workApi.reducer,
   },
+  middleware: (getDefault) => getDefault().concat(workApi.middleware),
 });
 
 export type RootState = ReturnType<typeof store.getState>;

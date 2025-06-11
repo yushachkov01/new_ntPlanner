@@ -37,8 +37,8 @@
   cursor: pointer;
   background-color: transparent;
   transition:
-          transform 0.2s ease,
-          box-shadow 0.2s ease;
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
 }
 
 .nav-menu__item + .nav-menu__item {
