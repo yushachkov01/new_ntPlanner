@@ -1,36 +1,9 @@
-//{
-//  "files": [],
-//  "references": [
-//    { "path": "./tsconfig.app.json" },
-//    { "path": "./tsconfig.node.json" }
-//  ],
-//}
-
-//{
-//  "files": [],
-//  "references": [
-//    { "path": "./tsconfig.app.json" },
-//    { "path": "./tsconfig.node.json" }
-//  ],
-//
-//  "compilerOptions": {
-//    /* базовые настройки */
-//    "target": "ES2020",
-//    "module": "ESNext",
-//    "moduleResolution": "Node",
-//
-//    /*  главное: алиасы */
-//    "baseUrl": "./",
-//    "paths": {
-//      "@/*": ["src/*"]
-//    }
-//  }
-//}
-
 {
   "files": [],
   "references": [{ "path": "./tsconfig.app.json" }, { "path": "./tsconfig.node.json" }],
   "compilerOptions": {
+    "esModuleInterop": true,
+    "types": ["node"],
     "baseUrl": "./",
     "paths": {
       "@/*": ["src/*"]

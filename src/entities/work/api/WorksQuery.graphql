@@ -1,0 +1,15 @@
+query DashboardPageQuery {
+  works {
+    id
+    idInt
+    date
+    project
+    site
+    description
+    timeRange: time_range
+    status
+    pprHours: ppr_hours
+    workHours: work_hours
+    overtimeHours: overtime_hours
+  }
+}
