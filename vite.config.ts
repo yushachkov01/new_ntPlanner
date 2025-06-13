@@ -1,10 +1,10 @@
-import legacy from "@vitejs/plugin-legacy";
-import react from "@vitejs/plugin-react";
-import { defineConfig } from "vite";
-import tsconfigPaths from "vite-tsconfig-paths";
-import relay from "vite-plugin-relay";
-import {nodePolyfills} from "vite-plugin-node-polyfills";
-import commonjs from "vite-plugin-commonjs";
+import legacy from '@vitejs/plugin-legacy';
+import react from '@vitejs/plugin-react';
+import { defineConfig } from 'vite';
+import commonjs from 'vite-plugin-commonjs';
+import { nodePolyfills } from 'vite-plugin-node-polyfills';
+import relay from 'vite-plugin-relay';
+import tsconfigPaths from 'vite-tsconfig-paths';
 
 export default defineConfig(() => {
   return {
@@ -18,18 +18,18 @@ export default defineConfig(() => {
       }),
       tsconfigPaths(),
       legacy({
-        targets: ["defaults", "not IE 11"],
-        additionalLegacyPolyfills: ["regenerator-runtime/runtime"],
+        targets: ['defaults', 'not IE 11'],
+        additionalLegacyPolyfills: ['regenerator-runtime/runtime'],
       }),
       commonjs(),
     ],
     optimizeDeps: {
-      include: ["events"],
+      include: ['events'],
     },
     build: {
       commonjsOptions: {
-        transformMixedEsModules: true
+        transformMixedEsModules: true,
       },
-    }
+    },
   };
 });

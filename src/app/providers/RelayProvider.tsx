@@ -1,13 +1,12 @@
-import { FC, ReactNode } from "react";
-import { RelayEnvironmentProvider } from "react-relay";
-import { RelayEnvironment } from "@/shared/lib/relay/RelayEnvironment";
+import type { FC, ReactNode } from 'react';
+import { RelayEnvironmentProvider } from 'react-relay';
+
+import { RelayEnvironment } from '@/shared/lib/relay/RelayEnvironment';
 
 interface RelayProviderProps {
-    children: ReactNode;
+  children: ReactNode;
 }
 
 export const RelayProvider: FC<RelayProviderProps> = ({ children }) => (
-    <RelayEnvironmentProvider environment={RelayEnvironment}>
-        {children}
-    </RelayEnvironmentProvider>
+  <RelayEnvironmentProvider environment={RelayEnvironment}>{children}</RelayEnvironmentProvider>
 );
