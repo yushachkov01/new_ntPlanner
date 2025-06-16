@@ -102,10 +102,7 @@ const WorkTable: FC<PropsWorkTable> = ({
         ]
       : []),
   ];
-
-  // Отфильтруем по visibleColumns:
   const columnsToRender = baseCols.filter((col) => visibleColumns!.includes(col.key as string));
-
   return (
     <Table<RowWithStep>
       className={`worktable${isArchive ? ' archive' : ''}`}
