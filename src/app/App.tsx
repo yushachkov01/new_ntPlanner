@@ -1,8 +1,9 @@
 import type { FC } from 'react';
 
+import Header from '@/shared/layout/Header/Header.tsx';
+
 import { useTheme } from './providers/ThemeProvider';
-import AppRouter from './Router';
-import Header from '../shared/ui/Header';
+import AppRouter from './routes/Router.tsx';
 
 import './App.css';
 

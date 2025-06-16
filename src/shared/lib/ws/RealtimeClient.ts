@@ -2,9 +2,10 @@ import { graphql } from 'react-relay';
 import type { Environment } from 'relay-runtime';
 import { commitLocalUpdate, createOperationDescriptor } from 'relay-runtime';
 
-import type { RealtimeClient_WorksPatchQuery$data } from '@/__generated__/RealtimeClient_WorksPatchQuery.graphql';
-import WorksPatchQueryArtifact from '@/__generated__/RealtimeClient_WorksPatchQuery.graphql';
 import type { Work } from '@/ws-service';
+
+import type { RealtimeClient_WorksPatchQuery$data } from '../../../__generated__/RealtimeClient_WorksPatchQuery.graphql';
+import WorksPatchQueryArtifact from '../../../__generated__/RealtimeClient_WorksPatchQuery.graphql';
 
 /**
  * только на этапе компиляции Relay
@@ -27,15 +28,12 @@ export const WorksPatchQuery = graphql`
 `;
 
 export function connectRealtime(env: Environment) {
-  console.log('[RT] init WebSocket');
   const ws = new WebSocket('ws://localhost:4000');
 
-  ws.onopen = () => console.log('[RT] ws opened');
   ws.onerror = (err) => console.error('[RT] ws error', err);
 
   ws.onmessage = (e) => {
     const msg = JSON.parse(e.data);
-    console.log('[RT] ⇠', msg);
 
     if (msg.type !== 'work.patch') return;
     const work: Work = msg.payload;
@@ -50,7 +48,6 @@ export function connectRealtime(env: Environment) {
       id: work.id,
     });
     (env as any).commitPayload(op, patch);
-    console.log('[RT] ✔ commitPayload', work.id);
 
     commitLocalUpdate(env, (store) => {
       const root = store.getRoot();

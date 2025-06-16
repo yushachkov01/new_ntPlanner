@@ -2,8 +2,7 @@ import { Card, Button } from 'antd';
 import type { FC } from 'react';
 
 import type { WorkCardProps } from '@entities/work/ui/types/WorkCardProps.ts';
-
-import StatusBar from '../../../shared/ui/StatusBar';
+import StatusBar from '@widgets/StatusBar/StatusBar.tsx';
 
 const WorkCard: FC<WorkCardProps> = ({ work, onAction }) => (
   <Card title={`${work.date} — ${work.project}`} style={{ marginBottom: 16 }}>

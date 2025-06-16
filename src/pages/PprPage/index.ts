@@ -1,1 +1,1 @@
-export { default } from './ui/PprPage.tsx';
+export { default } from './ui/PprPage/PprPage.tsx';

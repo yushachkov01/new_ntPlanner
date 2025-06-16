@@ -11,7 +11,7 @@
 
 .folder-tabs {
   display: flex;
-  margin-bottom: -1px;
+  margin-bottom: 0px;
 }
 
 .folder-tab {
@@ -125,6 +125,7 @@ body.dark .folder-content .ant-pagination-item {
   border-color: #444;
 }
 
+/* фон для неактивных страниц (чисел) */
 body.dark .folder-content .ant-pagination-item a {
   color: #ccc;
 }

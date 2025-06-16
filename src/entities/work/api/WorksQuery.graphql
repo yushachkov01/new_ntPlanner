@@ -1,7 +1,7 @@
 query DashboardPageQuery {
   works {
-    id
-    idInt
+    id # ← строковый
+    idInt # ← числовой, если нужен
     date
     project
     site

@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 
-import type { ThemeContextValue, Theme } from '@app/providers/types/ThemeContextValue.ts';
+import type { ThemeContextValue, Theme } from '@app/providers/theme/ThemeContextValue.ts';
 
 const ThemeContext = createContext<ThemeContextValue>({
   theme: 'light',

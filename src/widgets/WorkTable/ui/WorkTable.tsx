@@ -4,7 +4,7 @@ import type { ColumnsType } from 'antd/lib/table';
 import React, { useState, useEffect } from 'react';
 import type { FC, MouseEvent } from 'react';
 
-import StatusBar from '../../../shared/ui/StatusBar';
+import StatusBar from '../../StatusBar/StatusBar.tsx';
 
 import './WorkTable.css';
 import type { PropsWorkTable, RowWithStep } from '@widgets/WorkTable/types/RowWithStep.ts';
@@ -45,6 +45,8 @@ const WorkTable: FC<PropsWorkTable> = ({
   const toggleExpand = (id: number) => {
     setExpandedKey((prev) => (prev === id ? null : id));
   };
+
+  // Базовые колонки:
   const baseCols: ColumnsType<RowWithStep> = [
     { title: '#', dataIndex: 'id', key: 'id', width: 80 },
     { title: 'Дата', dataIndex: 'date', key: 'date', width: 120 },
@@ -76,6 +78,7 @@ const WorkTable: FC<PropsWorkTable> = ({
         );
       },
     },
+    // колонка «Действия»
     ...(!isArchive
       ? [
           {
@@ -99,7 +102,10 @@ const WorkTable: FC<PropsWorkTable> = ({
         ]
       : []),
   ];
+
+  // Отфильтруем по visibleColumns:
   const columnsToRender = baseCols.filter((col) => visibleColumns!.includes(col.key as string));
+
   return (
     <Table<RowWithStep>
       className={`worktable${isArchive ? ' archive' : ''}`}

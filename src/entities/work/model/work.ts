@@ -1,7 +1,7 @@
 import type { Status } from '@entities/work/model/types/Status.ts';
 
 export interface Work {
-  readonly id: number;
+  readonly id: string;
   readonly date: string;
   readonly project: string;
   readonly site: string;

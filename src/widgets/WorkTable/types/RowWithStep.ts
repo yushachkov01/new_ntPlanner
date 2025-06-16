@@ -1,5 +1,4 @@
 import type { Work } from '@entities/work';
-import WorkTable from '@widgets/WorkTable';
 
 export interface RowWithStep extends Work {
   plan: number;
