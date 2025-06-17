@@ -1,20 +1,19 @@
 import dayjs from 'dayjs';
-import { useState, useMemo } from 'react';
-import { useLazyLoadQuery } from 'react-relay';
+import { useMemo, useState } from 'react';
 
-import type { DashboardPageQuery } from '@/__generated__/DashboardPageQuery.graphql';
-import type { RowWithStep } from '@widgets/WorkTable';
+import { useWorkStore } from '@/entities/work/store/useWorkStore';
+import type { RowWithStep } from '@/widgets/WorkTable';
 
-import { DASHBOARD_QUERY } from '../api/queries';
-import type { TabKey, DashboardState, UseDashboardResult } from '../types';
+import type { TabKey, DashboardState } from '../types';
 import { ALL_COLUMNS } from '../types';
 
-export function useDashboardData(): UseDashboardResult {
-  const data = useLazyLoadQuery<DashboardPageQuery>(DASHBOARD_QUERY, {});
+export function useDashboardData() {
+  const works = useWorkStore((s) => s.works);
+  const loading = useWorkStore((s) => s.loading);
+
   /**
    * Преобразуем данные
    */
-  const works = data.works;
   const rows: RowWithStep[] = works.map((w) => ({
     ...w,
     plan: w.pprHours + w.workHours + w.overtimeHours,
@@ -29,7 +28,6 @@ export function useDashboardData(): UseDashboardResult {
   const archRows = rows.filter((r) => r.date < today);
   const allRows = [...planRows, ...archRows];
 
-  // Локальный UI-стейт
   const [state, setState] = useState<DashboardState>({
     activeTab: 'all',
     dateRange: null,
@@ -48,26 +46,15 @@ export function useDashboardData(): UseDashboardResult {
       const t = to.format('YYYY-MM-DD');
       arr = arr.filter((r) => r.date >= f && r.date <= t);
     }
-
     return arr;
   }, [allRows, planRows, archRows, state]);
 
-  // Обработчики
   const setActiveTab = (tab: TabKey) =>
-    setState((s) => ({
-      ...s,
-      activeTab: tab,
-      dateFilterVisible: false,
-      colsVisible: false,
-    }));
-
+    setState((s) => ({ ...s, activeTab: tab, dateFilterVisible: false, colsVisible: false }));
   const setDateRange = (dr: DashboardState['dateRange']) =>
     setState((s) => ({ ...s, dateRange: dr }));
-
   const toggleDateFilterVisible = (v: boolean) => setState((s) => ({ ...s, dateFilterVisible: v }));
-
   const toggleColsVisible = (v: boolean) => setState((s) => ({ ...s, colsVisible: v }));
-
   const setVisibleCols = (key: string) =>
     setState((s) => ({
       ...s,
@@ -78,6 +65,7 @@ export function useDashboardData(): UseDashboardResult {
 
   return {
     displayRows,
+    loading,
     state,
     handlers: {
       setActiveTab,
