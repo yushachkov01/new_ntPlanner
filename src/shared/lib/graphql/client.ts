@@ -3,9 +3,12 @@
  */
 import { GraphQLClient } from 'graphql-request';
 
-export const graphqlClient = new GraphQLClient(import.meta.env.VITE_HASURA_GRAPHQL_URL!, {
-  headers: {
-    'Content-Type': 'application/json',
-    'x-hasura-admin-secret': import.meta.env.VITE_HASURA_ADMIN_SECRET!,
-  },
-});
+export const graphqlClient = new GraphQLClient(
+    import.meta.env.VITE_HASURA_GRAPHQL_URL!,
+    {
+      headers: {
+        'Content-Type': 'application/json',
+        'x-hasura-admin-secret': import.meta.env.VITE_HASURA_ADMIN_SECRET!,
+      },
+    },
+);

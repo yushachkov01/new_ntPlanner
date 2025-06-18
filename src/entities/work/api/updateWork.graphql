@@ -1,0 +1,8 @@
+mutation UpdateWork($idInt: Int!, $set: works_set_input!) {
+  update_works_by_pk(
+    pk_columns: { idInt: $idInt }
+    _set: $set
+  ) {
+    idInt
+  }
+}

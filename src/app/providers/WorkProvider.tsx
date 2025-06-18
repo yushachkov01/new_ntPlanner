@@ -1,39 +1,64 @@
-import type { ReactNode } from 'react';
-import { useEffect } from 'react';
+/**
+ * Обёртка над приложением, которая:
+ * 1) при монтировании загружает все work из БД в стор;
+ * 2) подписывается на WebSocket-сообщения от сервера;
+ */
+import { ReactNode, useEffect } from 'react'
+import { useWorkStore } from '@/entities/work/store/useWorkStore'
 
-import type { WorkDto } from '@/entities/work/model/work.types';
-import { useWorkStore } from '@/entities/work/store/useWorkStore';
-
-type Props = { children: ReactNode };
+type Props = { children: ReactNode }
 
 export function WorkProvider({ children }: Props) {
-  const { load, add, update } = useWorkStore();
+  const { load, add, update, remove } = useWorkStore()
 
   useEffect(() => {
+    load()
     /**
-     * initial GraphQL fetch
+     * real-time обновления
      */
-    load();
+    const ws = new WebSocket('ws://localhost:4000/')
 
-    /**
-     * WS real-time updates
-     */
-    const ws = new WebSocket('ws://localhost:4000');
-    ws.onmessage = (e) => {
-      const msg = JSON.parse(e.data) as { type: string; payload: any };
-      if (msg.type === 'work.patch') {
-        const dto = msg.payload as WorkDto;
-        // payload может быть частичным или полным:
-        if (Object.keys(dto).length === 10) {
-          // полный объект
-          add(dto);
-        } else {
-          // частичный патч
-          update(dto);
-        }
+    ws.onopen = () => console.log('WS opened')
+    ws.onerror = e => console.error('WS error', e)
+    ws.onmessage = e => {
+      const { type, payload } = JSON.parse(e.data) as any
+
+      const idInt: number =
+          payload.idInt != null ? payload.idInt : payload.id
+
+      const normalized = {
+        ...payload,
+        idInt,
+        id: String(idInt),
       }
-    };
-  }, [load, add, update]);
 
-  return <>{children}</>;
+      switch (type) {
+        case 'work.full':
+          add(normalized)
+          break
+
+        case 'work.patch':
+          const exists = useWorkStore
+              .getState()
+              .works.some(w => w.id === normalized.id)
+
+          if (exists) {
+            update(normalized)
+          } else {
+            add(normalized)
+          }
+          break
+
+        case 'work.delete':
+          remove(idInt)
+          break
+      }
+    }
+
+    return () => {
+      ws.close()
+    }
+  }, [load, add, update, remove])
+
+  return <>{children}</>
 }

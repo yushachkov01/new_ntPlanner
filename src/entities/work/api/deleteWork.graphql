@@ -1,0 +1,5 @@
+mutation DeleteWork($where: works_bool_exp!) {
+  delete_works(where: $where) {
+    affected_rows
+  }
+}

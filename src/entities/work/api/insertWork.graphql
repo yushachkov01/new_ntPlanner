@@ -1,0 +1,6 @@
+# insertWork.graphql
+mutation InsertWork($object: works_insert_input!) {
+  insert_works_one(object: $object) {
+    idInt: id
+  }
+}
