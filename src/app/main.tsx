@@ -5,7 +5,7 @@ import App from './App.tsx';
 import { ThemeProvider } from './providers/ThemeProvider.tsx';
 
 import '../assets/styles/global.css';
-import { WorkProvider } from '@app/providers/WorkProvider.tsx';
+import { WorkProvider } from '@entities/work/provider/WorkProvider.tsx';
 
 const root = ReactDOM.createRoot(document.getElementById('root')!);
 

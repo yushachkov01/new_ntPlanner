@@ -1,23 +1,27 @@
-import * as Types from '../../types/graphql';
-
-import { GraphQLClient, RequestOptions } from 'graphql-request';
+import type { GraphQLClient, RequestOptions } from 'graphql-request';
 import gql from 'graphql-tag';
+
+import type * as Types from '../../types/graphql';
 export type Maybe<T> = T | null;
 export type InputMaybe<T> = Maybe<T>;
 export type Exact<T extends { [key: string]: unknown }> = { [K in keyof T]: T[K] };
 export type MakeOptional<T, K extends keyof T> = Omit<T, K> & { [SubKey in K]?: Maybe<T[SubKey]> };
 export type MakeMaybe<T, K extends keyof T> = Omit<T, K> & { [SubKey in K]: Maybe<T[SubKey]> };
-export type MakeEmpty<T extends { [key: string]: unknown }, K extends keyof T> = { [_ in K]?: never };
-export type Incremental<T> = T | { [P in keyof T]?: P extends ' $fragmentName' | '__typename' ? T[P] : never };
+export type MakeEmpty<T extends { [key: string]: unknown }, K extends keyof T> = {
+  [_ in K]?: never;
+};
+export type Incremental<T> =
+  | T
+  | { [P in keyof T]?: P extends ' $fragmentName' | '__typename' ? T[P] : never };
 type GraphQLClientRequestHeaders = RequestOptions['requestHeaders'];
 /** All built-in and custom scalars, mapped to their actual values */
 export type Scalars = {
-  ID: { input: string; output: string; }
-  String: { input: string; output: string; }
-  Boolean: { input: boolean; output: boolean; }
-  Int: { input: number; output: number; }
-  Float: { input: number; output: number; }
-  date: { input: any; output: any; }
+  ID: { input: string; output: string };
+  String: { input: string; output: string };
+  Boolean: { input: boolean; output: boolean };
+  Int: { input: number; output: number };
+  Float: { input: number; output: number };
+  date: { input: any; output: any };
 };
 
 /** Boolean expression to compare columns of type "Int". All fields are combined with logical 'AND'. */
@@ -71,7 +75,7 @@ export enum Cursor_Ordering {
   /** ascending ordering of the cursor */
   Asc = 'ASC',
   /** descending ordering of the cursor */
-  Desc = 'DESC'
+  Desc = 'DESC',
 }
 
 /** Boolean expression to compare columns of type "date". All fields are combined with logical 'AND'. */
@@ -106,18 +110,15 @@ export type Mutation_Root = {
   update_works_many?: Maybe<Array<Maybe<Works_Mutation_Response>>>;
 };
 
-
 /** mutation root */
 export type Mutation_RootDelete_WorksArgs = {
   where: Works_Bool_Exp;
 };
 
-
 /** mutation root */
 export type Mutation_RootDelete_Works_By_PkArgs = {
   idInt: Scalars['Int']['input'];
 };
-
 
 /** mutation root */
 export type Mutation_RootInsert_WorksArgs = {
@@ -125,13 +126,11 @@ export type Mutation_RootInsert_WorksArgs = {
   on_conflict?: InputMaybe<Works_On_Conflict>;
 };
 
-
 /** mutation root */
 export type Mutation_RootInsert_Works_OneArgs = {
   object: Works_Insert_Input;
   on_conflict?: InputMaybe<Works_On_Conflict>;
 };
-
 
 /** mutation root */
 export type Mutation_RootUpdate_WorksArgs = {
@@ -140,14 +139,12 @@ export type Mutation_RootUpdate_WorksArgs = {
   where: Works_Bool_Exp;
 };
 
-
 /** mutation root */
 export type Mutation_RootUpdate_Works_By_PkArgs = {
   _inc?: InputMaybe<Works_Inc_Input>;
   _set?: InputMaybe<Works_Set_Input>;
   pk_columns: Works_Pk_Columns_Input;
 };
-
 
 /** mutation root */
 export type Mutation_RootUpdate_Works_ManyArgs = {
@@ -167,7 +164,7 @@ export enum Order_By {
   /** in descending order, nulls first */
   DescNullsFirst = 'desc_nulls_first',
   /** in descending order, nulls last */
-  DescNullsLast = 'desc_nulls_last'
+  DescNullsLast = 'desc_nulls_last',
 }
 
 export type Query_Root = {
@@ -180,7 +177,6 @@ export type Query_Root = {
   works_by_pk?: Maybe<Works>;
 };
 
-
 export type Query_RootWorksArgs = {
   distinct_on?: InputMaybe<Array<Works_Select_Column>>;
   limit?: InputMaybe<Scalars['Int']['input']>;
@@ -189,7 +185,6 @@ export type Query_RootWorksArgs = {
   where?: InputMaybe<Works_Bool_Exp>;
 };
 
-
 export type Query_RootWorks_AggregateArgs = {
   distinct_on?: InputMaybe<Array<Works_Select_Column>>;
   limit?: InputMaybe<Scalars['Int']['input']>;
@@ -197,7 +192,6 @@ export type Query_RootWorks_AggregateArgs = {
   order_by?: InputMaybe<Array<Works_Order_By>>;
   where?: InputMaybe<Works_Bool_Exp>;
 };
-
 
 export type Query_RootWorks_By_PkArgs = {
   idInt: Scalars['Int']['input'];
@@ -215,7 +209,6 @@ export type Subscription_Root = {
   works_stream: Array<Works>;
 };
 
-
 export type Subscription_RootWorksArgs = {
   distinct_on?: InputMaybe<Array<Works_Select_Column>>;
   limit?: InputMaybe<Scalars['Int']['input']>;
@@ -223,7 +216,6 @@ export type Subscription_RootWorksArgs = {
   order_by?: InputMaybe<Array<Works_Order_By>>;
   where?: InputMaybe<Works_Bool_Exp>;
 };
-
 
 export type Subscription_RootWorks_AggregateArgs = {
   distinct_on?: InputMaybe<Array<Works_Select_Column>>;
@@ -233,11 +225,9 @@ export type Subscription_RootWorks_AggregateArgs = {
   where?: InputMaybe<Works_Bool_Exp>;
 };
 
-
 export type Subscription_RootWorks_By_PkArgs = {
   idInt: Scalars['Int']['input'];
 };
-
 
 export type Subscription_RootWorks_StreamArgs = {
   batch_size: Scalars['Int']['input'];
@@ -284,7 +274,6 @@ export type Works_Aggregate_Fields = {
   variance?: Maybe<Works_Variance_Fields>;
 };
 
-
 /** aggregate fields of "works" */
 export type Works_Aggregate_FieldsCountArgs = {
   columns?: InputMaybe<Array<Works_Select_Column>>;
@@ -321,7 +310,7 @@ export type Works_Bool_Exp = {
 /** unique or primary key constraints on table "works" */
 export enum Works_Constraint {
   /** unique or primary key constraint on columns "id" */
-  WorksPkey = 'works_pkey'
+  WorksPkey = 'works_pkey',
 }
 
 /** input type for incrementing numeric columns in table "works" */
@@ -437,7 +426,7 @@ export enum Works_Select_Column {
   /** column name */
   TimeRange = 'time_range',
   /** column name */
-  WorkHours = 'work_hours'
+  WorkHours = 'work_hours',
 }
 
 /** input type for updating data in table "works" */
@@ -534,7 +523,7 @@ export enum Works_Update_Column {
   /** column name */
   TimeRange = 'time_range',
   /** column name */
-  WorkHours = 'work_hours'
+  WorkHours = 'work_hours',
 }
 
 export type Works_Updates = {
@@ -573,40 +562,74 @@ export type Works_Variance_Fields = {
   work_hours?: Maybe<Scalars['Float']['output']>;
 };
 
-export type FetchWorksQueryVariables = Types.Exact<{ [key: string]: never; }>;
+export type FetchWorksQueryVariables = Types.Exact<{ [key: string]: never }>;
 
-
-export type FetchWorksQuery = { __typename?: 'query_root', works: Array<{ __typename?: 'works', date: any, project: string, site: string, description: string, time_range: string, status: string, ppr_hours: number, work_hours: number, overtime_hours: number, idInt?: string | null, __codegenTest?: string | null }> };
-
+export type FetchWorksQuery = {
+  __typename?: 'query_root';
+  works: Array<{
+    __typename?: 'works';
+    date: any;
+    project: string;
+    site: string;
+    description: string;
+    time_range: string;
+    status: string;
+    ppr_hours: number;
+    work_hours: number;
+    overtime_hours: number;
+    idInt?: string | null;
+    __codegenTest?: string | null;
+  }>;
+};
 
 export const FetchWorksDocument = gql`
-    query FetchWorks {
-  works {
-    idInt: id
-    date
-    project
-    site
-    description
-    time_range
-    status
-    ppr_hours
-    work_hours
-    overtime_hours
-    __codegenTest: id
+  query FetchWorks {
+    works {
+      idInt: id
+      date
+      project
+      site
+      description
+      time_range
+      status
+      ppr_hours
+      work_hours
+      overtime_hours
+      __codegenTest: id
+    }
   }
-}
-    `;
+`;
 
-export type SdkFunctionWrapper = <T>(action: (requestHeaders?:Record<string, string>) => Promise<T>, operationName: string, operationType?: string, variables?: any) => Promise<T>;
+export type SdkFunctionWrapper = <T>(
+  action: (requestHeaders?: Record<string, string>) => Promise<T>,
+  operationName: string,
+  operationType?: string,
+  variables?: any,
+) => Promise<T>;
 
-
-const defaultWrapper: SdkFunctionWrapper = (action, _operationName, _operationType, _variables) => action();
+const defaultWrapper: SdkFunctionWrapper = (action, _operationName, _operationType, _variables) =>
+  action();
 
 export function getSdk(client: GraphQLClient, withWrapper: SdkFunctionWrapper = defaultWrapper) {
   return {
-    FetchWorks(variables?: FetchWorksQueryVariables, requestHeaders?: GraphQLClientRequestHeaders, signal?: RequestInit['signal']): Promise<FetchWorksQuery> {
-      return withWrapper((wrappedRequestHeaders) => client.request<FetchWorksQuery>({ document: FetchWorksDocument, variables, requestHeaders: { ...requestHeaders, ...wrappedRequestHeaders }, signal }), 'FetchWorks', 'query', variables);
-    }
+    FetchWorks(
+      variables?: FetchWorksQueryVariables,
+      requestHeaders?: GraphQLClientRequestHeaders,
+      signal?: RequestInit['signal'],
+    ): Promise<FetchWorksQuery> {
+      return withWrapper(
+        (wrappedRequestHeaders) =>
+          client.request<FetchWorksQuery>({
+            document: FetchWorksDocument,
+            variables,
+            requestHeaders: { ...requestHeaders, ...wrappedRequestHeaders },
+            signal,
+          }),
+        'FetchWorks',
+        'query',
+        variables,
+      );
+    },
   };
 }
 export type Sdk = ReturnType<typeof getSdk>;

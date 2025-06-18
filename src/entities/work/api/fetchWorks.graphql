@@ -11,6 +11,6 @@ query FetchWorks {
     ppr_hours
     work_hours
     overtime_hours
-     __codegenTest: id
+    __codegenTest: id
   }
 }
