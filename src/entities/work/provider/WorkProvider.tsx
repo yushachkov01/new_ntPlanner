@@ -23,9 +23,23 @@ export function WorkProvider({ children }: Props) {
     ws.onopen = () => console.log('WS opened');
     ws.onerror = (e) => console.error('WS error', e);
     ws.onmessage = (e) => {
-      const { type, payload } = JSON.parse(e.data) as any;
+      let msg: any;
+      try {
+        msg = JSON.parse(e.data);
+      } catch {
+        console.warn('WS: не удалось распарсить сообщение', e.data);
+        return;
+      }
+      const { type, payload } = msg;
+      if (!payload || typeof payload !== 'object') return;
+      const rawId = payload.idInt ?? payload.id;
+      const idInt =
+        typeof rawId === 'number' ? rawId : typeof rawId === 'string' ? Number(rawId) : NaN;
 
-      const idInt: number = payload.idInt != null ? payload.idInt : payload.id;
+      if (Number.isNaN(idInt)) {
+        console.warn('WS: не удалось извлечь idInt из payload', payload);
+        return;
+      }
 
       const normalized = {
         ...payload,

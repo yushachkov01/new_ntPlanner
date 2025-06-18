@@ -578,7 +578,6 @@ export type FetchWorksQuery = {
     work_hours: number;
     overtime_hours: number;
     idInt?: string | null;
-    __codegenTest?: string | null;
   }>;
 };
 
@@ -595,7 +594,6 @@ export const FetchWorksDocument = gql`
       ppr_hours
       work_hours
       overtime_hours
-      __codegenTest: id
     }
   }
 `;

@@ -1,0 +1,28 @@
+.test-page {
+  position: relative;
+  z-index: 1;
+  min-height: 100vh;
+  padding: 2rem;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  background: transparent;
+}
+
+.test-page__inner {
+  background-color: #ffffff;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  padding: 2rem;
+  border-radius: 8px;
+  width: 100%;
+  max-width: 600px;
+}
+
+.test-page__controls button {
+  margin-right: 0.5rem;
+}
+
+.test-page__list {
+  margin-top: 1rem;
+  padding-left: 1.5rem;
+}

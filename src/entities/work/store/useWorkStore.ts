@@ -107,5 +107,9 @@ export const useWorkStore = create<Store>((set, get) => ({
 
   remove: async (idInt) => {
     await api.deleteWork({ idInt: { _eq: idInt } });
+    /**
+     * сразу перезагружаем все записи, чтобы в сторе стало актуально
+     */
+    await get().load();
   },
 }));
