@@ -1,4 +1,4 @@
-import type { UserData } from '../types';
+import type { UserData } from '../model/types.ts';
 
 export const users: UserData[] = [
   {
@@ -56,7 +56,6 @@ export const users: UserData[] = [
           { id: 1010, label: 'Подэтап 2: ' },
         ],
       },
-      // примеры: один у каждого пользователя
       {
         id: 152,
         startTime: '06:45',
@@ -130,8 +129,8 @@ export const users: UserData[] = [
       },
       {
         id: 199,
-        startTime: '21:30', // выходит за рамки смены
-        endTime: '23:59', // (перехлёст через полночь)
+        startTime: '21:30',
+        endTime: '23:59',
         label: 'Согласование отчёта',
         status: 'overtime',
         subSteps: [

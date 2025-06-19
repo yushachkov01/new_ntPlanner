@@ -1,11 +1,9 @@
 import type { FC } from 'react';
 
-import Header from '@/shared/layout/Header/Header.tsx';
+import Header from '@widgets/layout/Header/Header.tsx';
 
 import { useTheme } from './providers/ThemeProvider';
-import AppRouter from './routes/Router.tsx';
-
-import './App.css';
+import AppRouter from './routes/AppRouter.tsx';
 
 const App: FC = () => {
   const { theme } = useTheme();

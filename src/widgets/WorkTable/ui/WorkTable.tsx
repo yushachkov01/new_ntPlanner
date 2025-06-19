@@ -7,7 +7,7 @@ import type { FC, MouseEvent } from 'react';
 import StatusBar from '../../StatusBar/StatusBar.tsx';
 
 import './WorkTable.css';
-import type { PropsWorkTable, RowWithStep } from '@widgets/WorkTable/types/RowWithStep.ts';
+import type { PropsWorkTable, RowWithStep } from '@widgets/WorkTable/model/RowWithStep.ts';
 
 const WorkTable: FC<PropsWorkTable> = ({
   data,
@@ -102,7 +102,10 @@ const WorkTable: FC<PropsWorkTable> = ({
         ]
       : []),
   ];
+
+  // Отфильтруем по visibleColumns:
   const columnsToRender = baseCols.filter((col) => visibleColumns!.includes(col.key as string));
+
   return (
     <Table<RowWithStep>
       className={`worktable${isArchive ? ' archive' : ''}`}

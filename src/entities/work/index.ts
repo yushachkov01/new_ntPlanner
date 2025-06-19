@@ -1,3 +1,3 @@
 export { Work } from './model/work.types.ts';
-export * from './api/workApi';
-export * from './store/useWorkStore';
+export * from './api/WorkApi.ts';
+export * from '@entities/work/model/store/useWorkStore';

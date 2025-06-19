@@ -2,7 +2,7 @@ import { AppstoreAddOutlined } from '@ant-design/icons';
 import { Popover, Checkbox } from 'antd';
 import type { FC } from 'react';
 
-import { ALL_COLUMNS } from '../types';
+import { ALL_COLUMNS } from '../model/types.ts';
 import '@/pages/DashboardPage/ui/DashboardPage.css';
 
 interface Props {

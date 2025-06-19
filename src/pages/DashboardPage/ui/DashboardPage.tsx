@@ -2,10 +2,10 @@ import { Layout, Empty } from 'antd';
 import type { FC } from 'react';
 import { Suspense } from 'react';
 
-import { useDashboardData } from '@/features/dashboard/hooks/useDashboardData';
 import { ColumnSettings } from '@/features/dashboard/ui/ColumnSettings';
 import { DateFilter } from '@/features/dashboard/ui/DateFilter';
 import { TabSwitcher } from '@/features/dashboard/ui/TabSwitcher';
+import { useDashboardData } from '@features/dashboard/model/useDashboardData';
 import WorkTable from '@widgets/WorkTable/ui/WorkTable';
 import './DashboardPage.css';
 

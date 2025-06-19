@@ -1,6 +1,6 @@
 import type { FC } from 'react';
 
-import type { TabKey } from '../types';
+import type { TabKey } from '../model/types.ts';
 import '@/pages/DashboardPage/ui/DashboardPage.css';
 
 interface Props {
