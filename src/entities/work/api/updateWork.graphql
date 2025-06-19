@@ -1,5 +1,14 @@
 mutation UpdateWork($idInt: Int!, $set: works_set_input!) {
   update_works_by_pk(pk_columns: { idInt: $idInt }, _set: $set) {
     idInt
+    date
+    project
+    site
+    description
+    time_range
+    status
+    ppr_hours
+    work_hours
+    overtime_hours
   }
 }

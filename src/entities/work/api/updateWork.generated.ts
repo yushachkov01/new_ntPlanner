@@ -569,13 +569,34 @@ export type UpdateWorkMutationVariables = Types.Exact<{
 
 export type UpdateWorkMutation = {
   __typename?: 'mutation_root';
-  update_works_by_pk?: { __typename?: 'works'; idInt: number } | null;
+  update_works_by_pk?: {
+    __typename?: 'works';
+    idInt: number;
+    date: any;
+    project: string;
+    site: string;
+    description: string;
+    time_range: string;
+    status: string;
+    ppr_hours: number;
+    work_hours: number;
+    overtime_hours: number;
+  } | null;
 };
 
 export const UpdateWorkDocument = gql`
   mutation UpdateWork($idInt: Int!, $set: works_set_input!) {
     update_works_by_pk(pk_columns: { idInt: $idInt }, _set: $set) {
       idInt
+      date
+      project
+      site
+      description
+      time_range
+      status
+      ppr_hours
+      work_hours
+      overtime_hours
     }
   }
 `;

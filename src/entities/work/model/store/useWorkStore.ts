@@ -1,7 +1,24 @@
+/**
+ * Zustand-store для “Works”
+ * ─ хранит доменные объекты <Work>
+ * ─ общается с бэком через сгенер-DTO
+ * ─ собирает/раскладывает данные через мапперы (dtoToDomain / domain→DTO)
+ */
+
 import { create } from 'zustand';
 
-import * as api from '../../api/WorkApi.ts';
-import type { WorkDto, Work } from '../work.types.ts';
+import { domainPatchToDto, domainToInsert, dtoToDomain } from '@entities/work/lib/work.mappers.ts';
+
+import type {
+  Works,
+  Works_Insert_Input as InsertDTO,
+  Works_Set_Input as PatchDTO,
+} from '../../api/fetchWorks.generated';
+import * as api from '../../api/WorkApi';
+/**
+ * типы, которые сгенерировал codegen
+ */
+import type { Work } from '../work.types';
 
 type Store = {
   works: Work[];
@@ -14,102 +31,85 @@ type Store = {
   /**
    * Создать новую запись
    */
-  insert: (input: Omit<WorkDto, 'idInt'>) => Promise<void>;
+  insert(domain: Omit<Work, 'id'>): Promise<void>;
 
   /**
    *  Отправить обновление на сервер
    */
-  patch: (idInt: number, setFields: Partial<Omit<WorkDto, 'idInt'>>) => Promise<void>;
+  patch(idInt: number, changes: Partial<Omit<Work, 'id'>>): Promise<void>;
 
   /**
    * Вставить/заменить запись
    */
-  add: (dto: WorkDto) => void;
+  add(dto: Works): void;
 
   /**
    *   Обновить запись
    */
-  update: (dto: WorkDto) => void;
+  update(dto: Works): void;
 
   /**
    *  Удалить запись на сервере
    */
-  remove: (idInt: number) => Promise<void>;
+  remove(idInt: number): Promise<void>;
 };
 
 export const useWorkStore = create<Store>((set, get) => ({
   works: [],
 
-  load: async () => {
-    const dtos = await api.fetchWorks();
-    const works: Work[] = dtos.map((d) => ({
-      id: String(d.idInt),
-      date: d.date,
-      project: d.project,
-      site: d.site,
-      description: d.description,
-      timeRange: d.time_range,
-      status: d.status,
-      pprHours: d.ppr_hours,
-      workHours: d.work_hours,
-      overtimeHours: d.overtime_hours,
-    }));
-    set({ works });
+  async load() {
+    const rows = await api.fetchWorks();
+    set({ works: rows.map(dtoToDomain) }); // dto -> domain
   },
-
-  insert: async (input) => {
-    const idInt = await api.insertWork(input);
-    get().add({ ...input, idInt });
+  /**
+   * CREATE
+   * @param domain
+   */
+  async insert(domain) {
+    const dto: InsertDTO = domainToInsert(domain);
+    const idInt = await api.insertWork(dto);
+    get().add({ ...dto, idInt, __typename: 'works' });
   },
-
-  patch: async (idInt, setFields) => {
-    await api.updateWork(idInt, setFields);
-  },
-
-  add: (dto) => {
-    const w: Work = {
-      id: String(dto.idInt),
-      date: dto.date,
-      project: dto.project,
-      site: dto.site,
-      description: dto.description,
-      timeRange: dto.time_range,
-      status: dto.status,
-      pprHours: dto.ppr_hours,
-      workHours: dto.work_hours,
-      overtimeHours: dto.overtime_hours,
-    };
-    set((s) => ({
-      works: [w, ...s.works.filter((x) => x.id !== w.id)],
-    }));
-  },
-
-  update: (dto) => {
-    set((s) => ({
-      works: s.works.map((w) =>
-        w.id === String(dto.idInt)
-          ? {
-              ...w,
-              date: dto.date,
-              project: dto.project,
-              site: dto.site,
-              description: dto.description,
-              timeRange: dto.time_range,
-              status: dto.status,
-              pprHours: dto.ppr_hours,
-              workHours: dto.work_hours,
-              overtimeHours: dto.overtime_hours,
-            }
-          : w,
-      ),
-    }));
-  },
-
-  remove: async (idInt) => {
-    await api.deleteWork({ idInt: { _eq: idInt } });
+  /**
+   * UPDATE
+   * @param idInt
+   * @param changes
+   */
+  async patch(idInt, changes) {
     /**
-     * сразу перезагружаем все записи, чтобы в сторе стало актуально
+     * Domain ➜ DTO
      */
+    const patchDto: PatchDTO = domainPatchToDto(changes);
+    const updatedRow = await api.updateWork(idInt, patchDto);
+    get().update(updatedRow);
+  },
+  /**
+   * WS-события
+   * @param dto
+   */
+  add(dto) {
+    const work = dtoToDomain(dto);
+    set((s) => ({
+      works: [work, ...s.works.filter((w) => w.id !== work.id)],
+    }));
+  },
+  /**
+   * Update
+   * @param dto
+   */
+
+  update(dto) {
+    const work = dtoToDomain(dto);
+    set((s) => ({
+      works: s.works.map((w) => (w.id === work.id ? work : w)),
+    }));
+  },
+  /**
+   * DELETE
+   * @param idInt
+   */
+  async remove(idInt) {
+    await api.deleteWork({ idInt: { _eq: idInt } });
     await get().load();
   },
 }));
