@@ -2,10 +2,14 @@ import { SettingOutlined } from '@ant-design/icons';
 import type { FC } from 'react';
 import { MouseEvent } from 'react';
 
+import type { Props } from '@/shared/types/props.ts';
 import './StatusBar.css';
-import type { Props } from '@/shared/ui/types/props.tsx';
 
+/**
+ * StatusBar — отображает прогресс по этапам задачи
+ */
 const StatusBar: FC<Props> = ({ step, onStep, customIcon }) => {
+  /** Описания сегментов прогресса */
   const segments = [
     { key: 'plan', label: 'План' },
     { key: 'ppr', label: 'ППР' },
@@ -30,7 +34,6 @@ const StatusBar: FC<Props> = ({ step, onStep, customIcon }) => {
             className={i < step ? 'status-bar-block status-bar-block--filled' : 'status-bar-block'}
           />
         ))}
-
         <div className="status-bar-icon">
           {customIcon ?? <SettingOutlined className="gear-icon" />}
         </div>

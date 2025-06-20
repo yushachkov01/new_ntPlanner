@@ -1,3 +1,6 @@
+/**
+ *  статусы задачи
+ */
 export type Status =
   | 'done'
   | 'done_on_time'
@@ -6,11 +9,19 @@ export type Status =
   | 'pending_auto'
   | 'info';
 
+/**
+ * Подшаг в составе блока с идентификатором и меткой
+ */
 export interface SubStep {
   id: number;
   label: string;
+  readonly;
 }
 
+/**
+ *
+ * Данные для временного блока
+ */
 export interface BlockData {
   id: number;
   startTime: string;
@@ -20,12 +31,18 @@ export interface BlockData {
   subSteps?: SubStep[];
 }
 
+/**
+ * Данные пользователя с задачами/блоками
+ */
 export interface UserData {
   id: number;
   name: string;
   blocks: BlockData[];
 }
 
+/**
+ * Свойства для компонента деталей задачи
+ */
 export interface TaskDetailProps {
   id: number;
   label: string;
@@ -35,17 +52,21 @@ export interface TaskDetailProps {
   status?: Status;
   subSteps?: SubStep[];
   onClose: () => void;
-  /**
-   * Если нужно передать данные (id, файл, описание) наверх
-   */
   onMarkDone?: (id: number, file: UploadedFile | null, description: string) => void;
 }
+
+/**
+ * Загруженный файл с именем, типом и URL
+ */
 export type UploadedFile = {
   name: string;
   type: string;
   url: string;
 };
 
+/**
+ * Свойства для блока на временной шкале
+ */
 export interface TimelineBlockProps {
   block: BlockData;
   totalWindowMin: number;

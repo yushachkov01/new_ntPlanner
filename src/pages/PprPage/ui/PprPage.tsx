@@ -7,6 +7,13 @@ import './PprPage.css';
 import { users } from '@features/ppr/data/users.ts';
 import { calcCoveredMap } from '@features/ppr/lib/calcCoveredMap.ts';
 
+/**
+ * PprPage — основная страница «Таймлайн»
+ * Отвечает за:
+ * - Отрисовку шкалы времени 00:00–23:00
+ * - Отображение агрегированной строки и списка пользователей
+ * - Управление состояниями раскрытия рядов и деталей задач
+ */
 const PprPage: FC = () => {
   const [expandedUsers, setExpandedUsers] = useState(false);
   const [showAllTasks, setShowAllTasks] = useState(false);
@@ -14,30 +21,51 @@ const PprPage: FC = () => {
   const [expandedTaskId, setExpandedTaskId] = useState<number | null>(null);
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
 
+  /**
+   * Собирает один общий ряд для всех задач за день
+   */
   const aggregatedRow = {
     id: 0,
     name: 'Весь день' as const,
     blocks: users.flatMap((u) => u.blocks),
   };
+
+  /**
+   * Генерирует массив строк для рендеринга (агрегат + пользователи)
+   */
   const rowsData = [aggregatedRow, ...(expandedUsers ? users : [])];
 
-  /* словарь covered */
+  /**
+   * Строит словарь перекрытых блоков { [blockId]: true }
+   */
   const coveredDict = useMemo(() => {
     const dict: Record<number, boolean> = {};
     rowsData.forEach((r) => Object.assign(dict, calcCoveredMap(r.blocks)));
     return dict;
   }, [rowsData]);
 
+  /** Общее число часов и массив меток часов */
   const spanHours = 24;
   const hours = Array.from({ length: spanHours }, (_, i) => i);
+  /** Общее число минут в 24 часа */
   const totalWindowMin = spanHours * 60;
 
+  /**
+   * По blockId получает имя пользователя или "Неизвестен"
+   */
   const getUserNameByBlockId = (blockId: number): string => {
     const u = users.find((user) => user.blocks.some((b) => b.id === blockId));
     return u ? u.name : 'Неизвестен';
   };
+
+  /**
+   * Переключает выделение блока для подробного просмотра
+   */
   const handleBlockDouble = (id: number) => setExpandedTaskId((prev) => (prev === id ? null : id));
 
+  /**
+   * Извлекает данные блока для TaskDetail при двойном клике
+   */
   const taskDetailData = useMemo(() => {
     if (expandedTaskId == null) return null;
     return users.flatMap((u) => u.blocks).find((b) => b.id === expandedTaskId) ?? null;
@@ -46,9 +74,7 @@ const PprPage: FC = () => {
   return (
     <div className="ppr-page">
       <h2 className="ppr-page__title">Таймлайн (00:00–23:00)</h2>
-
       <div className="timeline-container">
-        {/* --- шапка --- */}
         <div className="timeline-header">
           <div className="timeline-header__spacer" />
           <div className="timeline-header__label-spacer" />
@@ -58,12 +84,9 @@ const PprPage: FC = () => {
             </div>
           ))}
         </div>
-
-        {/* --- тело --- */}
         <div className="timeline-body">
           {rowsData.map((row) => (
             <div key={row.id} className="timeline-row">
-              {/* --- иконки, подпись --- */}
               <div className="timeline-row__icon-cell">
                 {row.id === 0 ? (
                   <div
@@ -97,9 +120,6 @@ const PprPage: FC = () => {
                   <div
                     className="avatar-with-name"
                     onClick={() => {
-                      /**
-                       * клик по пользователю — показываем/скрываем его задачи внизу
-                       */
                       setSelectedUserId((prev) => (prev === row.id ? null : row.id));
                       setShowAllTasks(false);
                       setExpandedTaskId(null);
@@ -112,7 +132,6 @@ const PprPage: FC = () => {
                   </div>
                 )}
               </div>
-
               <div className="timeline-row__label-cell">
                 {row.id === 0 && (
                   <span
@@ -129,14 +148,13 @@ const PprPage: FC = () => {
                   </span>
                 )}
               </div>
-
-              {/* --- блоки --- */}
               <div className="timeline-row__blocks">
                 {hours.map((_, i) => (
                   <div key={i} className="timeline-row__grid-cell" />
                 ))}
                 {row.blocks.map((block) => (
                   <TimelineBlock
+                    key={block.id}
                     block={block}
                     totalWindowMin={totalWindowMin}
                     expandedBlockId={expandedBlockId}
@@ -150,8 +168,6 @@ const PprPage: FC = () => {
           ))}
         </div>
       </div>
-
-      {/* список всех задач */}
       {showAllTasks && (
         <div className="all-tasks-container">
           {users
@@ -161,7 +177,6 @@ const PprPage: FC = () => {
             ))}
         </div>
       )}
-
       {selectedUserId != null && (
         <div className="user-tasks-container">
           {users
@@ -171,7 +186,6 @@ const PprPage: FC = () => {
             ))}
         </div>
       )}
-
       {taskDetailData && (
         <TaskDetail
           id={taskDetailData.id}

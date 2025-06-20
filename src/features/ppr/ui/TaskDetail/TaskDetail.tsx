@@ -26,16 +26,38 @@ const TaskDetail: FC<TaskDetailProps> = ({
   onClose,
   onMarkDone,
 }) => {
-  //длительность
+  /**
+   * время начала и конца в часы и минуты, вычисляем длительность в минутах
+   */
   const [sH, sM] = startTime.split(':').map(Number);
   const [eH, eM] = endTime.split(':').map(Number);
   const duration = eH * 60 + eM - (sH * 60 + sM);
   const needsUpload = status === 'done';
   const [isModalVisible, setIsModalVisible] = useState(false);
+
+  /**
+   * Список выбранных файлов для загрузки
+   */
   const [fileList, setFileList] = useState<any[]>([]);
+
+  /**
+   * Описание работы, введённое пользователем
+   */
   const [workDescription, setWorkDescription] = useState('');
+
+  /**
+   * Флаг завершения задачи в пользовательском интерфейсе
+   */
   const [isCompleted, setIsCompleted] = useState(false);
+
+  /**
+   * Объект загруженного файла с name, type и url
+   */
   const [uploadedFile, setUploadedFile] = useState<UploadedFile | null>(null);
+
+  /**
+   * Флаг отображения подэтапов
+   */
   const [showSubs, setShowSubs] = useState(false);
 
   const beforeUpload = (file: File) => {
@@ -46,15 +68,29 @@ const TaskDetail: FC<TaskDetailProps> = ({
     return false;
   };
 
+  /**
+   * Обновление списка файлов при выборе в компоненте Upload
+   */
   const handleUploadChange = (info: any) => {
     let newFileList = [...info.fileList];
     newFileList = newFileList.slice(-1);
     setFileList(newFileList);
   };
 
+  /**
+   * Открывает модальное окно
+   */
   const openModal = () => setIsModalVisible(true);
+
+  /**
+   * Закрывает модальное окно без действий
+   */
   const handleCancel = () => setIsModalVisible(false);
 
+  /**
+   * Обработчик подтверждения: проверяет наличие файла и описания,
+   * создаёт объект UploadedFile, закрывает окно и вызывает onMarkDone
+   */
   const handleOk = () => {
     if (fileList.length === 0) {
       message.error('Пожалуйста, прикрепите файл выполненной работы.');
@@ -75,9 +111,14 @@ const TaskDetail: FC<TaskDetailProps> = ({
     setIsCompleted(true);
     setIsModalVisible(false);
 
-    onMarkDone && onMarkDone(id, uploaded, workDescription);
+    if (onMarkDone) {
+      onMarkDone(id, uploaded, workDescription);
+    }
   };
 
+  /**
+   * Рендер блока загруженного файла с иконкой и описанием работы
+   */
   const renderFileWithDescription = () => {
     if (!uploadedFile) return null;
     const { type, name, url } = uploadedFile;
@@ -102,6 +143,9 @@ const TaskDetail: FC<TaskDetailProps> = ({
     );
   };
 
+  /**
+   * Основной JSX-разметка компонента TaskDetail
+   */
   return (
     <div className="task-detail">
       <div className="task-detail__header">
@@ -119,7 +163,7 @@ const TaskDetail: FC<TaskDetailProps> = ({
         </div>
       </div>
 
-      {/* ───────── Основной контент ───────── */}
+      {/* Основной контент */}
       <div className="task-detail__body--fullinfo">
         <div className="task-detail__main-row">
           <div className="task-detail__left-col">

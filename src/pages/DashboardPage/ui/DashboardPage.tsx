@@ -11,7 +11,13 @@ import './DashboardPage.css';
 
 const { Content } = Layout;
 
+/**
+ * Внутренний компонент DashboardInner:
+ */
 const DashboardInner: FC = () => {
+  /**
+   * Получаем данные и управляющие функции из хука
+   */
   const {
     displayRows,
     state: { activeTab, dateFilterVisible, colsVisible, visibleCols },
@@ -54,7 +60,6 @@ const DashboardInner: FC = () => {
             />
           </div>
         </div>
-
         <div className="folder-content">
           {displayRows.length > 0 ? (
             <WorkTable

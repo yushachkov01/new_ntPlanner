@@ -1,0 +1,23 @@
+schema:
+  - ${VITE_HASURA_GRAPHQL_URL}:
+      headers:
+        x-hasura-admin-secret: ${HASURA_ADMIN_SECRET}
+
+documents: 'src/entities/work/api/*.graphql'
+
+generates:
+  # рядом с каждым .graphql-файлом будет .generated.ts
+  src/entities/work/api/:
+    preset: near-operation-file-preset
+    presetConfig:
+      extension: .generated.ts
+      baseTypesPath: ../../types/graphql.ts
+    plugins:
+      - typescript
+      - typescript-operations
+      - typescript-graphql-request
+
+  # общий файл с типами схемы
+  src/shared/api/graphql.ts:
+    plugins:
+      - typescript
