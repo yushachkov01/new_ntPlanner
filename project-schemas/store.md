@@ -3,15 +3,16 @@
 ```mermaid
 classDiagram
     direction LR
-
-    class Role {
+    class RoleStore {
+        <<zustand>>
         id 
         user_id
         role 
         author
     }
 
-    class workPlan {
+    class workPlanStore {
+        <<zustand>>
         id
         role 
         author
@@ -20,27 +21,33 @@ classDiagram
         city 
     }
 
-    class cardWork {
+    class cardWorkStore {
+        <<zustand>>
         id
+        ppr_id 
         timeWork
         rm text
         rd text
         project 
         description 
     }
-
-    class networkEquipment {
+    %% Оборудование
+    class networkEquipmentStore {
+        <<zustand>>
         id
+
         equipment 
     }
-
-    class Executor {
+%% Исполнители
+    class ExecutorStore {
+        <<zustand>>
         id
-        planned_work_id 
         executor
     }
 
-    class WorkTemplate {
+    %% ===== библиотека шаблонов =====
+    class WorkTemplateStore {
+        <<zustand>>
         id 
         name 
         description 
@@ -50,7 +57,8 @@ classDiagram
         stages 
     }
 
-    class TemplateArg {
+    class TemplateArgStore {
+        <<zustand>>
         id 
         arg_name 
         label 
@@ -61,55 +69,47 @@ classDiagram
         position
     }
 
-    class YamlLoader {
-        +parseYaml(filePath): TemplateDTO
-    }
 
-    class PlannedWorks {
+        class PlannedWorksStore {
+        <<zustand>>
         id 
         template_id 
         description 
         executor
     }
 
-    class PlannedWorkParam {
+    class PlannedWorkParamStore {
+        <<zustand>>
         +planned_work_id 
         arg_name 
         arg_value 
     }
-
-    class Site {
+    
+    %% ===== справочники =====
+    class UserStore {
+        <<zustand>>
         id 
-        address 
-        region 
-        contact 
+        fullname 
+        email 
+        phone 
+        avatar_url 
     }
 
-    MinIO --|> YamlLoader : reads from
-    YamlLoader --> WorkTemplate : upserts data
 
-    %% Добавленные связи с кардинальностями
-    Role "1" --> "0..*" workPlan : author
-    Role "1" --> "0..*" workPlan : role
-    workPlan "1" --> "1"     cardWork
-    workPlan "1" --> "0..*" networkEquipment
-    workPlan "1" --> "0..*" Executor
 
-    WorkTemplate "1" --> "*" TemplateArg
-    WorkTemplate "1" --> "*" PlannedWorks
-    PlannedWorks  "1" --> "*" PlannedWorkParam
-    cardWork     "*" --> "1" Site
 
-    %% Оставлены оригинальные связи без кардинальностей
-    Executor --> MinIO
-    Executor --> WorkTemplate : role
-    Executor --> WorkTemplate : author
 
-    %% Стили для выделения данных, которые относятся к hasura
-    style Role fill:#2F4F4F,stroke:#000,stroke-width:2px
-    style workPlan fill:#2F4F4F,stroke:#000,stroke-width:2px
-    style networkEquipment fill:#2F4F4F,stroke:#000,stroke-width:2px
-    style Executor fill:#2F4F4F,stroke:#000,stroke-width:2px
-    style cardWork fill:#2F4F4F,stroke:#000,stroke-width:2px
-    style Site fill:#2F4F4F,stroke:#000,stroke-width:2px
+    RoleStore --> workPlanStore : author
+    RoleStore --> workPlanStore : role
+    workPlanStore --> cardWorkStore
+    workPlanStore --> networkEquipmentStore
+    workPlanStore --> ExecutorStore: role
+    workPlanStore --> ExecutorStore: author
+
+    ExecutorStore --> WorkTemplateStore: role
+    ExecutorStore --> WorkTemplateStore: author
+    WorkTemplateStore --> TemplateArgStore
+    WorkTemplateStore --> PlannedWorksStore
+    PlannedWorksStore --> PlannedWorkParamStore
+    PlannedWorkParamStore --> UserStore
 ```
