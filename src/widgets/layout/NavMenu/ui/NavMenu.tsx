@@ -16,7 +16,7 @@ const NavMenu: FC<NavMenuProps> = ({ onClose }) => {
   /** Хук для программной навигации по маршрутам */
   const navigate = useNavigate();
   /** Массив пунктов меню */
-  const items = ['ППР', 'Домашняя страница'];
+  const items = ['ППР', 'Домашняя страница', 'Редактор ППР'];
 
   /**
    * Обработчик клика по пункту меню
@@ -30,6 +30,8 @@ const NavMenu: FC<NavMenuProps> = ({ onClose }) => {
       navigate('/ppr');
     } else if (idx === 1) {
       navigate('/dashboard');
+    } else if (idx === 2) {
+      navigate('/ppr-editor');
     }
   };
 

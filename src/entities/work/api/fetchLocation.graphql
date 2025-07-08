@@ -1,0 +1,8 @@
+query FetchLocation {
+  locations(limit: 1) {
+    provider
+    branch
+    city
+    street
+  }
+}

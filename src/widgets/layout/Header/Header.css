@@ -74,6 +74,23 @@
 }
 
 .header-user {
-  color: var(--text-primary);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  margin-left: 16px;
+}
+
+.header-user__role {
+  font-size: 16px;
   font-weight: 500;
+  line-height: 1;
+  margin: 0px 10px 2px 0;
+}
+
+.header-user__author {
+  font-size: 14px;
+  line-height: 1;
+  opacity: 0.8;
+  margin-right: 10px;
 }

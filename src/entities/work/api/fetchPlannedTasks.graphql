@@ -1,0 +1,14 @@
+query FetchPlannedTasks {
+  planned_tasks(order_by: { id: asc }) {
+    id
+    name
+    time_work
+    rm
+    rd
+    project
+    description
+    equipment
+    role
+    author
+  }
+}

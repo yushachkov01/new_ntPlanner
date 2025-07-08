@@ -39,6 +39,8 @@
   --btn-text: #1f2937;
   --link-color: #3b82f6;
   --icon-color: #4b5563;
+  --ppr-card-bg-light: #f3f5f7;
+  --ppr-card-bg-dark: #2a2a2a;
 }
 
 body.dark {
@@ -63,4 +65,8 @@ body.dark {
   --task-btn-bg: #555;
   --task-btn-border: #444;
   --task-btn-text: #fff;
+  --bg-header: #2a2a2a;
+  --bg-body: #1e1e1e;
+  --border-level-1: #555;
+  --border-level-2: #444;
 }

@@ -6,12 +6,12 @@
 import type { ReactNode } from 'react';
 import { useEffect } from 'react';
 
-import { useWorkStore } from '@entities/work/model/store/useWorkStore.ts';
+import { workStore } from '@entities/work/model/store/WorkStore.ts';
 
 type Props = { children: ReactNode };
 
 export function WorkProvider({ children }: Props) {
-  const { load, add, update, remove } = useWorkStore();
+  const { load, add, update, remove } = workStore();
 
   useEffect(() => {
     load();
@@ -53,7 +53,7 @@ export function WorkProvider({ children }: Props) {
           break;
 
         case 'work.patch':
-          const exists = useWorkStore.getState().works.some((w) => w.id === normalized.id);
+          const exists = workStore.getState().works.some((w) => w.id === normalized.id);
 
           if (exists) {
             update(normalized);

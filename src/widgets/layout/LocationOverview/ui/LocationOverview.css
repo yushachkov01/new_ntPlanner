@@ -1,0 +1,19 @@
+.address-breadcrumb {
+  font-size: 18px;
+  font-weight: 500;
+  color: #808080;
+  white-space: nowrap;
+}
+
+.address-breadcrumb .sep {
+  margin: 0 6px;
+  font-weight: 700;
+}
+
+.address-breadcrumb .street {
+  color: #0a66ff;
+  text-decoration: none;
+}
+.address-breadcrumb .street:hover {
+  text-decoration: underline;
+}

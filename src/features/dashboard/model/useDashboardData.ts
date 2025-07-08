@@ -2,14 +2,14 @@ import dayjs from 'dayjs';
 import { useMemo, useState } from 'react';
 
 import type { RowWithStep } from '@/widgets/WorkTable';
-import { useWorkStore } from '@entities/work/model/store/useWorkStore';
+import { workStore } from '@entities/work/model/store/WorkStore.ts';
 
 import type { TabKey, DashboardState } from './types.ts';
 import { ALL_COLUMNS } from './types.ts';
 
 export function useDashboardData() {
-  const works = useWorkStore((s) => s.works);
-  const loading = useWorkStore((s) => s.loading);
+  const works = workStore((s) => s.works);
+  const loading = workStore((s) => s.loading);
 
   /**
    * Преобразуем данные

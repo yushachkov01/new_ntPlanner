@@ -3,8 +3,9 @@ import { Layout, Switch } from 'antd';
 import React, { useState, useEffect } from 'react';
 
 import { useTheme } from '@app/providers/ThemeProvider.tsx';
-import './Header.css';
+import { userStore } from '@entities/user/model/store/UserStore.ts';
 import NavMenu from '@widgets/layout/NavMenu';
+import './Header.css';
 
 const { Header: AntHeader } = Layout;
 
@@ -14,20 +15,17 @@ const { Header: AntHeader } = Layout;
  * - Позволяет переключать тему и показывать время/пользователя
  */
 const Header: React.FC = () => {
-  /** Текущая тема (light | dark) и функция переключения */
   const { theme, toggle } = useTheme();
-  /** Состояние: открыт ли выпадающий NavMenu */
   const [menuOpen, setMenuOpen] = useState(false);
+  const user = userStore((s) => s.user);
 
   /**
    * Эффект: при клике за пределами меню закрыть его
    */
   useEffect(() => {
-    const handleOutsideClick = () => {
-      if (menuOpen) setMenuOpen(false);
-    };
-    document.addEventListener('click', handleOutsideClick);
-    return () => document.removeEventListener('click', handleOutsideClick);
+    const close = () => menuOpen && setMenuOpen(false);
+    document.addEventListener('click', close);
+    return () => document.removeEventListener('click', close);
   }, [menuOpen]);
 
   /**
@@ -55,7 +53,10 @@ const Header: React.FC = () => {
         />
       </div>
       <div className="header-time">13:25</div>
-      <div className="header-user">Иванов И.И.</div>
+      <div className="header-user">
+        <div className="header-user__role">{user?.role ?? '—'}</div>
+        <div className="header-user__author">{user?.author ?? ''}</div>
+      </div>
       {menuOpen && <NavMenu onClose={() => setMenuOpen(false)} />}
     </AntHeader>
   );

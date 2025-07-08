@@ -54,7 +54,7 @@ type Store = {
   remove(idInt: number): Promise<void>;
 };
 
-export const useWorkStore = create<Store>((set, get) => ({
+export const workStore = create<Store>((set, get) => ({
   works: [],
 
   async load() {
