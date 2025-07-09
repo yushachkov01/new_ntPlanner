@@ -1,0 +1,85 @@
+body.dark .add-executor-modal .ant-modal-content {
+  background: #2a2a2a;
+  border: 1px solid #424d57;
+  color: #fff;
+}
+
+body.dark .add-executor-modal .ant-modal-header {
+  background: inherit;
+  border-bottom: 1px solid #424d57;
+}
+
+body.dark .add-executor-modal .ant-modal-title,
+body.dark .add-executor-modal .ant-modal-close-x {
+  color: #fff;
+}
+
+body.dark .add-executor-modal .ant-tabs-nav {
+  background: #2a2a2a;
+  border-bottom: 6px solid #008fce;
+  margin-bottom: 0 !important;
+  padding-bottom: 0 !important;
+}
+
+body.dark .add-executor-modal .ant-tabs-nav-wrap {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+body.dark .add-executor-modal .ant-tabs-ink-bar {
+  display: none;
+}
+
+body.dark .add-executor-modal .ant-tabs-tab {
+  margin: 0;
+  padding: 4px 12px;
+  background: #2a2a2a;
+  border: 1px solid #424d57;
+  border-radius: 4px 4px 0 0;
+  color: #fff;
+}
+
+body.dark .add-executor-modal .ant-tabs-tab-active {
+  background: #008fce;
+  border-color: #008fce;
+}
+
+body.dark .add-executor-modal .ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: #fff;
+}
+
+body.dark .add-executor-modal .ant-list {
+  background: #2a2a2a;
+  border: 1px solid #424d57;
+  border-radius: 0 0 6px 6px;
+  color: #fff;
+}
+
+body.dark .add-executor-modal .ant-list-item {
+  color: #fff;
+  transition: background 0.2s;
+}
+
+body.dark .add-executor-modal .ant-list-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+body.dark .add-executor-modal .ant-list-item-selected {
+  background: #3a3f47;
+}
+
+body.dark .add-executor-modal .ant-btn-default {
+  background: #2a2a2a;
+  border: 1px solid #424d57;
+  color: #fff;
+}
+
+body.dark .add-executor-modal .ant-btn-default:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+body.dark .add-executor-modal .ant-btn-primary {
+  background: #008fce;
+  border-color: #008fce;
+  color: #fff;
+}

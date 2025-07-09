@@ -1,0 +1,5 @@
+query FetchExecutorRoles {
+  executor(distinct_on: role) {
+    role
+  }
+}

@@ -1,19 +1,36 @@
-.address-breadcrumb {
-  font-size: 18px;
-  font-weight: 500;
-  color: #808080;
+.location-overview {
+  font-size: 16px;
+  line-height: 1.4;
+  color: var(--text-secondary);
   white-space: nowrap;
 }
 
-.address-breadcrumb .sep {
+.location-overview .sep {
   margin: 0 6px;
   font-weight: 700;
+  color: var(--text-secondary);
 }
 
-.address-breadcrumb .street {
-  color: #0a66ff;
-  text-decoration: none;
-}
-.address-breadcrumb .street:hover {
+.location-link {
+  color: var(--link-color);
   text-decoration: underline;
+  transition: color 0.2s;
+}
+.location-link:hover {
+  text-decoration: none;
+  color: #40a9ff;
+}
+
+body.dark .location-overview {
+  color: #ffffff;
+}
+body.dark .location-overview .sep {
+  color: #cccccc;
+}
+
+body.dark .location-link {
+  color: #8ab4f8;
+}
+body.dark .location-link:hover {
+  color: #4dabff;
 }

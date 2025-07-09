@@ -1,0 +1,7 @@
+query FetchExecutorsByRole($role: String!) {
+  executor(where: { role: { _eq: $role } }) {
+    id
+    author
+    role
+  }
+}
