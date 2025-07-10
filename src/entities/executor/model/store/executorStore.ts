@@ -1,9 +1,8 @@
 /**
  * executorStore — хранилище для списка ролей и исполнителей.
  */
-import { create } from 'zustand';
-
-import * as api from '@/entities/executor/api/ExecutorApi';
+import { create } from "zustand";
+import * as api from "@/entities/executor/api/ExecutorApi";
 
 /**
  * тип исполнителя
@@ -18,14 +17,19 @@ export interface Executor {
  */
 interface ExecutorState {
   roles: string[];
-  executors: Record<string, Executor[]>; // «роль → список»
+  executors: Record<string, Executor[]>;
+  /** сюда складываем тех, кого добавили в табе «Исполнители» */
+  addedExecutors: Executor[];
   loadRoles: () => Promise<void>;
   loadByRole: (role: string) => Promise<void>;
+  addExecutor: (executor: Executor) => void;
+  removeExecutor: (id: number) => void;
 }
 
 export const executorStore = create<ExecutorState>((set, get) => ({
   roles: [],
   executors: {},
+  addedExecutors: [],
 
   /**
    * Загружаем все доступные роли;
@@ -46,5 +50,25 @@ export const executorStore = create<ExecutorState>((set, get) => ({
     set((state) => ({
       executors: { ...state.executors, [role]: list },
     }));
+  },
+  /**
+   * Удаление исполнителя из списка «добавленных»
+   */
+  removeExecutor(id) {
+    set((state) => ({
+      addedExecutors: state.addedExecutors.filter((e) => e.id !== id),
+    }));
+  },
+  /**
+   * Добавление исполнителя в список «добавленных».
+   * Дубли не допускаются.
+   */
+  addExecutor(executor) {
+    set((state) => {
+      if (state.addedExecutors.find((e) => e.id === executor.id)) {
+        return {};
+      }
+      return { addedExecutors: [...state.addedExecutors, executor] };
+    });
   },
 }));

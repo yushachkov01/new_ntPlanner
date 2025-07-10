@@ -1,0 +1,48 @@
+body.dark .add-executor-modal .exec-pagination .ant-pagination-item,
+body.dark .add-executor-modal .exec-pagination .ant-pagination-prev .ant-pagination-item-link,
+body.dark .add-executor-modal .exec-pagination .ant-pagination-next .ant-pagination-item-link{
+    background:#2b2f37 !important;
+    border-color:#2b2f37 !important;
+    color:#fff;
+}
+body.dark .add-executor-modal .exec-pagination .ant-pagination-item-active{
+    background:#ffffff !important;
+    border-color:#ffffff !important;
+}
+body.dark .add-executor-modal .exec-pagination .ant-pagination-item-active a{
+    color:#000 !important;
+}
+
+body.dark .add-executor-modal .ant-input-affix-wrapper{
+    background:#3a3f47 !important;
+    border-color:#3a3f47 !important;
+}
+body.dark .add-executor-modal .ant-input-affix-wrapper .ant-input{
+    color:#ffffff !important;
+}
+body.dark .add-executor-modal .ant-input-affix-wrapper .ant-input::placeholder{
+    color:#ffffff !important;
+    opacity:.7;
+}
+body.dark .add-executor-modal .ant-input-affix-wrapper .anticon-search{
+    color:#ffffff !important;
+}
+
+body.dark .add-executor-modal .ant-input-search-button{
+    background:#3a3f47 !important;
+    border-color:#3a3f47 !important;
+}
+body.dark .add-executor-modal .ant-input-search-button .anticon-search svg{
+    fill:#ffffff !important;
+    color:#ffffff !important;
+}
+
+body.dark .add-executor-modal .exec-pagination .ant-pagination-item a{
+    color:#1677ff !important;
+}
+
+.exec-pagination {
+    display: flex !important;
+    width: 100% !important;
+    justify-content: flex-end !important;
+}

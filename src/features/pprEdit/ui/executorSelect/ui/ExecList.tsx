@@ -1,7 +1,10 @@
-import { List, Spin } from 'antd';
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from "react";
+import { List, Spin, Input, Pagination } from "antd";
+import "./ExecList.css";
 
-/** «упрощённая» модель исполнителя, которую мы выводим в списке */
+/**
+ * модель исполнителя, которую мы выводим в списке
+ */
 export interface ExecutorLite {
   id: number;
   author: string;
@@ -9,36 +12,115 @@ export interface ExecutorLite {
 }
 
 export interface ExecListProps {
-  /** массив исполнителей  */
+  /**
+   * Массив исполнителей
+   */
   data?: ExecutorLite[];
-  /** если data пустая — вызываем onLoad(), чтобы подтянуть данные */
+  /**
+   * Если data пустая — вызываем onLoad(), чтобы подтянуть данные
+   */
   onLoad: () => void;
-  /** клик по строке → возвращаем выбранный id родителю */
+  /**
+   * Клик по строке → возвращаем выбранный id родителю
+   */
   onSelect: (id: number) => void;
 }
+
 /**
- * Отрисовывает список исполнителей внутри вкладки модалки.
- * Если данных ещё нет — показывает <Spin/>.
+ * Сколько строк показываем на странице
  */
+const PAGE_SIZE = 5;
+
 const ExecList: React.FC<ExecListProps> = ({ data, onLoad, onSelect }) => {
-  /* при первой отрисовке (data === undefined) — подгружаем исполнителей */
+  /**
+   * Загрузка данных при первом монтировании
+   */
   useEffect(() => {
-    if (!data) onLoad();
+    if (!data) {
+      onLoad();
+    }
   }, [data, onLoad]);
 
-  if (!data) return <Spin />;
+  /** Текст поиска */
+  const [query, setQuery] = useState("");
+  /** Номер текущей страницы */
+  const [page, setPage] = useState(1);
+
+  /**
+   *  нормализовать строку для сравнения
+   */
+  const clean = (s: string) => s.toLowerCase().replace(/\s+/g, "");
+
+  /**
+   * Вычисляем отфильтрованный массив и общее число элементов
+   */
+  const { total, slice } = useMemo(() => {
+    if (!data) {
+      return { total: 0, slice: [] as ExecutorLite[] };
+    }
+    const normalizedQuery = clean(query);
+    const filtered = normalizedQuery
+        ? data.filter((it) => clean(it.author).includes(normalizedQuery))
+        : data;
+    const from = (page - 1) * PAGE_SIZE;
+    return {
+      total: filtered.length,
+      slice: filtered.slice(from, from + PAGE_SIZE),
+    };
+  }, [data, query, page]);
+
+  /**
+   * Если после фильтрации на текущей странице нет элементов — сбрасываем на первую
+   */
+  useEffect(() => {
+    if (page > 1 && slice.length === 0) {
+      setPage(1);
+    }
+  }, [slice, page]);
+
+  /**
+   * Пока данные ещё не пришли — отображаем спиннер
+   */
+  if (!data) {
+    return <Spin />;
+  }
 
   return (
-    <List
-      bordered
-      dataSource={data}
-      style={{ maxHeight: 260, overflowY: 'auto' }}
-      renderItem={(item) => (
-        <List.Item onClick={() => onSelect(item.id)} style={{ cursor: 'pointer' }}>
-          {item.author}
-        </List.Item>
-      )}
-    />
+      <>
+        <Input.Search
+            placeholder="Поиск исполнителя..."
+            allowClear
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setPage(1);
+            }}
+            style={{ marginBottom: 12 }}
+        />
+        <List
+            bordered
+            dataSource={slice}
+            renderItem={(item) => (
+                <List.Item
+                    onClick={() => onSelect(item.id)}
+                    style={{ cursor: "pointer" }}
+                >
+                  {item.author}
+                </List.Item>
+            )}
+            locale={{ emptyText: "Не найдено" }}
+            style={{ marginBottom: 12 }}
+        />
+        <Pagination
+            className="exec-pagination"
+            size="small"
+            current={page}
+            pageSize={PAGE_SIZE}
+            total={total}
+            onChange={setPage}
+            showSizeChanger={false}
+            hideOnSinglePage={false}
+        />
+      </>
   );
 };
 
