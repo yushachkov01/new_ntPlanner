@@ -1,8 +1,4 @@
-import {
-    S3Client,
-    ListObjectsV2Command,
-    GetObjectCommand,
-} from '@aws-sdk/client-s3';
+import { S3Client, ListObjectsV2Command, GetObjectCommand } from '@aws-sdk/client-s3';
 
 /**
  * Настройка MinIO
@@ -11,10 +7,10 @@ import {
  * - forcePathStyle: обязательно для корректного построения URL
  */
 export const minio = new S3Client({
-    region: 'us-east-1',
-    endpoint: 'http://localhost:9000',
-    credentials: { accessKeyId: 'admin', secretAccessKey: 'secretpassword' },
-    forcePathStyle: true,
+  region: 'us-east-1',
+  endpoint: 'http://localhost:9000',
+  credentials: { accessKeyId: 'admin', secretAccessKey: 'secretpassword' },
+  forcePathStyle: true,
 });
 
 /**
@@ -24,10 +20,10 @@ export const minio = new S3Client({
  * @returns Promise<Contents[]> — массив метаданных объектов
  */
 export const listObjects = async (bucket: string, prefix = '') => {
-    const { Contents } = await minio.send(
-        new ListObjectsV2Command({ Bucket: bucket, Prefix: prefix }),
-    );
-    return Contents ?? [];
+  const { Contents } = await minio.send(
+    new ListObjectsV2Command({ Bucket: bucket, Prefix: prefix }),
+  );
+  return Contents ?? [];
 };
 
 /**
@@ -37,8 +33,6 @@ export const listObjects = async (bucket: string, prefix = '') => {
  * @returns Promise<string> — текстовое содержимое файла
  */
 export const getObjectText = async (bucket: string, key: string) => {
-    const { Body } = await minio.send(
-        new GetObjectCommand({ Bucket: bucket, Key: key }),
-    );
-    return Body!.transformToString();
+  const { Body } = await minio.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+  return Body!.transformToString();
 };

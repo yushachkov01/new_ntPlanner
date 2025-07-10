@@ -1,8 +1,9 @@
 /**
  * executorStore — хранилище для списка ролей и исполнителей.
  */
-import { create } from "zustand";
-import * as api from "@/entities/executor/api/ExecutorApi";
+import { create } from 'zustand';
+
+import * as api from '@/entities/executor/api/ExecutorApi';
 
 /**
  * тип исполнителя
