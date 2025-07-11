@@ -1,0 +1,48 @@
+.dyf__root {
+  padding: 16px;
+}
+
+.dyf__columns {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.dyf__col {
+  flex: 0 0 250px;
+  max-width: 250px;
+}
+
+.dyf__col h4 {
+  text-align: center;
+  margin-bottom: 12px;
+}
+
+.dyf__group {
+  border: 1px solid #555;
+  padding: 12px;
+  margin-bottom: 16px;
+}
+
+.field-group__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.field-group__row .ant-form-item {
+  flex: 1 1 120px;
+  max-width: 250px;
+}
+
+.dyf__btn-wrap {
+  display: flex;
+  justify-content: flex-start;
+  margin-top: 8px;
+}
+
+.dyf__add-btn {
+  width: 250px;
+  max-width: 250px;
+}
