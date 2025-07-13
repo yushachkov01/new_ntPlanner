@@ -1,4 +1,9 @@
-import { Form, Input, Select, Switch } from 'antd';
+/**
+ * Рендерит поле по его конфигурации.
+ * Если передан onRemove — показываем кнопку ужаления слева в label.
+ */
+import { DeleteOutlined } from '@ant-design/icons';
+import { Form, Input, Select, Switch, Button } from 'antd';
 import React from 'react';
 
 import type { FieldCfg } from '@/features/pprEdit/model/types';
@@ -18,6 +23,10 @@ interface Props {
    * используется для корректного имени
    */
   path?: string[];
+  /**
+   * onRemove — колбэк, вызываемый при клике на иконку удаления поля
+   */
+  onRemove?: () => void;
 }
 
 /**
@@ -25,9 +34,10 @@ interface Props {
  *
  * @param field — объект с описанием поля
  * @param path  — массив сегментов пути до этого поля в форме
+ * @param onRemove — колбэк, вызываемый при клике на иконку удаления этого поля
  * @returns JSX-элемент соответствующего ant-поле или группу полей
  */
-export function FieldRenderer({ field: f, path = [] }: Props) {
+export function FieldRenderer({ field: f, path = [], onRemove }: Props) {
   /**
    * Формируем уникальный ключ и имя для Form.Item
    */
@@ -39,7 +49,21 @@ export function FieldRenderer({ field: f, path = [] }: Props) {
   switch (f.widget) {
     case 'input':
       return (
-        <Form.Item key={namePath.join('.')} label={f.name} name={namePath}>
+        <Form.Item
+          key={namePath.join('.')}
+          label={
+            onRemove ? (
+              <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Button type="text" icon={<DeleteOutlined />} onClick={onRemove} />
+                {f.name}
+              </span>
+            ) : (
+              f.name
+            )
+          }
+          name={namePath}
+          initialValue={f.defaultValue}
+        >
           <Input style={style} />
         </Form.Item>
       );
@@ -54,7 +78,7 @@ export function FieldRenderer({ field: f, path = [] }: Props) {
     case 'dropdown':
       return (
         <Form.Item key={namePath.join('.')} label={f.name} name={namePath}>
-          <Select placeholder={`Выберите ${f.name}`} style={style}>
+          <Select mode="multiple" placeholder={`Выберите ${f.name}`} style={style}>
             {f.options?.map((o) => (
               <Option key={o} value={o}>
                 {o}
@@ -77,7 +101,7 @@ export function FieldRenderer({ field: f, path = [] }: Props) {
           <h4>{f.name}</h4>
           <div className="field-group__row">
             {toArray(f).map((child) => (
-              <FieldRenderer key={child.key} field={child} path={namePath} />
+              <FieldRenderer key={child.key} field={child} path={namePath} onRemove={onRemove} />
             ))}
           </div>
         </div>

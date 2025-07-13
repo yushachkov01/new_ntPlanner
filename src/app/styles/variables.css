@@ -22,7 +22,6 @@
   --task-btn-text: #333;
   --border-light: #d1d5db;
   --bg-light: #ffffff;
-  --bg-header: #f3f5f7;
   --bg-body: #ffffff;
   --bg-subtoggle: #f9fafb;
   --bg-substeps: #ffffff;
@@ -41,12 +40,13 @@
   --icon-color: #4b5563;
   --ppr-card-bg-light: #f3f5f7;
   --ppr-card-bg-dark: #2a2a2a;
+  --modal-bg: #ffffff;
+  --modal-header-bg: #ffffff;
 }
 
 body.dark {
   /* тёмная тема */
   --bg-page: #1e1e1e;
-  --bg-header: #2a2a2a;
   --bg-table-header: #333333;
   --bg-row-today: #333333;
   --text-primary: #ffffff;
@@ -69,4 +69,8 @@ body.dark {
   --bg-body: #1e1e1e;
   --border-level-1: #555;
   --border-level-2: #444;
+  --modal-bg: #2e2e2e;
+  --modal-text: #ffffff;
+  --modal-header-bg: #2e2e2e;
+  --field-placeholder: rgba(255, 255, 255, 0.4);
 }

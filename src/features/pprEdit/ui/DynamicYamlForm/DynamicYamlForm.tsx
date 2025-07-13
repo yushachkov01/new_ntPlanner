@@ -1,13 +1,18 @@
+/**
+ * таблица полей
+ */
 import { Form, Button, Typography } from 'antd';
 import React, { useEffect, useState, useMemo } from 'react';
 
 import { toArray } from './helpers/toArray';
 
 import './DynamicYamlForm.css';
-import type { FieldCfg, Widget } from '@features/pprEdit/model/types.ts';
+import type { FieldCfg } from '@/features/pprEdit/model/types';
 import { AddFieldModal } from '@features/pprEdit/ui/DynamicYamlForm/AddFieldModal/AddFieldModal.tsx';
 import { FieldRenderer } from '@features/pprEdit/ui/DynamicYamlForm/FieldRenderer/FieldRenderer.tsx';
 import SwitchingForm from '@features/pprEdit/ui/DynamicYamlForm/SwitchingForm/SwitchingForm.tsx';
+
+import { FieldsTable } from '../FieldsTable/FieldsTable';
 
 const { Title } = Typography;
 
@@ -27,6 +32,7 @@ interface Props {
  * @param schema.settings — описание полей из YAML
  */
 export default function DynamicYamlForm({ schema }: Props) {
+  const [form] = Form.useForm();
   /**
    *  поля, сгруппированные по ключам
    */
@@ -57,11 +63,7 @@ export default function DynamicYamlForm({ schema }: Props) {
       const entries = Object.entries(schema.settings).sort(
         ([, a], [, b]) => (a.position ?? 0) - (b.position ?? 0),
       );
-      const gf: Record<string, FieldCfg[]> = {};
-      entries.forEach(([key, cfg]) => {
-        gf[key] = toArray(cfg);
-      });
-      setGroupFields(gf);
+      setGroupFields(Object.fromEntries(entries.map(([k, cfg]) => [k, toArray(cfg)])));
       setRootFields([]);
     } else {
       setRootFields(toArray({ fields: schema.settings }));
@@ -86,75 +88,106 @@ export default function DynamicYamlForm({ schema }: Props) {
    * Обработчик добавления нового поля из модалки.
    */
   const handleAdd = () => {
-    if (!draft.key || !draft.widget) return;
+    if (!draft.key || !draft.name) return;
     const cfg: FieldCfg = {
       key: draft.key!,
-      name: draft.name!,
-      widget: draft.widget as Widget,
-      options:
-        draft.widget === 'dropdown' && typeof draft.options === 'string'
-          ? draft.options.split(',')
-          : undefined,
+      name: draft.key!,
+      widget: 'input',
+      defaultValue: draft.name,
     };
     if (schema.switching) {
-      setGroupFields((prev) => ({
-        ...prev,
-        [targetGroup]: [...(prev[targetGroup] || []), cfg],
+      setGroupFields((p) => ({
+        ...p,
+        [targetGroup]: [...(p[targetGroup] || []), cfg],
       }));
     } else {
-      setRootFields((prev) => [...prev, cfg]);
+      setRootFields((p) => [...p, cfg]);
     }
-    setOpen(false);
+
+    /**
+     * добавляем в форму значение нового поля
+     */
+    form.setFieldsValue({ [cfg.key]: cfg.defaultValue });
     setDraft({});
+    setOpen(false);
   };
+  /**
+   * Удаление поля
+   */
+  const handleRemoveField = (groupKey: string, fieldKey: string) =>
+    setGroupFields((p) => ({
+      ...p,
+      [groupKey]: p[groupKey].filter((f) => f.key !== fieldKey),
+    }));
+
+  const handleRemoveRoot = (fieldKey: string) =>
+    setRootFields((p) => p.filter((f) => f.key !== fieldKey));
 
   return (
     <section className="dyf__root">
-      {schema.headline && (
-        <Title level={3} style={{ textDecoration: 'none' }}>
-          {schema.headline}
-        </Title>
-      )}
+      {schema.headline && <Title level={3}>{schema.headline}</Title>}
 
-      {schema.switching ? (
-        <SwitchingForm
-          groups={switchGroups}
-          fields={groupFields}
-          onAddClick={(key) => {
-            setTaskGroup(key);
-            setOpen(true);
-          }}
-        />
-      ) : (
-        <>
-          <Form layout="vertical">
-            {rootFields.map((f) => (
-              <FieldRenderer key={f.key} field={f} path={[]} />
-            ))}
+      <div className="dyf__layout">
+        <div className="dyf__form-col">
+          <Form form={form} layout="vertical">
+            {schema.switching ? (
+              <SwitchingForm
+                form={form}
+                groups={switchGroups}
+                fields={groupFields}
+                onAddClick={(key) => {
+                  setTaskGroup(key);
+                  setOpen(true);
+                }}
+                onRemoveField={handleRemoveField}
+              />
+            ) : (
+              <>
+                {rootFields.map((f) => (
+                  <FieldRenderer
+                    key={f.key}
+                    field={f}
+                    path={[]}
+                    onRemove={() => handleRemoveRoot(f.key)}
+                  />
+                ))}
+                <div className="dyf__btn-wrap">
+                  <Button
+                    type="dashed"
+                    onClick={() => {
+                      setTaskGroup('root');
+                      setOpen(true);
+                    }}
+                  >
+                    + Добавить поле
+                  </Button>
+                </div>
+              </>
+            )}
           </Form>
-          <div className="dyf__btn-wrap">
-            <Button
-              type="dashed"
-              onClick={() => {
-                setTaskGroup('root');
-                setOpen(true);
-              }}
-            >
-              + Добавить поле
-            </Button>
-          </div>
-        </>
-      )}
 
-      <AddFieldModal
-        open={open}
-        targetGroup={targetGroup}
-        groups={switchGroups}
-        draft={draft}
-        onChange={(upd) => setDraft((d) => ({ ...d, ...upd }))}
-        onAdd={handleAdd}
-        onClose={() => setOpen(false)}
-      />
+          <AddFieldModal
+            open={open}
+            targetGroup={targetGroup}
+            groups={switchGroups}
+            draft={draft}
+            onChange={(upd) => setDraft((d) => ({ ...d, ...upd }))}
+            onGroupChange={(g) => setTaskGroup(g)}
+            onAdd={handleAdd}
+            onClose={() => setOpen(false)}
+          />
+        </div>
+
+        <div className="dyf__table-col">
+          <FieldsTable
+            switching={!!schema.switching}
+            groups={switchGroups}
+            groupFields={groupFields}
+            rootFields={rootFields}
+            form={form}
+          />
+        </div>
+      </div>
     </section>
   );
 }

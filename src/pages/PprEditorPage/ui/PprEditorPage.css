@@ -23,13 +23,15 @@ body.dark .ppr-editor-card {
 
 .ppr-editor-card__controls {
   display: flex;
+  flex-wrap: wrap;
   gap: 24px;
   align-items: flex-start;
   margin-bottom: 24px;
 }
 
 .ppr-editor-card__controls-left {
-  flex: 0 0 650px;
+  flex: 1 1 320px;
+  min-width: 280px;
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -44,13 +46,15 @@ body.dark .ppr-editor-card {
 }
 
 .ppr-editor-card__controls-right {
-  flex: 1 1 auto;
+  flex: 1 1 320px;
+  min-width: 320px;
 }
 .ppr-editor-card__tabs {
-  width: 650px;
+  width: 100%;
   background: #fff;
   border-radius: 6px;
   overflow: hidden;
+  box-sizing: border-box;
 }
 body.dark .ppr-editor-card__tabs {
   background: var(--bg-header);

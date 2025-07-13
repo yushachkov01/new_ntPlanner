@@ -18,4 +18,5 @@ export interface FieldCfg {
   options?: string[];
   /** Вложенные поля для группы (widget === "group") */
   fields?: Record<string, FieldCfg>;
+  defaultValue?: string;
 }

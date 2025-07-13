@@ -1,5 +1,6 @@
 .dyf__root {
   padding: 16px;
+  background-color: var(--bg-page);
 }
 
 .dyf__columns {
@@ -18,31 +19,100 @@
   margin-bottom: 12px;
 }
 
-.dyf__group {
-  border: 1px solid #555;
-  padding: 12px;
+.dyf__root .ant-form-item {
+  width: 250px;
+  max-width: 250px;
   margin-bottom: 16px;
 }
 
-.field-group__row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16px;
-  margin-bottom: 12px;
-}
-
-.field-group__row .ant-form-item {
-  flex: 1 1 120px;
-  max-width: 250px;
-}
-
 .dyf__btn-wrap {
+  flex-basis: 100%;
+  margin-top: 8px;
   display: flex;
   justify-content: flex-start;
-  margin-top: 8px;
 }
 
-.dyf__add-btn {
-  width: 250px;
-  max-width: 250px;
+.ant-modal-content {
+  background-color: var(--modal-bg) !important;
+  color: var(--modal-text) !important;
+}
+.ant-modal-header {
+  background-color: var(--modal-header-bg) !important;
+}
+.ant-modal-title {
+  color: var(--text-primary) !important;
+}
+.ant-modal-close,
+.ant-modal-close-x {
+  color: var(--text-primary) !important;
+}
+.ant-form-item-label > label {
+  color: var(--modal-text) !important;
+}
+.ant-input,
+.ant-input-affix-wrapper,
+.ant-select-selector,
+.ant-radio-group,
+.ant-switch {
+  background-color: var(--status-empty-color) !important;
+  color: var(--modal-text) !important;
+}
+.ant-input::placeholder,
+.ant-select-selection-placeholder {
+  color: var(--field-placeholder) !important;
+}
+.ant-select-arrow,
+.ant-radio-wrapper {
+  color: var(--modal-text) !important;
+}
+.ant-modal-footer .ant-btn {
+  background-color: var(--modal-bg) !important;
+  color: var(--modal-text) !important;
+}
+body:not(.dark) .ant-btn:hover {
+  background-color: #fafafa !important;
+}
+body.dark .ant-btn:hover {
+  background-color: #454545 !important;
+}
+
+.dyf-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 16px;
+}
+
+.dyf-table th,
+.dyf-table td {
+  border: 1px solid #ccc;
+  padding: 8px;
+  text-align: center;
+}
+
+.dyf-table thead th {
+  background: #f5f5f5;
+  font-weight: 600;
+}
+
+.dyf__layout {
+  display: flex;
+  align-items: flex-start;
+  gap: 32px;
+}
+
+.dyf__form-col {
+  flex: 0 0 500px;
+}
+
+.dyf__table-col {
+  flex: 1;
+  overflow-x: auto;
+}
+
+body.dark .dyf-table thead th {
+  background-color: var(--bg-page);
+}
+
+body.dark .dyf__col h4 {
+  color: #fff !important;
 }
