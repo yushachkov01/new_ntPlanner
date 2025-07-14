@@ -1,6 +1,7 @@
 .dyf__root {
   padding: 16px;
   background-color: var(--bg-page);
+  margin-bottom: 20px;
 }
 
 .dyf__columns {
@@ -115,4 +116,20 @@ body.dark .dyf-table thead th {
 
 body.dark .dyf__col h4 {
   color: #fff !important;
+}
+.dyf__time-interval-modal {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+.dyf__time-interval-input {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  right: 10px;
+  top: 5px;
+}
+.tab-content--work__label {
+  color: #fff;
+  margin-bottom: 0.5rem;
 }

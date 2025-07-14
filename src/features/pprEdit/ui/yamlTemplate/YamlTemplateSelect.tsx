@@ -2,13 +2,13 @@
  * YamlTemplateSelect — компонент для выбора YAML-шаблона из MinIO
  */
 import { Select, Spin, Typography, Button } from 'antd';
-import yaml from 'js-yaml';
 import type { FC } from 'react';
 import { useEffect, useState } from 'react';
 
 import { executorStore } from '@/entities/executor/model/store/executorStore';
+import type { Template } from '@/entities/template/model/store/templateStore';
+import { useTemplateStore } from '@/entities/template/model/store/templateStore';
 import { userStore } from '@/entities/user/model/store/UserStore';
-import { listObjects, getObjectText } from '@/shared/minio/MinioClient';
 import AddExecutorModal from '@features/pprEdit/ui/AddExecutorModal/AddExecutorModal';
 import './YamlTemplateSelect.css';
 
@@ -23,10 +23,12 @@ export const YamlTemplateSelect: FC<{
   bucket: string;
   prefix?: string;
   value?: string;
-  onChange?: (tpl: any) => void;
+  onChange?: (tpl: Template) => void;
 }> = ({ bucket, prefix = '', value, onChange }) => {
+  /** получаем action и кеш из zustand */
+  const fetchTemplates = useTemplateStore((s) => s.fetchTemplates);
   /** Список загруженных шаблонов */
-  const [templates, setTemplates] = useState<any[]>([]);
+  const [templates, setTemplates] = useState<Template[]>([]);
   /** Флаг загрузки шаблонов */
   const [loading, setLoading] = useState(true);
   const { Text } = Typography;
@@ -44,24 +46,19 @@ export const YamlTemplateSelect: FC<{
    *  загрузка шаблонов с MinIO при монтировании
    */
   useEffect(() => {
+    let alive = true;
     (async () => {
       setLoading(true);
       try {
-        const objs = await listObjects(bucket, prefix);
-        const parsed = await Promise.all(
-          objs
-            .filter((o) => o.Key?.endsWith('.yaml'))
-            .map(async (o) => {
-              const key = o.Key!;
-              const raw = yaml.load(await getObjectText(bucket, key)) as any;
-              return { key, name: raw.name ?? key, raw };
-            }),
-        );
-        setTemplates(parsed);
+        const data = await fetchTemplates(bucket, prefix);
+        if (alive) setTemplates(data);
       } finally {
-        setLoading(false);
+        if (alive) setLoading(false);
       }
     })();
+    return () => {
+      alive = false;
+    };
   }, [bucket, prefix]);
   /**
    *  автоматически добавляем текущего пользователя как исполнителя

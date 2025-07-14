@@ -1,20 +1,22 @@
 /**
  * таблица полей
  */
-import { Form, Button, Typography } from 'antd';
+import { Form, Button, Typography, Select } from 'antd';
 import React, { useEffect, useState, useMemo } from 'react';
-
-import { toArray } from './helpers/toArray';
 
 import './DynamicYamlForm.css';
 import type { FieldCfg } from '@/features/pprEdit/model/types';
+import { TimeIntervalModal } from '@/features/pprEdit/ui/timePicker/TimeIntervalModal';
 import { AddFieldModal } from '@features/pprEdit/ui/DynamicYamlForm/AddFieldModal/AddFieldModal.tsx';
 import { FieldRenderer } from '@features/pprEdit/ui/DynamicYamlForm/FieldRenderer/FieldRenderer.tsx';
 import SwitchingForm from '@features/pprEdit/ui/DynamicYamlForm/SwitchingForm/SwitchingForm.tsx';
+import { PRESET_TIMES } from '@features/pprEdit/ui/PprEditorTabs/PprEditorTabs.tsx';
 
 import { FieldsTable } from '../FieldsTable/FieldsTable';
+import { toArray } from './helpers/toArray';
 
-const { Title } = Typography;
+const { Title, Text } = Typography;
+const { Option } = Select;
 
 interface Props {
   schema: {
@@ -53,6 +55,12 @@ export default function DynamicYamlForm({ schema }: Props) {
    *  state: ключ группы, в которую будет добавлено новое поле
    */
   const [targetGroup, setTaskGroup] = useState<string>('');
+
+  /**
+   * селект времени
+   */
+  const [interval, setInterval] = useState<string>('');
+  const [timeModalOpen, setTimeModalOpen] = useState(false);
 
   /**
    * При изменении schema разбираем settings:
@@ -129,8 +137,8 @@ export default function DynamicYamlForm({ schema }: Props) {
 
       <div className="dyf__layout">
         <div className="dyf__form-col">
-          <Form form={form} layout="vertical">
-            {schema.switching ? (
+          {schema.switching ? (
+            <>
               <SwitchingForm
                 form={form}
                 groups={switchGroups}
@@ -141,30 +149,64 @@ export default function DynamicYamlForm({ schema }: Props) {
                 }}
                 onRemoveField={handleRemoveField}
               />
-            ) : (
-              <>
-                {rootFields.map((f) => (
-                  <FieldRenderer
-                    key={f.key}
-                    field={f}
-                    path={[]}
-                    onRemove={() => handleRemoveRoot(f.key)}
-                  />
-                ))}
-                <div className="dyf__btn-wrap">
-                  <Button
-                    type="dashed"
-                    onClick={() => {
-                      setTaskGroup('root');
-                      setOpen(true);
-                    }}
-                  >
-                    + Добавить поле
-                  </Button>
-                </div>
-              </>
-            )}
-          </Form>
+              <div className="dyf__time-interval-modal" style={{ marginTop: 12 }}>
+                <Text className="tab-content--work__label">Время проведения работ:</Text>
+                <Select
+                  className="dyf__time-interval-input"
+                  style={{ width: 220, marginLeft: 8 }}
+                  value={interval || undefined}
+                  placeholder="Окно работ"
+                  onSelect={(val) => {
+                    if (val === '__custom__') setTimeModalOpen(true);
+                    else setInterval(val as string);
+                  }}
+                >
+                  {PRESET_TIMES.map((t) => (
+                    <Option key={t.value} value={t.value}>
+                      {t.label}
+                    </Option>
+                  ))}
+                </Select>
+              </div>
+            </>
+          ) : (
+            <Form form={form} layout="vertical">
+              {rootFields.map((f) => (
+                <FieldRenderer
+                  key={f.key}
+                  field={f}
+                  path={[]}
+                  onRemove={() => handleRemoveRoot(f.key)}
+                />
+              ))}
+              <div className="dyf__btn-wrap">
+                <Button
+                  type="dashed"
+                  onClick={() => {
+                    setTaskGroup('root');
+                    setOpen(true);
+                  }}
+                >
+                  + Добавить поле
+                </Button>
+                <Select
+                  style={{ width: 220, marginLeft: 12 }}
+                  value={interval || undefined}
+                  placeholder="Окно работ"
+                  onSelect={(val) => {
+                    if (val === '__custom__') setTimeModalOpen(true);
+                    else setInterval(val as string);
+                  }}
+                >
+                  {PRESET_TIMES.map((t) => (
+                    <Option key={t.value} value={t.value}>
+                      {t.label}
+                    </Option>
+                  ))}
+                </Select>
+              </div>
+            </Form>
+          )}
 
           <AddFieldModal
             open={open}
@@ -188,6 +230,14 @@ export default function DynamicYamlForm({ schema }: Props) {
           />
         </div>
       </div>
+      <TimeIntervalModal
+        open={timeModalOpen}
+        onCancel={() => setTimeModalOpen(false)}
+        onOk={(value) => {
+          setInterval(value);
+          setTimeModalOpen(false);
+        }}
+      />
     </section>
   );
 }

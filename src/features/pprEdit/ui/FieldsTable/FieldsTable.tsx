@@ -51,7 +51,10 @@ export const FieldsTable: React.FC<Props> = ({
   /** режим переключения: две колонки **/
   if (switching && groups.length === 2) {
     const [formGroup, toGroup] = groups;
-    const rows = Math.max(groupFields[formGroup.key]?.length || 0, groupFields[toGroup.key]?.length || 0);
+    const rows = Math.max(
+      groupFields[formGroup.key]?.length || 0,
+      groupFields[toGroup.key]?.length || 0,
+    );
 
     return (
       <table className="dyf-table">

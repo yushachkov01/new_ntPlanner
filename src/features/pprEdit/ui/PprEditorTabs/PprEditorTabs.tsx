@@ -17,7 +17,7 @@ import './PprEditorTabs.css';
 const { TabPane } = Tabs;
 const { Text, Link } = Typography;
 
-const PRESET_TIMES = [
+export const PRESET_TIMES = [
   { value: '23:00–06:00', label: 'Ночная смена 23:00 – 06:00' },
   { value: '00:00–08:00', label: 'Ночная смена 00:00 – 08:00' },
   { value: '09:00–18:00', label: 'День 09:00 – 18:00' },
@@ -26,9 +26,11 @@ const PRESET_TIMES = [
 
 interface Props {
   taskId: string;
+  /** Колбэк для передачи выбранного окна в родительский компонент */
+  onWorkTimeChange: (interval: { start: string; end: string }) => void;
 }
 
-const PprEditorTabs: React.FC<Props> = ({ taskId }) => {
+const PprEditorTabs: React.FC<Props> = ({ taskId, onWorkTimeChange }) => {
   /**
    *  Запрашиваем выбранную план-задачу по её id из zustand-стора
    */
@@ -62,29 +64,10 @@ const PprEditorTabs: React.FC<Props> = ({ taskId }) => {
    * Флаг-state: открыта ли модалка «Свой интервал…»
    */
   const [modalOpen, setModalOpen] = useState(false);
-  /**
-   * добавить исполнителя (если ещё нет в списке)
-   */
-  const addExec = (id: number) => {
-    const found = Object.values(executors)
-      .flat()
-      .find((e) => e.id === id);
-    if (found && !added.find((a) => a.id === id)) {
-      setAdded((prev) => [...prev, found]);
-      addToStore(found);
-    }
-  };
-  const delExec = (id: number) => {
-    setAdded((prev) => prev.filter((e) => e.id !== id));
-  };
-
-  /**
-   *  список опций Select c уникальными value
-   */
   const timeOptions = useMemo(() => {
-    const set = new Set(PRESET_TIMES.map((t) => t.value));
-    set.add(interval);
-    return Array.from(set).map((v) => {
+    const setVals = new Set(PRESET_TIMES.map((t) => t.value));
+    setVals.add(interval);
+    return Array.from(setVals).map((v) => {
       const preset = PRESET_TIMES.find((p) => p.value === v);
       return { value: v, label: preset?.label ?? v };
     });
@@ -95,6 +78,31 @@ const PprEditorTabs: React.FC<Props> = ({ taskId }) => {
     [task.equipment],
   );
   const [selectedEquip, setSelectedEquip] = useState<string[]>(equipmentItems);
+
+  /**
+   * добавить исполнителя
+   */
+  const addExec = (id: number) => {
+    const found = Object.values(executors)
+      .flat()
+      .find((e) => e.id === id);
+    if (found && !added.find((a) => a.id === id)) {
+      setAdded((prev) => [...prev, found]);
+      addToStore(found);
+    }
+  };
+  const delExec = (id: number) => setAdded((prev) => prev.filter((e) => e.id !== id));
+
+  /** при выборе селекта времени */
+  const handleTimeSelect = (val: string) => {
+    if (val === '__custom__') {
+      setModalOpen(true);
+    } else {
+      setInterval(val);
+      const [start, end] = (val as string).split('–');
+      onWorkTimeChange({ start, end });
+    }
+  };
 
   return (
     <>
@@ -123,13 +131,9 @@ const PprEditorTabs: React.FC<Props> = ({ taskId }) => {
               <p>Время проведения работ:</p>
               <Select
                 style={{ width: 200 }}
-                placeholder="Окно работ"
                 value={interval}
                 options={timeOptions}
-                onSelect={(val) => {
-                  if (val === '__custom__') setModalOpen(true);
-                  else setInterval(val as string);
-                }}
+                onSelect={handleTimeSelect}
               />
             </div>
           </div>
@@ -203,6 +207,8 @@ const PprEditorTabs: React.FC<Props> = ({ taskId }) => {
         onCancel={() => setModalOpen(false)}
         onOk={(value) => {
           setInterval(value);
+          const [start, end] = value.split('–');
+          onWorkTimeChange({ start, end });
           setModalOpen(false);
         }}
       />
