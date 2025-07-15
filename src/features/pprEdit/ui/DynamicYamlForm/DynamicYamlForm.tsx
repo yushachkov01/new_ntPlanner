@@ -1,7 +1,7 @@
 /**
  * таблица полей
  */
-import { Form, Button, Typography, Select } from 'antd';
+import { Form, Button, Typography, Select, message } from 'antd';
 import React, { useEffect, useState, useMemo } from 'react';
 
 import './DynamicYamlForm.css';
@@ -18,12 +18,23 @@ import { toArray } from './helpers/toArray';
 const { Title, Text } = Typography;
 const { Option } = Select;
 
+interface WindowInterval {
+  start: string;
+  end: string;
+}
+
 interface Props {
   schema: {
     headline?: string;
     switching?: boolean;
     settings: Record<string, any>;
   };
+  /** Колбэк: сообщает наружу выбранное окно работ2 */
+  onWorkTimeChange?: (interval: WindowInterval) => void;
+  /** Границы работ1 для валидации */
+  workWindow?: WindowInterval;
+  /** начальное значение для селекта */
+  initialInterval?: string;
 }
 
 /**
@@ -33,7 +44,12 @@ interface Props {
  * @param schema.switching — режим «переключения» (две колонки) или простой (одна колонка)
  * @param schema.settings — описание полей из YAML
  */
-export default function DynamicYamlForm({ schema }: Props) {
+export default function DynamicYamlForm({
+  schema,
+  onWorkTimeChange,
+  workWindow = { start: '00:00', end: '23:00' }, // значение по‑умолчанию
+  initialInterval,
+}: Props) {
   const [form] = Form.useForm();
   /**
    *  поля, сгруппированные по ключам
@@ -59,8 +75,9 @@ export default function DynamicYamlForm({ schema }: Props) {
   /**
    * селект времени
    */
-  const [interval, setInterval] = useState<string>('');
+  const [interval, setInterval] = useState<string>(initialInterval ?? '');
   const [timeModalOpen, setTimeModalOpen] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   /**
    * При изменении schema разбираем settings:
@@ -131,6 +148,33 @@ export default function DynamicYamlForm({ schema }: Props) {
   const handleRemoveRoot = (fieldKey: string) =>
     setRootFields((p) => p.filter((f) => f.key !== fieldKey));
 
+  /** Извлечь интервалы из строки вида "HH:mm–HH:mm" */
+  const extractTimes = (val: string): WindowInterval | null => {
+    const match = val.match(/(\d{2}:\d{2})\s*[–-]\s*(\d{2}:\d{2})/);
+    if (!match) return null;
+    return { start: match[1], end: match[2] };
+  };
+
+  /**
+   * Применить выбранный кастомный интервал.
+   * Валидирует относительно workWindow.start/end.
+   */
+  const applyInterval = (val: string) => {
+    const parsed = extractTimes(val);
+    if (!parsed) return;
+    /** Защита: валидируем только если передан workWindow */
+    if (parsed.start < workWindow.start || parsed.end > workWindow.end) {
+      message.error(
+        `Диапазон работ должен быть в пределах ${workWindow.start} – ${workWindow.end}`,
+      );
+      setErrorMsg(`Диапазон должен быть в пределах ${workWindow.start} – ${workWindow.end}`);
+      return;
+    }
+    setErrorMsg(null);
+    setInterval(val);
+    onWorkTimeChange?.(parsed);
+  };
+
   return (
     <section className="dyf__root">
       {schema.headline && <Title level={3}>{schema.headline}</Title>}
@@ -150,16 +194,15 @@ export default function DynamicYamlForm({ schema }: Props) {
                 onRemoveField={handleRemoveField}
               />
               <div className="dyf__time-interval-modal" style={{ marginTop: 12 }}>
-                <Text className="tab-content--work__label">Время проведения работ:</Text>
+                <Text className="tab-content--work__label">Время проведения работ2:</Text>
                 <Select
                   className="dyf__time-interval-input"
                   style={{ width: 220, marginLeft: 8 }}
                   value={interval || undefined}
                   placeholder="Окно работ"
-                  onSelect={(val) => {
-                    if (val === '__custom__') setTimeModalOpen(true);
-                    else setInterval(val as string);
-                  }}
+                  onSelect={(val) =>
+                    val === '__custom__' ? setTimeModalOpen(true) : applyInterval(val as string)
+                  }
                 >
                   {PRESET_TIMES.map((t) => (
                     <Option key={t.value} value={t.value}>
@@ -167,6 +210,11 @@ export default function DynamicYamlForm({ schema }: Props) {
                     </Option>
                   ))}
                 </Select>
+                {errorMsg && (
+                  <Text type="danger" style={{ marginTop: 8 }}>
+                    {errorMsg}
+                  </Text>
+                )}
               </div>
             </>
           ) : (
@@ -193,10 +241,9 @@ export default function DynamicYamlForm({ schema }: Props) {
                   style={{ width: 220, marginLeft: 12 }}
                   value={interval || undefined}
                   placeholder="Окно работ"
-                  onSelect={(val) => {
-                    if (val === '__custom__') setTimeModalOpen(true);
-                    else setInterval(val as string);
-                  }}
+                  onSelect={(val) =>
+                    val === '__custom__' ? setTimeModalOpen(true) : applyInterval(val as string)
+                  }
                 >
                   {PRESET_TIMES.map((t) => (
                     <Option key={t.value} value={t.value}>
@@ -204,6 +251,11 @@ export default function DynamicYamlForm({ schema }: Props) {
                     </Option>
                   ))}
                 </Select>
+                {errorMsg && (
+                  <Text type="danger" style={{ marginTop: 8 }}>
+                    {errorMsg}
+                  </Text>
+                )}
               </div>
             </Form>
           )}
@@ -213,7 +265,7 @@ export default function DynamicYamlForm({ schema }: Props) {
             targetGroup={targetGroup}
             groups={switchGroups}
             draft={draft}
-            onChange={(upd) => setDraft((d) => ({ ...d, ...upd }))}
+            onChange={(upd) => setDraft((draft) => ({ ...draft, ...upd }))}
             onGroupChange={(g) => setTaskGroup(g)}
             onAdd={handleAdd}
             onClose={() => setOpen(false)}
@@ -234,7 +286,7 @@ export default function DynamicYamlForm({ schema }: Props) {
         open={timeModalOpen}
         onCancel={() => setTimeModalOpen(false)}
         onOk={(value) => {
-          setInterval(value);
+          applyInterval(value);
           setTimeModalOpen(false);
         }}
       />

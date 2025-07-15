@@ -6,21 +6,30 @@ import TaskDetail from '@features/ppr/ui/TaskDetail/TaskDetail.tsx';
 import './PprPage.css';
 import { users } from '@features/ppr/data/users.ts';
 import { calcCoveredMap } from '@features/ppr/lib/calcCoveredMap.ts';
+interface WindowInterval {
+  start: string;
+  end: string;
+}
 
 interface PprPageProps {
   /** Окно показа таймлайна */
-  startTime?: string;
-  endTime?: string;
+  gridStart?: string;
+  gridEnd?: string;
+  highlightWindows?: WindowInterval[];
 }
 
 /**
  * PprPage — основная страница «Таймлайн»
  * Отвечает за:
- * - Отрисовку шкалы времени 00:00–23:00
+ * - Отрисовку шкалы времени 24 часа
  * - Отображение агрегированной строки и списка пользователей
  * - Управление состояниями раскрытия рядов и деталей задач
  */
-const PprPage: FC<PprPageProps> = ({ startTime = '00:00', endTime = '23:00' }) => {
+const PprPage: FC<PprPageProps> = ({
+  gridStart = '00:00',
+  gridEnd = '23:00',
+  highlightWindows = [],
+}) => {
   /** Показывать список пользователей */
   const [expandedUsers, setExpandedUsers] = useState(false);
   /** Отображать все задачи*/
@@ -31,13 +40,41 @@ const PprPage: FC<PprPageProps> = ({ startTime = '00:00', endTime = '23:00' }) =
   const [expandedTaskId, setExpandedTaskId] = useState<number | null>(null);
   /** Выбранный пользователь для показа его задач */
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
-  /**
-   * Собирает один общий ряд для всех задач за день
-   */
+  /** Общее число часов и массив меток часов */
+  const toMin = (time: string) => {
+    const [hh, mm] = time.split(':').map(Number);
+    return hh * 60 + mm;
+  };
+
+  /** Начало и конец окна в минутах */
+  const windowStartMin = toMin(gridStart);
+  let windowEndMin = toMin(gridEnd);
+
+  /** Если конец <= началу — считаем, что конец на следующий день */
+  if (windowEndMin <= windowStartMin) {
+    windowEndMin += 24 * 60;
+  }
+
+  const windowSpanMin = windowEndMin - windowStartMin;
+
+  const hourCount = Math.ceil(windowSpanMin / 60) + 1;
+  const hours = Array.from({ length: hourCount }, (_, i) =>
+    Math.floor(((windowStartMin + i * 60) % (24 * 60)) / 60),
+  );
+
+  /** «блоки» для каждого интервала */
+  const windowBlocks = highlightWindows.map((w, i) => ({
+    id: -1000 - i, //для теста, чтобы различить с моками
+    startTime: w.start,
+    endTime: w.end,
+    label: 'Окно работ',
+    status: 'info' as const,
+  }));
+
   const aggregatedRow = {
     id: 0,
     name: 'Весь день' as const,
-    blocks: users.flatMap((u) => u.blocks),
+    blocks: [...windowBlocks, ...users.flatMap((u) => u.blocks)],
   };
 
   /**
@@ -50,33 +87,19 @@ const PprPage: FC<PprPageProps> = ({ startTime = '00:00', endTime = '23:00' }) =
    */
   const coveredDict = useMemo(() => {
     const dict: Record<number, boolean> = {};
-    rowsData.forEach((r) => Object.assign(dict, calcCoveredMap(r.blocks)));
+    rowsData.forEach((rows) =>
+      Object.assign(dict, calcCoveredMap(rows.blocks.filter((block) => block.id >= 0))),
+    );
     return dict;
   }, [rowsData]);
-
-  /** Общее число часов и массив меток часов */
-  const toMin = (t: string) => {
-    const [h, m] = t.split(':').map(Number);
-    return h * 60 + m;
-  };
-  const windowStartMin = toMin(startTime);
-  const windowEndMin = toMin(endTime);
-  /** если по ошибке end < start, поправим */
-  const sanitizedEndMin = Math.max(windowEndMin, windowStartMin + 1);
-  const windowSpanMin = sanitizedEndMin - windowStartMin;
-
-  const hourCount = Math.ceil(windowSpanMin / 60) + 1;
-  const hours = Array.from({ length: hourCount }, (_, i) => {
-    const totalMin = windowStartMin + i * 60;
-    return Math.floor((totalMin % (24 * 60)) / 60);
-  });
-
   /**
    * По blockId получает имя пользователя или "Неизвестен"
    */
-  const getUserNameByBlockId = (blockId: number): string => {
-    const u = users.find((user) => user.blocks.some((b) => b.id === blockId));
-    return u ? u.name : 'Неизвестен';
+  const getUserNameByBlockId = (blockId: number) => {
+    const user = users.find((currentUser) =>
+      currentUser.blocks.some((block) => block.id === blockId),
+    );
+    return user?.name ?? 'Неизвестен';
   };
 
   /**
@@ -95,7 +118,7 @@ const PprPage: FC<PprPageProps> = ({ startTime = '00:00', endTime = '23:00' }) =
   return (
     <div className="ppr-page">
       <h2 className="ppr-page__title">
-        Таймлайн ({startTime}–{endTime})
+        Таймлайн ({gridStart}–{gridEnd})
       </h2>
       <div className="timeline-container">
         <div
@@ -186,6 +209,7 @@ const PprPage: FC<PprPageProps> = ({ startTime = '00:00', endTime = '23:00' }) =
                     key={block.id}
                     block={block}
                     totalWindowMin={windowSpanMin}
+                    windowStartMin={windowStartMin}
                     expandedBlockId={expandedBlockId}
                     setExpandedBlockId={setExpandedBlockId}
                     onDoubleClickBlock={handleBlockDouble}

@@ -10,6 +10,13 @@ import PprPage from '@pages/PprPage';
 import LocationOverview from '@widgets/layout/LocationOverview/ui/LocationOverview';
 
 import { Button } from 'antd';
+import { WorkTimeStore } from '@entities/workTimeStore/model/store/workTimeStore.tsx';
+
+interface WindowInterval {
+  start: string;
+  end: string;
+}
+
 /**
  * PprEditorPage — обёртка над фичами редактора ППР для задачи
  */
@@ -21,15 +28,22 @@ const PprEditorPage: React.FC = () => {
 
   /** Для шаблонов */
   const [templates, setTemplates] = useState<Template[]>([]);
-  const addTemplate = () => setTemplates((list) => [...list, {} as Template]);
+  const {
+    timelineWindow,
+    highlightWindows,
+    setTimelineWindow,
+    updateHighlightWindow,
+    appendHighlightWindow,
+  } = WorkTimeStore();
+  /**
+   * Добавляет новый YAML‑шаблон в список и сразу создаёт к нему слот подсветки
+   */
+  const addTemplate = () => {
+    setTemplates((list) => [...list, {} as Template]);
+    appendHighlightWindow();
+  };
   const changeTemplate = (i: number, t: Template) =>
     setTemplates((list) => list.map((x, idx) => (idx === i ? t : x)));
-
-  /** текущее окно работ */
-  const [workInterval, setWorkInterval] = useState<{ start: string; end: string }>({
-    start: '00:00',
-    end: '23:00',
-  });
 
   return (
     <section className="ppr-editor-card">
@@ -54,34 +68,60 @@ const PprEditorPage: React.FC = () => {
         <div className="ppr-editor-card__controls-right">
           {selectedTaskId && (
             <div className="ppr-editor-card__tabs">
-              <PprEditorTabs taskId={selectedTaskId} onWorkTimeChange={setWorkInterval} />
+              <PprEditorTabs taskId={selectedTaskId} onWorkTimeChange={setTimelineWindow} />
             </div>
           )}
         </div>
       </div>
-      {tpl?.raw && <DynamicYamlForm schema={tpl.raw} />}
-      <div>
-        {selectedTaskId &&
-          templates.map((t, idx) => (
-            <React.Fragment key={idx}>
-              <YamlTemplateSelect
-                bucket="yamls"
-                value={t.key}
-                onChange={(tpl) => changeTemplate(idx, tpl)}
-              />
-              {t.raw && <DynamicYamlForm schema={t.raw} />}
-            </React.Fragment>
-          ))}
+      {tpl?.raw && (
+        <DynamicYamlForm
+          schema={tpl.raw}
+          workWindow={timelineWindow}
+          initialInterval={
+            highlightWindows[0]
+              ? `${highlightWindows[0].start}–${highlightWindows[0].end}`
+              : undefined
+          }
+          onWorkTimeChange={(interval) => updateHighlightWindow(0, interval)}
+        />
+      )}
 
-        {selectedTaskId && (
-          <Button type="dashed" onClick={addTemplate}>
-            Добавить шаблон
-          </Button>
-        )}
-      </div>
+      {templates.map((t, idx) => (
+        <React.Fragment key={idx}>
+          <YamlTemplateSelect
+            bucket="yamls"
+            value={t.key}
+            onChange={(tpl) => changeTemplate(idx, tpl)}
+          />
+          {t.raw && (
+            <DynamicYamlForm
+              schema={t.raw}
+              workWindow={timelineWindow}
+              initialInterval={
+                highlightWindows[idx + 1]
+                  ? `${highlightWindows[idx + 1]!.start}–${highlightWindows[idx + 1]!.end}`
+                  : undefined
+              }
+              onWorkTimeChange={(interval) => updateHighlightWindow(idx + 1, interval)}
+            />
+          )}
+        </React.Fragment>
+      ))}
+
+      {selectedTaskId && (
+        <Button type="dashed" onClick={addTemplate}>
+          Добавить шаблон
+        </Button>
+      )}
       {selectedTaskId && (
         <div className="ppr-editor-card__timeline">
-          <PprPage startTime={workInterval.start} endTime={workInterval.end} />
+          <PprPage
+            gridStart={timelineWindow.start}
+            gridEnd={timelineWindow.end}
+            highlightWindows={highlightWindows.filter(
+              (window): window is WindowInterval => window !== null,
+            )}
+          />
         </div>
       )}
     </section>

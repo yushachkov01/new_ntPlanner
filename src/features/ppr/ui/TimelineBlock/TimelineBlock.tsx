@@ -1,3 +1,6 @@
+/**
+ * Блок на таймлайне: рассчитывает позицию, обрабатывает клики и popover
+ */
 import type { FC } from 'react';
 import { useState, useEffect, useRef } from 'react';
 
@@ -10,6 +13,7 @@ import type { TimelineBlockProps } from '@features/ppr/model/types.ts';
  *
  * @param block – данные блока (время, метка, статус, id)
  * @param totalWindowMin – общая длительность шкалы в минутах
+ * @param windowStartMin – смещение начала окна (в минутах от 00:00), используется для расчёта
  * @param expandedBlockId – id блока, для которого открыт popover
  * @param setExpandedBlockId – функция установки id открытого блока
  * @param onDoubleClickBlock – колбэк на двойной клик по блоку
@@ -18,6 +22,7 @@ import type { TimelineBlockProps } from '@features/ppr/model/types.ts';
 const TimelineBlock: FC<TimelineBlockProps> = ({
   block,
   totalWindowMin,
+  windowStartMin,
   expandedBlockId,
   setExpandedBlockId,
   onDoubleClickBlock,
@@ -28,25 +33,39 @@ const TimelineBlock: FC<TimelineBlockProps> = ({
    */
   const [showPopover, setShowPopover] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-
   /**
-   * Разбор startTime и endTime в часы и минуты
+   * Закрываем popover, если открыт блок с другим id
    */
-  const [sH, sM] = block.startTime.split(':').map(Number);
-  const [eH, eM] = block.endTime.split(':').map(Number);
+  useEffect(() => {
+    if (expandedBlockId !== block.id) setShowPopover(false);
+  }, [expandedBlockId, block.id]);
 
-  /**
-   * Перевод времени начала и конца в минуты от начала окна
-   */
-  const startMin = sH * 60 + sM;
-  const endMin = eH * 60 + eM;
+  /** Перевод "HH:mm" → минуты */
+  const toMin = (t: string) => {
+    const [h, m] = t.split(':').map(Number);
+    return h * 60 + m;
+  };
 
-  /**
-   * Вычисление позиции и ширины блока в процентах от общей длительности
-   */
-  const leftPercent = (startMin / totalWindowMin) * 100;
-  const widthPercent = ((endMin - startMin) / totalWindowMin) * 100;
+  /** абсолютные минуты начала/конца */
+  let absStart = toMin(block.startTime);
+  let absEnd = toMin(block.endTime);
 
+  /** учёт перехода через полночь */
+  if (absEnd <= absStart) absEnd += 1440;
+
+  /** выравнивание относительно окна */
+  if (absStart < windowStartMin) absStart += 1440;
+  if (absEnd < windowStartMin) absEnd += 1440;
+
+  const relStart = absStart - windowStartMin;
+  const relEnd = absEnd - windowStartMin;
+
+  /** если блок вне видимой области — не рендерим */
+  if (relEnd <= 0 || relStart >= totalWindowMin) return null;
+
+  const leftPercent = (Math.max(0, relStart) / totalWindowMin) * 100;
+  const widthPercent =
+    ((Math.min(totalWindowMin, relEnd) - Math.max(0, relStart)) / totalWindowMin) * 100;
   /**
    * Обработчик клика: переключает popover
    * и обновляет expandedBlockId
@@ -58,38 +77,16 @@ const TimelineBlock: FC<TimelineBlockProps> = ({
       return next;
     });
   };
-
-  /**
-   * Закрываем popover, если открыт блок с другим id
-   */
-  useEffect(() => {
-    if (expandedBlockId !== block.id) {
-      setShowPopover(false);
-    }
-  }, [expandedBlockId, block.id]);
-
   /**
    * Обработчик двойного клика передаёт id блока вверх
    */
   const handleDoubleClick = () => onDoubleClickBlock(block.id);
 
-  /**
-   * Получаем CSS-класс по статусу блока
-   */
-  const statusClass = getStatusClass(block.status ?? 'info');
-
-  /**
-   * Определяем, активен ли этот блок (popover открыт)
-   */
-  const isActive = expandedBlockId === block.id;
-
-  /**
-   * Собираем итоговый список CSS-классов
-   */
+  /** итоговый класс по статусу и покрытию */
   const className = [
     'timeline-block',
-    statusClass,
-    isActive ? 'timeline-block--active' : '',
+    getStatusClass(block.status ?? 'info'),
+    expandedBlockId === block.id ? 'timeline-block--active' : '',
     isCovered ? 'timeline-block--covered' : '',
   ].join(' ');
 
@@ -101,7 +98,7 @@ const TimelineBlock: FC<TimelineBlockProps> = ({
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
     >
-      <div className="timeline-block__hover-text">{endMin - startMin} мин</div>
+      <div className="timeline-block__hover-text">{absEnd - absStart}мин</div>
       {showPopover && (
         <div className="timeline-block__popover">
           <div className="popover-arrow" />

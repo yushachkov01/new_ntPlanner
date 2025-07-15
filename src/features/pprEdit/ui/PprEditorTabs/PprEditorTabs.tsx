@@ -128,7 +128,7 @@ const PprEditorTabs: React.FC<Props> = ({ taskId, onWorkTimeChange }) => {
               </div>
             </div>
             <div className="tab-content__right">
-              <p>Время проведения работ:</p>
+              <p>Время проведения работ1:</p>
               <Select
                 style={{ width: 200 }}
                 value={interval}

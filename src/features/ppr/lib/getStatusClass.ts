@@ -10,6 +10,8 @@ export function getStatusClass(status: Status): string {
       return 'timeline-block--ontime';
     case 'overtime':
       return 'timeline-block--overtime';
+    case 'window':
+      return 'timeline-block--window';
     default:
       return '';
   }

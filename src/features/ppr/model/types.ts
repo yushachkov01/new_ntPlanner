@@ -7,7 +7,8 @@ export type Status =
   | 'overtime'
   | 'pending_manual'
   | 'pending_auto'
-  | 'info';
+  | 'info'
+  | 'window';
 
 /**
  * Подшаг в составе блока с идентификатором и меткой
