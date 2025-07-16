@@ -5,10 +5,10 @@ import { Select, Spin, Typography, Button } from 'antd';
 import type { FC } from 'react';
 import { useEffect, useState } from 'react';
 
+import type { Executor } from '@/entities/executor/model/store/executorStore';
 import { executorStore } from '@/entities/executor/model/store/executorStore';
 import type { Template } from '@/entities/template/model/store/templateStore';
 import { useTemplateStore } from '@/entities/template/model/store/templateStore';
-import { userStore } from '@/entities/user/model/store/UserStore';
 import AddExecutorModal from '@features/pprEdit/ui/AddExecutorModal/AddExecutorModal';
 import './YamlTemplateSelect.css';
 
@@ -18,13 +18,22 @@ import './YamlTemplateSelect.css';
  * @param prefix  префикс для фильтрации ключей
  * @param value   выбранный ключ шаблона
  * @param onChange callback при выборе шаблона
+ * @param executors — список исполнителей для этого шаблона
+ * @param addExecutor — колбэк добавления исполнителя
+ * @param removeExecutor — колбэк удаления исполнителя
  */
 export const YamlTemplateSelect: FC<{
   bucket: string;
   prefix?: string;
   value?: string;
   onChange?: (tpl: Template) => void;
-}> = ({ bucket, prefix = '', value, onChange }) => {
+  /** список исполнителей для этого шаблона */
+  executors?: Executor[];
+  /** колбэк добавления исполнителя */
+  addExecutor?: (e: Executor) => void;
+  /** колбэк удаления исполнителя */
+  removeExecutor?: (id: number) => void;
+}> = ({ bucket, prefix = '', value, onChange, executors = [], addExecutor, removeExecutor }) => {
   /** получаем action и кеш из zustand */
   const fetchTemplates = useTemplateStore((s) => s.fetchTemplates);
   /** Список загруженных шаблонов */
@@ -32,16 +41,10 @@ export const YamlTemplateSelect: FC<{
   /** Флаг загрузки шаблонов */
   const [loading, setLoading] = useState(true);
   const { Text } = Typography;
-  /** Текущий пользователь — первый исполнитель */
-  const user = userStore((s) => s.user);
-  /** Список добавленных исполнителей */
-  const added = executorStore((s) => s.addedExecutors);
-  /** Функция добавления исполнителя */
-  const addExecutor = executorStore((s) => s.addExecutor);
-  /** Функция удаления исполнителя */
-  const removeExecutor = executorStore((s) => s.removeExecutor);
   /** Флаг открытия модалки выбора исполнителя */
   const [modalOpen, setModalOpen] = useState(false);
+  /** Список добавленных исполнителей */
+  const added = executors;
   /**
    *  загрузка шаблонов с MinIO при монтировании
    */
@@ -60,15 +63,6 @@ export const YamlTemplateSelect: FC<{
       alive = false;
     };
   }, [bucket, prefix]);
-  /**
-   *  автоматически добавляем текущего пользователя как исполнителя
-   * при первом получении информации о user
-   */
-  useEffect(() => {
-    if (user && !added.find((e) => e.id === user.id)) {
-      addExecutor({ id: user.id, role: user.role, author: user.author });
-    }
-  }, [user]);
 
   if (loading) return <Spin />;
 
@@ -97,7 +91,7 @@ export const YamlTemplateSelect: FC<{
             className="yaml-executor-remove-btn"
             danger
             type="default"
-            onClick={() => removeExecutor(e.id)}
+            onClick={() => removeExecutor?.(e.id)}
           >
             Удалить
           </Button>

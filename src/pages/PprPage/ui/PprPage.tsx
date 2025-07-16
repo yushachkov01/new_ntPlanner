@@ -1,14 +1,27 @@
 import type { FC } from 'react';
-import { useState, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 
-import TimelineBlock from '@features/ppr/ui/TimelineBlock/TimelineBlock.tsx';
-import TaskDetail from '@features/ppr/ui/TaskDetail/TaskDetail.tsx';
+import TaskDetail from '@features/ppr/ui/TaskDetail/TaskDetail';
+import TimelineBlock from '@features/ppr/ui/TimelineBlock/TimelineBlock';
 import './PprPage.css';
-import { users } from '@features/ppr/data/users.ts';
-import { calcCoveredMap } from '@features/ppr/lib/calcCoveredMap.ts';
+import { calcCoveredMap } from '@features/ppr/lib/calcCoveredMap';
+
 interface WindowInterval {
   start: string;
   end: string;
+}
+interface Executor {
+  id: number;
+  author: string;
+  role: string;
+  blocks?: Array<{
+    id: number;
+    label: string;
+    startTime: string;
+    endTime: string;
+    status?: string;
+    subSteps?: string[];
+  }>;
 }
 
 interface PprPageProps {
@@ -16,6 +29,11 @@ interface PprPageProps {
   gridStart?: string;
   gridEnd?: string;
   highlightWindows?: WindowInterval[];
+  executors: Executor[];
+  /** Ключи шаблонов по порядку (основной + доп.) */
+  templateKeys: string[];
+  /** колбэк: клик по блоку → передаёт индекс шаблона */
+  onBlockClick: (templateIndex: number) => void;
 }
 
 /**
@@ -29,6 +47,9 @@ const PprPage: FC<PprPageProps> = ({
   gridStart = '00:00',
   gridEnd = '23:00',
   highlightWindows = [],
+  executors,
+  templateKeys,
+  onBlockClick,
 }) => {
   /** Показывать список пользователей */
   const [expandedUsers, setExpandedUsers] = useState(false);
@@ -63,44 +84,45 @@ const PprPage: FC<PprPageProps> = ({
   );
 
   /** «блоки» для каждого интервала */
-  const windowBlocks = highlightWindows.map((w, i) => ({
-    id: -1000 - i, //для теста, чтобы различить с моками
-    startTime: w.start,
-    endTime: w.end,
-    label: 'Окно работ',
+  const windowBlocks = highlightWindows.map((window, index) => ({
+    id: -1000 - index, //для теста, чтобы различить с моками
+    startTime: window.start,
+    endTime: window.end,
+    label: templateKeys[index] ?? 'Окно работ',
     status: 'info' as const,
   }));
 
   const aggregatedRow = {
     id: 0,
     name: 'Весь день' as const,
-    blocks: [...windowBlocks, ...users.flatMap((u) => u.blocks)],
+    blocks: [...windowBlocks, ...executors.flatMap((user) => user.blocks || [])],
   };
 
   /**
    * Генерирует массив строк для рендеринга (агрегат + пользователи)
    */
-  const rowsData = [aggregatedRow, ...(expandedUsers ? users : [])];
+  const rowsData = [aggregatedRow, ...(expandedUsers ? executors : [])];
 
   /**
    * Строит словарь перекрытых блоков { [blockId]: true }
    */
   const coveredDict = useMemo(() => {
-    const dict: Record<number, boolean> = {};
-    rowsData.forEach((rows) =>
-      Object.assign(dict, calcCoveredMap(rows.blocks.filter((block) => block.id >= 0))),
-    );
-    return dict;
+    const coveredBlocksMap: Record<number, boolean> = {};
+    rowsData.forEach((rows) => {
+      const blocks = rows.blocks ?? [];
+      Object.assign(
+        coveredBlocksMap,
+        calcCoveredMap(blocks.filter((coveredBlocksMap) => coveredBlocksMap.id >= 0)),
+      );
+    });
+    return coveredBlocksMap;
   }, [rowsData]);
   /**
    * По blockId получает имя пользователя или "Неизвестен"
    */
-  const getUserNameByBlockId = (blockId: number) => {
-    const user = users.find((currentUser) =>
-      currentUser.blocks.some((block) => block.id === blockId),
-    );
-    return user?.name ?? 'Неизвестен';
-  };
+  const getUserNameByBlockId = (blockId: number) =>
+    executors.find((user) => user.blocks?.some((block) => block.id === blockId))?.author ??
+    'Неизвестен';
 
   /**
    * Переключает выделение блока для подробного просмотра
@@ -112,7 +134,7 @@ const PprPage: FC<PprPageProps> = ({
    */
   const taskDetailData = useMemo(() => {
     if (expandedTaskId == null) return null;
-    return users.flatMap((u) => u.blocks).find((b) => b.id === expandedTaskId) ?? null;
+    return executors.flatMap((u) => u.blocks || []).find((b) => b.id === expandedTaskId) ?? null;
   }, [expandedTaskId]);
 
   return (
@@ -134,8 +156,8 @@ const PprPage: FC<PprPageProps> = ({
           ))}
         </div>
         <div className="timeline-body">
-          {rowsData.map((row) => (
-            <div key={row.id} className="timeline-row">
+          {rowsData.map((row, templateIndex) => (
+            <div key={`${row.id}-${templateIndex}`} className="timeline-row">
               <div className="timeline-row__icon-cell">
                 {row.id === 0 ? (
                   <div
@@ -147,7 +169,7 @@ const PprPage: FC<PprPageProps> = ({
                       setExpandedTaskId(null);
                     }}
                   >
-                    {users.slice(0, 2).map((u, i) => (
+                    {executors.slice(0, 2).map((u, i) => (
                       <div
                         key={u.id}
                         className="avatar-combined__circle"
@@ -156,12 +178,12 @@ const PprPage: FC<PprPageProps> = ({
                         <span className="avatar-icon">👤</span>
                       </div>
                     ))}
-                    {users.length > 2 && (
+                    {executors.length > 2 && (
                       <div
                         className="avatar-combined__circle avatar-combined__more"
                         style={{ left: `1.5rem` }}
                       >
-                        +{users.length - 2}
+                        +{executors.length - 2}
                       </div>
                     )}
                   </div>
@@ -177,7 +199,7 @@ const PprPage: FC<PprPageProps> = ({
                     <div className="avatar-single">
                       <span className="avatar-icon">👤</span>
                     </div>
-                    <div className="avatar-name">{row.name.split(' ')[0]}</div>
+                    <div className="avatar-name">{row.author}</div>
                   </div>
                 )}
               </div>
@@ -199,12 +221,12 @@ const PprPage: FC<PprPageProps> = ({
               </div>
               <div
                 className="timeline-row__blocks"
-                style={{ gridTemplateColumns: `repeat(${hourCount}, 1fr)` }}
+                style={{ gridTemplateColumns: `repeat(${hourCount},1fr)` }}
               >
                 {hours.map((_, i) => (
                   <div key={i} className="timeline-row__grid-cell" />
                 ))}
-                {row.blocks.map((block) => (
+                {(row.blocks ?? []).map((block) => (
                   <TimelineBlock
                     key={block.id}
                     block={block}
@@ -214,6 +236,7 @@ const PprPage: FC<PprPageProps> = ({
                     setExpandedBlockId={setExpandedBlockId}
                     onDoubleClickBlock={handleBlockDouble}
                     isCovered={!!coveredDict[block.id]}
+                    onClick={() => onBlockClick(templateIndex)}
                   />
                 ))}
               </div>
@@ -223,8 +246,8 @@ const PprPage: FC<PprPageProps> = ({
       </div>
       {showAllTasks && (
         <div className="all-tasks-container">
-          {users
-            .flatMap((u) => u.blocks)
+          {executors
+            .flatMap((u) => u.blocks || [])
             .map((b) => (
               <TaskDetail key={b.id} {...b} onClose={() => {}} />
             ))}
@@ -232,9 +255,9 @@ const PprPage: FC<PprPageProps> = ({
       )}
       {selectedUserId != null && (
         <div className="user-tasks-container">
-          {users
+          {executors
             .find((u) => u.id === selectedUserId)!
-            .blocks.map((b) => (
+            .blocks!.map((b) => (
               <TaskDetail key={b.id} {...b} onClose={() => {}} />
             ))}
         </div>

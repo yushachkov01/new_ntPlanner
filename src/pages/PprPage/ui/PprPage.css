@@ -19,6 +19,23 @@ ppr-page {
   z-index: 1;
 }
 
+.avatar-with-name {
+  display: flex;
+  align-items: center;
+}
+
+.avatar-single {
+  flex-shrink: 0;
+}
+
+.avatar-icon {
+  font-size: 1.5rem;
+}
+
+.avatar-name {
+  margin-left: 0.75rem;
+}
+
 .timeline-block {
   position: absolute;
   top: 0.4rem;
@@ -60,7 +77,7 @@ ppr-page {
   background-color: var(--bg-header, #f9f9f9);
   border-bottom: 1px solid #e0e0e0;
   align-items: center;
-  height: 2.5rem;
+  height: 60px;
 }
 
 .timeline-header__hour {
