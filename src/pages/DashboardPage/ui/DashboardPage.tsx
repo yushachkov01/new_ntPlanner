@@ -5,7 +5,7 @@ import { Suspense } from 'react';
 import { ColumnSettings } from '@/features/dashboard/ui/ColumnSettings';
 import { DateFilter } from '@/features/dashboard/ui/DateFilter';
 import { TabSwitcher } from '@/features/dashboard/ui/TabSwitcher';
-import { useDashboardData } from '@features/dashboard/model/useDashboardData';
+import { dashboardData } from '@features/dashboard/model/dashboardData.ts';
 import WorkTable from '@widgets/WorkTable/ui/WorkTable';
 import './DashboardPage.css';
 
@@ -28,7 +28,7 @@ const DashboardInner: FC = () => {
       toggleColsVisible,
       setVisibleCols,
     },
-  } = useDashboardData();
+  } = dashboardData();
 
   return (
     <Layout className="dashboard-page">

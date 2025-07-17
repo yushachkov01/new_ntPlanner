@@ -2,7 +2,7 @@ import { Select, Spin } from 'antd';
 import type { FC } from 'react';
 import { useEffect } from 'react';
 
-import { usePlannedTaskStore } from '@entities/PlannedTask/model/store/plannedTaskStore.ts';
+import { plannedTaskStore } from '@entities/PlannedTask/model/store/plannedTaskStore.ts';
 
 interface Props {
   value?: string;
@@ -10,7 +10,7 @@ interface Props {
 }
 
 export const PlannedTaskDropdown: FC<Props> = ({ value, onChange }) => {
-  const { tasks, load } = usePlannedTaskStore();
+  const { tasks, load } = plannedTaskStore();
 
   useEffect(() => {
     if (tasks.length === 0) load();

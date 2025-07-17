@@ -7,7 +7,7 @@ import { workStore } from '@entities/work/model/store/WorkStore.ts';
 import type { TabKey, DashboardState } from './types.ts';
 import { ALL_COLUMNS } from './types.ts';
 
-export function useDashboardData() {
+export function dashboardData() {
   const works = workStore((s) => s.works);
   const loading = workStore((s) => s.loading);
 

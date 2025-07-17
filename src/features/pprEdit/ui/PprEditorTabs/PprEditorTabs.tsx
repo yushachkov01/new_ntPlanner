@@ -8,7 +8,7 @@ import React, { useState, useMemo } from 'react';
 
 import type { Executor } from '@/entities/executor/model/store/executorStore';
 import { executorStore } from '@/entities/executor/model/store/executorStore';
-import { PlannedTaskStore } from '@/entities/PlannedTask/model/store/plannedTaskStore';
+import { plannedTaskStore } from '@/entities/PlannedTask/model/store/plannedTaskStore';
 import { userStore } from '@/entities/user/model/store/UserStore';
 import AddExecutorModal from '@/features/pprEdit/ui/AddExecutorModal/AddExecutorModal';
 import { TimeIntervalModal } from '@/features/pprEdit/ui/timePicker/TimeIntervalModal';
@@ -34,7 +34,7 @@ const PprEditorTabs: React.FC<Props> = ({ taskId, onWorkTimeChange }) => {
   /**
    *  Запрашиваем выбранную план-задачу по её id из zustand-стора
    */
-  const task = PlannedTaskStore((s) => s.tasks.find((t) => t.id === taskId));
+  const task = plannedTaskStore((s) => s.tasks.find((t) => t.id === taskId));
   /**
    *  Берём текущего залогиненного пользователя
    */

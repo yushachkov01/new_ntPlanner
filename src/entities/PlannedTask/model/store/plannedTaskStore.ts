@@ -14,7 +14,7 @@ interface State {
   load: () => Promise<void>;
 }
 
-export const usePlannedTaskStore = create<State>((set) => ({
+export const plannedTaskStore = create<State>((set) => ({
   tasks: [],
   async load() {
     const rows = await api.fetchPlannedTasks();

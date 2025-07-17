@@ -38,7 +38,7 @@ export const useTemplateStore = create<State>((set, get) => ({
   loading: new Set(),
 
   async fetchTemplates(bucket, prefix = "") {
-    const cacheKey = ${bucket}/${prefix};
+    const cacheKey = `${bucket}/${prefix}`;
 
     /**  Если в кэше уже есть данные — возвращаем их сразу */
     const cached = get().cache.get(cacheKey);
@@ -61,7 +61,6 @@ export const useTemplateStore = create<State>((set, get) => ({
 
     /**  Выполняем новую загрузку шаблонов */
     try {
-      /** отмечаем, что загрузка запущена */
       set((s) => ({ loading: new Set(s.loading).add(cacheKey) }));
 
       const objs = await listObjects(bucket, prefix);
