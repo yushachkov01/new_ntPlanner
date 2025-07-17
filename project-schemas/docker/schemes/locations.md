@@ -1,3 +1,4 @@
+```mermaid
 classDiagram
 class Location {
 id
@@ -15,3 +16,4 @@ street
         street = "ул. Доватора, 50"
     }
 
+```

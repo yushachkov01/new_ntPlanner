@@ -5,9 +5,10 @@
  *  При повторном запросе возвращает данные из кэша или ждёт завершения текущей загрузки
  */
 
-import { create } from "zustand";
-import { listObjects, getObjectText } from "@/shared/minio/MinioClient";
-import { parseYaml } from "@/shared/lib/yamlUtils/yamlUtils";
+import { create } from 'zustand';
+
+import { parseYaml } from '@/shared/lib/yamlUtils/yamlUtils';
+import { listObjects, getObjectText } from '@/shared/minio/MinioClient';
 
 export interface Template {
   key: string;
@@ -34,10 +35,10 @@ interface State {
 }
 
 export const useTemplateStore = create<State>((set, get) => ({
-  cache:   new Map(),
+  cache: new Map(),
   loading: new Set(),
 
-  async fetchTemplates(bucket, prefix = "") {
+  async fetchTemplates(bucket, prefix = '') {
     const cacheKey = `${bucket}/${prefix}`;
 
     /**  Если в кэше уже есть данные — возвращаем их сразу */
@@ -48,13 +49,13 @@ export const useTemplateStore = create<State>((set, get) => ({
     if (get().loading.has(cacheKey)) {
       return await new Promise<Template[]>((resolve) => {
         const unsub = useTemplateStore.subscribe(
-            (s) => s.cache.get(cacheKey),
-            (value) => {
-              if (value) {
-                unsub();
-                resolve(value);
-              }
-            },
+          (s) => s.cache.get(cacheKey),
+          (value) => {
+            if (value) {
+              unsub();
+              resolve(value);
+            }
+          },
         );
       });
     }
@@ -67,7 +68,7 @@ export const useTemplateStore = create<State>((set, get) => ({
       const templates: Template[] = [];
 
       for (const o of objs) {
-        if (!o.Key?.endsWith(".yaml")) continue;
+        if (!o.Key?.endsWith('.yaml')) continue;
         const key = o.Key!;
         const text = await getObjectText(bucket, key);
         const { data, error } = parseYaml(text);
@@ -78,7 +79,7 @@ export const useTemplateStore = create<State>((set, get) => ({
         templates.push({
           key,
           name: (data as any)?.name ?? key,
-          raw:  data,
+          raw: data,
         });
       }
 

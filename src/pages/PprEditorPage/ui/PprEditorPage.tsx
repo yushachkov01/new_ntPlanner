@@ -3,6 +3,7 @@ import React, { useEffect, useState } from 'react';
 import './PprEditorPage.css';
 import type { Executor } from '@entities/executor/model/store/executorStore.ts';
 import { userStore } from '@entities/user/model/store/UserStore.ts';
+import { WorkTimeStore } from '@entities/workTime/model/store/workTimeStore.tsx';
 import DynamicYamlForm from '@features/pprEdit/ui/DynamicYamlForm/DynamicYamlForm';
 import { PlannedTaskDropdown } from '@features/pprEdit/ui/PlannedTaskDropdown/PlannedTaskDropdown';
 import PprEditorTabs from '@features/pprEdit/ui/PprEditorTabs/PprEditorTabs';
@@ -12,7 +13,6 @@ import PprPage from '@pages/PprPage';
 import LocationOverview from '@widgets/layout/LocationOverview/ui/LocationOverview';
 
 import { Button } from 'antd';
-import { WorkTimeStore } from '@entities/workTime/model/store/workTimeStore.tsx';
 
 interface WindowInterval {
   start: string;
@@ -116,39 +116,39 @@ const PprEditorPage: React.FC = () => {
    * используется в PprPage для отрисовки таймлайна
    */
   const executorsWithBlocks: Executor[] = Object.values(
-      executorsByTemplate
-          .flatMap((execList, tplIdx) =>
-              execList.map((exec) => ({
-                exec,
-                tplIdx,
-              })),
-          )
-          .reduce<Record<number, { id: number; author: string; role: string; blocks: any[] }>>(
-              (acc, { exec, tplIdx }) => {
-                const key = exec.id;
-                if (!acc[key]) {
-                  acc[key] = {
-                    id: exec.id,
-                    author: exec.author,
-                    role: exec.role,
-                    blocks: [],
-                  };
-                }
+    executorsByTemplate
+      .flatMap((execList, tplIdx) =>
+        execList.map((exec) => ({
+          exec,
+          tplIdx,
+        })),
+      )
+      .reduce<Record<number, { id: number; author: string; role: string; blocks: any[] }>>(
+        (acc, { exec, tplIdx }) => {
+          const key = exec.id;
+          if (!acc[key]) {
+            acc[key] = {
+              id: exec.id,
+              author: exec.author,
+              role: exec.role,
+              blocks: [],
+            };
+          }
 
-                const currentWindow = highlightWindows[tplIdx];
-                if (currentWindow) {
-                  acc[key].blocks.push({
-                    id: exec.id * 1000 + tplIdx,
-                    startTime: currentWindow.start,
-                    endTime: currentWindow.end,
-                    label: templateKeys[tplIdx],
-                    status: 'info',
-                  });
-                }
-                return acc;
-              },
-              {},
-          ),
+          const currentWindow = highlightWindows[tplIdx];
+          if (currentWindow) {
+            acc[key].blocks.push({
+              id: exec.id * 1000 + tplIdx,
+              startTime: currentWindow.start,
+              endTime: currentWindow.end,
+              label: templateKeys[tplIdx],
+              status: 'info',
+            });
+          }
+          return acc;
+        },
+        {},
+      ),
   );
 
   return (

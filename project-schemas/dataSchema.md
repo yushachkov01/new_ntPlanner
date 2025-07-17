@@ -5,19 +5,19 @@ classDiagram
 direction LR
 
     class Role {
-        id 
+        id
         user_id
-        role 
+        role
         author
     }
 
     class workPlan {
         id
-        role 
+        role
         author
-        provider 
-        branch 
-        city 
+        provider
+        branch
+        city
     }
 
     class cardWork {
@@ -25,39 +25,39 @@ direction LR
         timeWork
         rm text
         rd text
-        project 
-        description 
+        project
+        description
     }
 
     class networkEquipment {
         id
-        equipment 
+        equipment
     }
 
     class Executor {
         id
-        planned_work_id 
+        planned_work_id
         executor
     }
 
     class WorkTemplate {
-        id 
-        name 
-        description 
-        roles 
+        id
+        name
+        description
+        roles
         author
-        uiFlags 
-        stages 
+        uiFlags
+        stages
     }
 
     class TemplateArg {
-        id 
-        arg_name 
-        label 
-        required 
-        is_array 
-        widget 
-        validation 
+        id
+        arg_name
+        label
+        required
+        is_array
+        widget
+        validation
         position
     }
 
@@ -66,23 +66,23 @@ direction LR
     }
 
     class PlannedWorks {
-        id 
-        template_id 
-        description 
+        id
+        template_id
+        description
         executor
     }
 
     class PlannedWorkParam {
-        +planned_work_id 
-        arg_name 
-        arg_value 
+        +planned_work_id
+        arg_name
+        arg_value
     }
 
     class Site {
-        id 
-        address 
-        region 
-        contact 
+        id
+        address
+        region
+        contact
     }
 
     MinIO --|> YamlLoader : reads from

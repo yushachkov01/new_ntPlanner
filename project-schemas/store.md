@@ -5,38 +5,38 @@ classDiagram
     direction LR
     class RoleStore {
         <<zustand>>
-        id 
+        id
         user_id
-        role 
+        role
         author
     }
 
     class workPlanStore {
         <<zustand>>
         id
-        role 
+        role
         author
-        provider 
-        branch 
-        city 
+        provider
+        branch
+        city
     }
 
     class cardWorkStore {
         <<zustand>>
         id
-        ppr_id 
+        ppr_id
         timeWork
         rm text
         rd text
-        project 
-        description 
+        project
+        description
     }
     %% Оборудование
     class networkEquipmentStore {
         <<zustand>>
         id
 
-        equipment 
+        equipment
     }
 %% Исполнители
     class ExecutorStore {
@@ -48,51 +48,51 @@ classDiagram
     %% ===== библиотека шаблонов =====
     class WorkTemplateStore {
         <<zustand>>
-        id 
-        name 
-        description 
-        roles 
+        id
+        name
+        description
+        roles
         author
-        uiFlags 
-        stages 
+        uiFlags
+        stages
     }
 
     class TemplateArgStore {
         <<zustand>>
-        id 
-        arg_name 
-        label 
-        required 
-        is_array 
-        widget 
-        validation 
+        id
+        arg_name
+        label
+        required
+        is_array
+        widget
+        validation
         position
     }
 
 
         class PlannedWorksStore {
         <<zustand>>
-        id 
-        template_id 
-        description 
+        id
+        template_id
+        description
         executor
     }
 
     class PlannedWorkParamStore {
         <<zustand>>
-        +planned_work_id 
-        arg_name 
-        arg_value 
+        +planned_work_id
+        arg_name
+        arg_value
     }
-    
+
     %% ===== справочники =====
     class UserStore {
         <<zustand>>
-        id 
-        fullname 
-        email 
-        phone 
-        avatar_url 
+        id
+        fullname
+        email
+        phone
+        avatar_url
     }
 
 

@@ -1,3 +1,4 @@
+```mermaid
 classDiagram
 class PlannedTask {
 id
@@ -49,3 +50,4 @@ equipment
     PlannedTask <|-- Task2
     PlannedTask <|-- Task3
     PlannedTask <|-- Task1
+```

@@ -1,3 +1,4 @@
+```mermaid
 classDiagram
 class Role {
 id
@@ -10,3 +11,4 @@ author
     Ivanov  : role = "Сетевой инженер"
     Ivanov  : author = "Иванов А.А."
 
+```
