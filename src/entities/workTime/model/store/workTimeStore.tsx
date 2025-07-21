@@ -26,6 +26,7 @@ interface WorkTimeState {
   updateHighlightWindow: (idx: number, wi: WindowInterval | null) => void;
   /** Добавить пустой слот под новую подсветку */
   appendHighlightWindow: () => void;
+  setHighlightWindows: (windows: (WindowInterval | null)[]) => void;
 }
 
 export const WorkTimeStore = create<WorkTimeState>((set) => ({
@@ -42,6 +43,7 @@ export const WorkTimeStore = create<WorkTimeState>((set) => ({
       arr[idx] = wi;
       return { highlightWindows: arr };
     }),
+  setHighlightWindows: (windows: (WindowInterval | null)[]) => set({ highlightWindows: windows }),
 
   appendHighlightWindow: () =>
     set((state) => ({ highlightWindows: [...state.highlightWindows, null] })),

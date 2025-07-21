@@ -1,5 +1,5 @@
-query FetchLocation {
-  locations(limit: 1) {
+query fetchLocation {
+  locations {
     provider
     branch
     city

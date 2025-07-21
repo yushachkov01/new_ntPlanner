@@ -1,283 +1,276 @@
-import {
-  UploadOutlined,
-  FilePdfOutlined,
-  FileExcelOutlined,
-  FileWordOutlined,
-  FileImageOutlined,
-  CheckCircleOutlined,
-} from '@ant-design/icons';
-import { Modal, Upload, Button, Input, message } from 'antd';
+import { Button, Input, InputNumber, Select, Form, Typography, Table } from 'antd';
 import type { FC } from 'react';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 
+import type { StageField } from '@/entities/template/model/store/templateStore';
+import { executorStore } from '@entities/executor/model/store/executorStore';
+import { userStore } from '@entities/user/model/store/UserStore';
+import type { TaskDetailProps } from '@features/ppr/model/types';
+import type { ConfigFile as BaseConfigFile } from '@features/ppr/ui/ConfigUploader/ConfigUploader';
+import ConfigUploader from '@features/ppr/ui/ConfigUploader/ConfigUploader';
+import AddExecutorModal from '@features/pprEdit/ui/AddExecutorModal/AddExecutorModal';
 import './TaskDetail.css';
-import { ALLOWED_UPLOAD_TYPES } from '@features/ppr/lib/constants.ts';
-import { getDesc } from '@features/ppr/lib/getDesc.ts';
-import type { TaskDetailProps, UploadedFile } from '@features/ppr/model/types.ts';
 
-const TaskDetail: FC<TaskDetailProps> = ({
-  id,
+const { Text } = Typography;
+
+/**
+ * Расширяем базовый файл конфига, добавляя время и автора загрузки
+ */
+interface ConfigFile extends BaseConfigFile {
+  uploadedAt: string;
+  uploadedBy: string;
+}
+
+/**
+ * Свойства компонента TaskDetail
+ */
+interface Props extends TaskDetailProps {
+  stageKeys?: string[];
+  stagesField?: Record<string, StageField>;
+  onTimerChange?: (stageKey: string, newTimer: number) => void;
+}
+
+/**
+ * Детальная форма задачи:
+ * отображение этапов, исполнителей, формы полей и конфигов,
+ * а также обработка готовности и загрузки файлов.
+ */
+const TaskDetail: FC<Props> = ({
   label,
   startTime,
   endTime,
-  performer,
-  status = 'info',
-  subSteps,
+  stageKeys = [],
+  stagesField = {},
   onClose,
-  onMarkDone,
+  onTimerChange,
 }) => {
-  /**
-   * время начала и конца в часы и минуты, вычисляем длительность в минутах
-   */
-  const [sH, sM] = startTime.split(':').map(Number);
-  const [eH, eM] = endTime.split(':').map(Number);
-  const duration = eH * 60 + eM - (sH * 60 + sM);
-  const needsUpload = status === 'done';
-  const [isModalVisible, setIsModalVisible] = useState(false);
+  /** Текущий пользователь */
+  const currentUser = userStore((state) => state.user)!;
+  /** Словарь всех исполнителей из стора */
+  const executorMap = executorStore((state) => state.executors);
+  /** Плоский массив исполнителей */
+  const allExecutors = useMemo(() => Object.values(executorMap).flat(), [executorMap]);
+
+  /** Инициализируем отображение исполнителей по этапам */
+  const initialExecutorsByStage: Record<string, number[]> = {};
+  stageKeys.forEach((stageKey) => {
+    initialExecutorsByStage[stageKey] = [currentUser.id];
+  });
+  const [executorsByStage, setExecutorsByStage] = useState(initialExecutorsByStage);
+
+  /** Состояние для открытия модального выбора исполнителя */
+  const [modalStageKey, setModalStageKey] = useState<string | null>(null);
+  /** Список конфигураций с метаданными */
+  const [configs, setConfigs] = useState<ConfigFile[]>([]);
+  /** Расчёт длительности задачи в минутах */
+  const [startHour, startMinute] = startTime.split(':').map(Number);
+  const [endHour, endMinute] = endTime.split(':').map(Number);
+  const durationMinutes = endHour * 60 + endMinute - (startHour * 60 + startMinute);
+
+  /** Список этапов с их данными для рендера */
+  const orderedStages = useMemo(
+    () =>
+      stageKeys
+        .map((stageKey) => ({ key: stageKey, meta: stagesField[stageKey] }))
+        .filter((entry): entry is { key: string; meta: StageField } => !!entry.meta),
+    [stageKeys, stagesField],
+  );
+
+  /** Колонки таблицы конфигов */
+  const columns = [
+    {
+      dataIndex: 'name',
+      key: 'name',
+      render: (fileName: string) => <span>{fileName}</span>,
+    },
+    {
+      key: 'info',
+      render: (_unused: any, record: ConfigFile) => (
+        <Text type="secondary">{`Загружено ${record.uploadedAt} (${record.uploadedBy})`}</Text>
+      ),
+    },
+    {
+      key: 'actions',
+      width: 140,
+      render: (_unused: any, record: ConfigFile) => (
+        <div style={{ display: 'flex', gap: 8 }}>
+          <Button
+            size="small"
+            danger
+            onClick={() =>
+              setConfigs((previousConfigs) =>
+                previousConfigs.filter((config) => config.uid !== record.uid),
+              )
+            }
+          >
+            Удалить
+          </Button>
+          <Button size="small" type="primary" onClick={() => window.open(record.url, '_blank')}>
+            Посмотреть
+          </Button>
+        </div>
+      ),
+    },
+  ];
 
   /**
-   * Список выбранных файлов для загрузки
+   * Обработка изменения списка загруженных конфигов:
+   * добавляем дату и автора загрузки
    */
-  const [fileList, setFileList] = useState<any[]>([]);
-
-  /**
-   * Описание работы, введённое пользователем
-   */
-  const [workDescription, setWorkDescription] = useState('');
-
-  /**
-   * Флаг завершения задачи в пользовательском интерфейсе
-   */
-  const [isCompleted, setIsCompleted] = useState(false);
-
-  /**
-   * Объект загруженного файла с name, type и url
-   */
-  const [uploadedFile, setUploadedFile] = useState<UploadedFile | null>(null);
-
-  /**
-   * Флаг отображения подэтапов
-   */
-  const [showSubs, setShowSubs] = useState(false);
-
-  const beforeUpload = (file: File) => {
-    if (!ALLOWED_UPLOAD_TYPES.includes(file.type)) {
-      message.error('Разрешённые форматы: JPEG, PNG, PDF, DOC/DOCX, XLS/XLSX');
-      return Upload.LIST_IGNORE;
-    }
-    return false;
+  const handleConfigChange = (files: BaseConfigFile[]) => {
+    const currentTimestamp = new Date().toLocaleString();
+    setConfigs((previousConfigs) => {
+      const updatedConfigs = [...previousConfigs];
+      files.forEach((file) => {
+        if (!updatedConfigs.find((cfg) => cfg.uid === file.uid)) {
+          updatedConfigs.push({
+            ...file,
+            uploadedAt: currentTimestamp,
+            uploadedBy: currentUser.author,
+          });
+        }
+      });
+      return updatedConfigs;
+    });
   };
 
-  /**
-   * Обновление списка файлов при выборе в компоненте Upload
-   */
-  const handleUploadChange = (info: any) => {
-    let newFileList = [...info.fileList];
-    newFileList = newFileList.slice(-1);
-    setFileList(newFileList);
+  /** Удаление исполнителя из этапа */
+  const handleRemoveExecutor = (stageKey: string, executorId: number) => {
+    setExecutorsByStage((previousMap) => ({
+      ...previousMap,
+      [stageKey]: previousMap[stageKey].filter((id) => id !== executorId),
+    }));
   };
 
-  /**
-   * Открывает модальное окно
-   */
-  const openModal = () => setIsModalVisible(true);
-
-  /**
-   * Закрывает модальное окно без действий
-   */
-  const handleCancel = () => setIsModalVisible(false);
-
-  /**
-   * Обработчик подтверждения: проверяет наличие файла и описания,
-   * создаёт объект UploadedFile, закрывает окно и вызывает onMarkDone
-   */
-  const handleOk = () => {
-    if (fileList.length === 0) {
-      message.error('Пожалуйста, прикрепите файл выполненной работы.');
-      return;
-    }
-    if (!workDescription.trim()) {
-      message.error('Пожалуйста, опишите выполненную работу.');
-      return;
-    }
-    const file = fileList[0].originFileObj as File;
-    const objectUrl = URL.createObjectURL(file);
-    const uploaded: UploadedFile = {
-      name: file.name,
-      type: file.type,
-      url: objectUrl,
-    };
-    setUploadedFile(uploaded);
-    setIsCompleted(true);
-    setIsModalVisible(false);
-
-    if (onMarkDone) {
-      onMarkDone(id, uploaded, workDescription);
-    }
+  /** Добавление исполнителя в этап после выбора в модале */
+  const handleSelectExecutor = (executorId: number) => {
+    if (!modalStageKey) return;
+    setExecutorsByStage((previousMap) => ({
+      ...previousMap,
+      [modalStageKey]: Array.from(new Set([...(previousMap[modalStageKey] || []), executorId])),
+    }));
+    setModalStageKey(null);
   };
 
-  /**
-   * Рендер блока загруженного файла с иконкой и описанием работы
-   */
-  const renderFileWithDescription = () => {
-    if (!uploadedFile) return null;
-    const { type, name, url } = uploadedFile;
-    const getIcon = () => {
-      if (type.startsWith('image/'))
-        return <FileImageOutlined className="task-detail__file-icon" />;
-      if (type.includes('pdf')) return <FilePdfOutlined className="task-detail__file-icon" />;
-      if (type.includes('msword') || type.includes('wordprocessingml'))
-        return <FileWordOutlined className="task-detail__file-icon" />;
-      if (type.includes('excel') || type.includes('spreadsheetml'))
-        return <FileExcelOutlined className="task-detail__file-icon" />;
-      return <FilePdfOutlined className="task-detail__file-icon" />;
-    };
-    return (
-      <div className="task-detail__uploaded-wrapper">
-        <a href={url} download={name} className="task-detail__file-link">
-          {getIcon()}
-          <span className="task-detail__file-name">{name}</span>
-        </a>
-        <div className="task-detail__file-description">{workDescription}</div>
-      </div>
-    );
-  };
-
-  /**
-   * Основной JSX-разметка компонента TaskDetail
-   */
   return (
     <div className="task-detail">
       <div className="task-detail__header">
         <div className="task-detail__title">{label}</div>
         <div className="task-detail__controls">
           <div className="task-detail__time-text">
-            ⏱ {startTime} – {endTime} | {duration} мин
+            ⏱ {startTime}–{endTime} | {durationMinutes} мин
           </div>
-          <button className="task-detail__toggle-full" onClick={() => {}}>
-            <span className="toggle-arrow up" />
-          </button>
           <button className="task-detail__close" onClick={onClose}>
             ✕
           </button>
         </div>
       </div>
 
-      {/* Основной контент */}
-      <div className="task-detail__body--fullinfo">
-        <div className="task-detail__main-row">
-          <div className="task-detail__left-col">
-            <div className="task-detail__type-row">
-              <strong>Тип работы:</strong>
-              <span className="task-detail__type-value">Физика</span>
-            </div>
-            <div className="task-detail__perform-duration-row">
-              <div className="task-detail__performer">
-                <strong>Исполнитель:</strong>
-                <span className="task-detail__performer-value">{performer}</span>
-              </div>
-              <div className="task-detail__duration">
-                <strong>Продолжительность:</strong>
-                <span className="task-detail__duration-value">{duration} мин</span>
-              </div>
-            </div>
-          </div>
-          <div className="task-detail__right-col">
-            <div className="task-detail__description-full">
-              <strong>Описание задачи:</strong>
-              <div className="task-detail__description-text">{getDesc(id, label)}</div>
-            </div>
-          </div>
-        </div>
+      {orderedStages.map(({ key, meta }) => {
+        const assignedExecutors = (executorsByStage[key] || [])
+          .map((executorId) =>
+            executorId === currentUser.id
+              ? currentUser
+              : allExecutors.find((exec) => exec.id === executorId),
+          )
+          .filter((user): user is typeof currentUser => !!user && user.role === meta.engineer);
 
-        <div className="task-detail__info-row task-detail__button-row">
-          {!isCompleted && needsUpload ? (
-            <button className="task-detail__done-btn" onClick={openModal}>
-              Готово
-            </button>
-          ) : isCompleted ? (
-            <div className="task-detail__completed-block">
-              <CheckCircleOutlined style={{ color: '#52c41a', marginRight: 8 }} />
-              Выполнено
-            </div>
-          ) : null}
-        </div>
-
-        {isCompleted && renderFileWithDescription()}
-      </div>
-
-      {subSteps && subSteps.length > 0 && (
-        <div className="task-detail__substeps-toggle">
-          <button className="show-substeps-btn" onClick={() => setShowSubs((prev) => !prev)}>
-            {showSubs ? 'Скрыть подэтапы' : 'Показать подэтапы'}
-          </button>
-        </div>
-      )}
-
-      {showSubs && subSteps && (
-        <div className="task-detail__substeps">
-          {subSteps.map((ss, i) => {
-            const ml = i * 1.5;
-            return (
-              <div
-                key={ss.id}
-                className={`subtask-item level-${i + 1}`}
-                style={{
-                  marginLeft: `${ml}rem`,
-                  width: `calc(100% - ${ml}rem)`,
-                }}
-              >
-                <div className="subtask-item__left">
-                  <span className="subtask-item__icon">○</span>
-                  <span className="subtask-item__label">“{ss.label}”</span>
+        return (
+          <section key={key} className="task-detail__stage">
+            <p className="task-detail__header">{meta.description}</p>
+            {assignedExecutors.map((user) => (
+              <div key={user.id} className="yaml-executor-row">
+                <div className="yaml-executor-field">
+                  <Text className="executor-role">{user.role}</Text>
+                  <input className="yaml-executor-input" value={user.author} readOnly />
                 </div>
-                <div className="subtask-item__right">
-                  <button className="subtask-item__comments">Комментарии…</button>
-                </div>
+                <Button
+                  danger
+                  type="default"
+                  className="yaml-executor-remove-btn"
+                  onClick={() => handleRemoveExecutor(key, user.id)}
+                >
+                  Удалить
+                </Button>
               </div>
-            );
-          })}
-        </div>
-      )}
+            ))}
 
-      <Modal
-        title="Прикрепить фото/файл и описание"
-        open={isModalVisible}
-        onCancel={handleCancel}
-        width={600}
-        footer={[
-          <Button key="cancel" onClick={handleCancel}>
-            Отмена
-          </Button>,
-          <Button key="submit" type="primary" onClick={handleOk}>
-            Отправить
-          </Button>,
-        ]}
-      >
-        <div style={{ marginBottom: 16 }}>
-          <strong>Прикрепите файл (JPEG, PNG, PDF, DOC/DOCX, XLS/XLSX):</strong>
-          <Upload
-            accept=".jpeg,.jpg,.png,.pdf,.doc,.docx,.xls,.xlsx"
-            beforeUpload={beforeUpload}
-            fileList={fileList}
-            onChange={handleUploadChange}
-            multiple={false}
-            maxCount={1}
-            showUploadList={{ showRemoveIcon: true }}
-          >
-            <Button icon={<UploadOutlined />}>Выбрать файл</Button>
-          </Upload>
-        </div>
-        <div>
-          <strong>Описание выполненной работы:</strong>
-          <Input.TextArea
-            rows={4}
-            value={workDescription}
-            onChange={(e) => setWorkDescription(e.target.value)}
-            placeholder="Опишите, что было сделано"
-          />
-        </div>
-      </Modal>
+            <div style={{ display: 'flex', gap: 20 }}>
+              <div style={{ flex: '0 0 360px' }}>
+                <div className="yaml-executor-add-row">
+                  <Button onClick={() => setModalStageKey(key)}>Добавить исполнителя</Button>
+                </div>
+                <Form
+                  layout="vertical"
+                  initialValues={{
+                    timer: meta.timer_default,
+                    ...Object.fromEntries(
+                      Object.values(meta.fields ?? {}).map((field) => [
+                        field.key,
+                        field.defaultValue,
+                      ]),
+                    ),
+                  }}
+                  onValuesChange={(changedValues) => {
+                    if (changedValues.timer != null) {
+                      onTimerChange?.(key, changedValues.timer as number);
+                    }
+                  }}
+                >
+                  <Form.Item
+                    label="Таймер (мин)"
+                    name="timer"
+                    rules={[{ required: true, type: 'number', min: 1 }]}
+                  >
+                    <InputNumber style={{ width: '100%' }} />
+                  </Form.Item>
+                  {meta.fields &&
+                    Object.values(meta.fields)
+                      .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
+                      .map((field) => (
+                        <Form.Item key={field.key} label={field.name} name={field.key}>
+                          {field.widget === 'dropdown' ? (
+                            <Select
+                              placeholder="Выберите…"
+                              options={(field.options ?? []).map((option) => ({
+                                value: option,
+                                label: option,
+                              }))}
+                            />
+                          ) : (
+                            <Input />
+                          )}
+                        </Form.Item>
+                      ))}
+                </Form>
+              </div>
+
+              <div style={{ flex: 1 }}>
+                <div style={{ textAlign: 'center', marginBottom: 8 }}>
+                  <b>Конфигурации</b>
+                </div>
+                <ConfigUploader onChange={handleConfigChange} />
+                <Table
+                  dataSource={configs}
+                  columns={columns}
+                  rowKey="uid"
+                  pagination={false}
+                  size="small"
+                  bordered
+                  locale={{ emptyText: 'Нет данных' }}
+                />
+              </div>
+            </div>
+
+            <AddExecutorModal
+              open={modalStageKey === key}
+              onClose={() => setModalStageKey(null)}
+              onSelect={handleSelectExecutor}
+              filterRoles={[meta.engineer]}
+            />
+          </section>
+        );
+      })}
     </div>
   );
 };

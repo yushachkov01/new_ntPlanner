@@ -2,7 +2,7 @@
  * Блок на таймлайне: рассчитывает позицию, обрабатывает клики и popover
  */
 import type { FC } from 'react';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 
 import './TimelineBlock.css';
 import { getStatusClass } from '@features/ppr/lib/getStatusClass.ts';
@@ -67,20 +67,20 @@ const TimelineBlock: FC<TimelineBlockProps> = ({
   const widthPercent =
     ((Math.min(totalWindowMin, relEnd) - Math.max(0, relStart)) / totalWindowMin) * 100;
   /**
-   * Обработчик клика: переключает popover
-   * и обновляет expandedBlockId
+   * При показе popover, свернуть детальную карточку
    */
-  const handleClick = () => {
-    setShowPopover((prev) => {
-      const next = !prev;
-      setExpandedBlockId(next ? block.id : null);
-      return next;
-    });
-  };
+  const handleClick = useCallback(() => {
+    setShowPopover((prev) => !prev);
+    if (expandedBlockId) setExpandedBlockId(null);
+  }, [expandedBlockId, setExpandedBlockId]);
   /**
-   * Обработчик двойного клика передаёт id блока вверх
+   * Двойной клик — popover прячется, разворачивается детальная панель
    */
-  const handleDoubleClick = () => onDoubleClickBlock(block.id);
+  const handleDoubleClick = useCallback(() => {
+    setShowPopover(false);
+    setExpandedBlockId(block.id);
+    onDoubleClickBlock(block.id);
+  }, [block.id, onDoubleClickBlock, setExpandedBlockId]);
 
   /** итоговый класс по статусу и покрытию */
   const className = [
@@ -99,13 +99,14 @@ const TimelineBlock: FC<TimelineBlockProps> = ({
       onDoubleClick={handleDoubleClick}
     >
       <div className="timeline-block__hover-text">{absEnd - absStart}мин</div>
+
       {showPopover && (
         <div className="timeline-block__popover">
           <div className="popover-arrow" />
           <div className="popover-content">
             <div className="popover-title">“{block.label}”</div>
             <div className="popover-time">
-              {block.startTime} – {block.endTime}
+              {block.startTime}–{block.endTime}
               {block.status === 'pending_manual' && ' (Ручной, не выполнен)'}
               {block.status === 'pending_auto' && ' (Авто, не выполнен)'}
               {block.status === 'info' && ' (Инфо, не выполнено)'}

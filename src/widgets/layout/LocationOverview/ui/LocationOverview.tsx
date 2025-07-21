@@ -18,21 +18,28 @@ const LocationOverview: FC = () => {
    */
 
   useEffect(() => {
-    if (!location) load();
+    if (!location) {
+      load();
+    }
   }, [location, load]);
+  /** Пока location отсутствует, не рендерим ничего */
   if (!location) return null;
   /**
    *  формируем url для Я.Карт
    */
   const { provider, branch, city, street } = location;
+  /** Формируем строку для Яндекс Карт */
   const query = encodeURIComponent(`${city}, ${street}`);
   const yandexUrl = `https://yandex.ru/maps/?text=${query}`;
 
   return (
     <div className="location-overview">
-      {provider} <span className="sep">›</span>
-      {branch} <span className="sep">›</span>
-      {city} <span className="sep">›</span>
+      <span className="location-part">{provider}</span>
+      <span className="sep">›</span>
+      <span className="location-part">{branch}</span>
+      <span className="sep">›</span>
+      <span className="location-part">{city}</span>
+      <span className="sep">›</span>
       <a href={yandexUrl} target="_blank" rel="noopener noreferrer" className="location-link">
         {street}
       </a>

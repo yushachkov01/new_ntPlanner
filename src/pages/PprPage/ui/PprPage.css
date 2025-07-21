@@ -36,6 +36,36 @@ ppr-page {
   margin-left: 0.75rem;
 }
 
+.template-frame {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border: 3px solid var(--blue-4, #4c8bf5);
+  border-radius: 6px;
+  background: transparent;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.template-frame:hover {
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.template-frame:hover::after {
+  content: attr(title);
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(0, 0, 0, 0.85);
+  color: #fff;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  white-space: nowrap;
+  font-size: 0.75rem;
+  z-index: 20;
+}
+
 .timeline-block {
   position: absolute;
   top: 0.4rem;

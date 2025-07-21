@@ -1,14 +1,13 @@
 /**
  * вкладки: «Карта работ», «Сетевое оборудование», «Исполнители»
  */
-
-import { PlusOutlined, UserOutlined, CloseOutlined } from '@ant-design/icons';
+import { UserOutlined } from '@ant-design/icons';
 import { Tabs, Select, Typography, Checkbox, Button } from 'antd';
 import React, { useState, useMemo } from 'react';
 
 import type { Executor } from '@/entities/executor/model/store/executorStore';
 import { executorStore } from '@/entities/executor/model/store/executorStore';
-import { plannedTaskStore } from '@/entities/PlannedTask/model/store/plannedTaskStore';
+import { PlannedTaskStore } from '@/entities/PlannedTask/model/store/plannedTaskStore';
 import { userStore } from '@/entities/user/model/store/UserStore';
 import AddExecutorModal from '@/features/pprEdit/ui/AddExecutorModal/AddExecutorModal';
 import { TimeIntervalModal } from '@/features/pprEdit/ui/timePicker/TimeIntervalModal';
@@ -17,6 +16,7 @@ import './PprEditorTabs.css';
 const { TabPane } = Tabs;
 const { Text, Link } = Typography;
 
+/** Предустановленные интервалы времени */
 export const PRESET_TIMES = [
   { value: '23:00–06:00', label: 'Ночная смена 23:00 – 06:00' },
   { value: '00:00–08:00', label: 'Ночная смена 00:00 – 08:00' },
@@ -30,76 +30,81 @@ interface Props {
   onWorkTimeChange: (interval: { start: string; end: string }) => void;
 }
 
+/**
+ * Компонент вкладок редактора PPR:
+ * 1) Карта работ
+ * 2) Сетевое оборудование
+ * 3) Исполнители
+ */
 const PprEditorTabs: React.FC<Props> = ({ taskId, onWorkTimeChange }) => {
-  /**
-   *  Запрашиваем выбранную план-задачу по её id из zustand-стора
-   */
-  const task = plannedTaskStore((s) => s.tasks.find((t) => t.id === taskId));
-  /**
-   *  Берём текущего залогиненного пользователя
-   */
-  const user = userStore((s) => s.user);
-  if (!task || !user) return null;
+  /** Получаем задачу по ID */
+  const selectedTask = PlannedTaskStore((store) => store.tasks.find((task) => task.id === taskId));
+  /** Текущий пользователь */
+  const currentUser = userStore((store) => store.user);
+  if (!selectedTask || !currentUser) return null;
 
-  /**
-   * список исполнителей
-   */
-  const [added, setAdded] = useState<Executor[]>([
-    { id: user.id, role: user.role, author: user.author },
+  /** Список добавленных исполнителей */
+  const [selectedExecutors, setSelectedExecutors] = useState<Executor[]>([
+    { id: currentUser.id, role: currentUser.role, author: currentUser.author },
   ]);
-  /**
-   *  Флаг-state: открыта ли модалка «Добавить исполнителя»
-   */
-  const [modal, setModal] = useState(false);
-  const addToStore = executorStore((s) => s.addExecutor);
-  /**
-   *  исполнители, сгруппированные по ролям
-   */
-  const { executors } = executorStore();
-  /**
-   * текущее «окно работ» (строкой HH:mm–HH:mm)
-   */
-  const [interval, setInterval] = useState<string>(task.time_work);
-  /**
-   * Флаг-state: открыта ли модалка «Свой интервал…»
-   */
-  const [modalOpen, setModalOpen] = useState(false);
-  const timeOptions = useMemo(() => {
-    const setVals = new Set(PRESET_TIMES.map((t) => t.value));
-    setVals.add(interval);
-    return Array.from(setVals).map((v) => {
-      const preset = PRESET_TIMES.find((p) => p.value === v);
-      return { value: v, label: preset?.label ?? v };
+  /** Флаг: открыта ли модалка добавления исполнителя */
+  const [isAddExecutorModalVisible, setAddExecutorModalVisible] = useState(false);
+  /** Метод добавления исполнителя в стор */
+  const addExecutorToStore = executorStore((store) => store.addExecutor);
+  /** Все исполнители из стора, сгруппированные по ролям */
+  const { executors: allExecutorsByRole } = executorStore();
+  /** Текущее выбранное время работ (строка HH:mm–HH:mm) */
+  const [selectedTimeInterval, setSelectedTimeInterval] = useState<string>(selectedTask.time_work);
+  /** Флаг: открыта ли модалка ввода своего интервала */
+  const [isCustomIntervalModalVisible, setCustomIntervalModalVisible] = useState(false);
+
+  /** Опции селекта времени: предустановленные + текущее значение */
+  const timeSelectOptions = useMemo(() => {
+    const valuesSet = new Set(PRESET_TIMES.map((item) => item.value));
+    valuesSet.add(selectedTimeInterval);
+    return Array.from(valuesSet).map((value) => {
+      const preset = PRESET_TIMES.find((item) => item.value === value);
+      return { value, label: preset?.label ?? value };
     });
-  }, [interval]);
+  }, [selectedTimeInterval]);
 
-  const equipmentItems = useMemo(
-    () => task.equipment.split(',').map((s) => s.trim()),
-    [task.equipment],
+  /** Список оборудования из задачи */
+  const equipmentList = useMemo(
+    () => selectedTask.equipment.split(',').map((equip) => equip.trim()),
+    [selectedTask.equipment],
   );
-  const [selectedEquip, setSelectedEquip] = useState<string[]>(equipmentItems);
+  /** Выбранное оборудование */
+  const [currentlySelectedEquipment, setCurrentlySelectedEquipment] =
+    useState<string[]>(equipmentList);
 
   /**
-   * добавить исполнителя
+   * Добавление исполнителя
    */
-  const addExec = (id: number) => {
-    const found = Object.values(executors)
+  const handleAddExecutor = (executorId: number) => {
+    const found = Object.values(allExecutorsByRole)
       .flat()
-      .find((e) => e.id === id);
-    if (found && !added.find((a) => a.id === id)) {
-      setAdded((prev) => [...prev, found]);
-      addToStore(found);
+      .find((exec) => exec.id === executorId);
+    if (found && !selectedExecutors.find((e) => e.id === executorId)) {
+      setSelectedExecutors((prev) => [...prev, found]);
+      addExecutorToStore(found);
     }
   };
-  const delExec = (id: number) => setAdded((prev) => prev.filter((e) => e.id !== id));
+  /** Удаление исполнителя из списка */
+  const handleRemoveExecutor = (executorId: number) => {
+    setSelectedExecutors((prev) => prev.filter((e) => e.id !== executorId));
+  };
 
-  /** при выборе селекта времени */
-  const handleTimeSelect = (val: string) => {
-    if (val === '__custom__') {
-      setModalOpen(true);
+  /**
+   * Обработка выбора времени из селекта:
+   * "__custom__" — открыть модалку,
+   * иначе — обновить state и вызвать колбэк.
+   */
+  const handleTimeSelect = (value: string) => {
+    if (value === '__custom__') {
+      setCustomIntervalModalVisible(true);
     } else {
-      setInterval(val);
-      const [start, end] = (val as string).split('–');
+      setSelectedTimeInterval(value);
+      const [start, end] = value.split('–');
       onWorkTimeChange({ start, end });
     }
   };
@@ -112,27 +117,27 @@ const PprEditorTabs: React.FC<Props> = ({ taskId, onWorkTimeChange }) => {
             <div>
               <p>
                 <Text>Описание:&nbsp;</Text>
-                <Text strong>{task.description}</Text>
+                <Text strong>{selectedTask.description}</Text>
               </p>
               <p className="tab-content-project">
                 <Text>Проект:&nbsp;</Text>
-                {task.project}
+                {selectedTask.project}
               </p>
               <div className="tab-links">
-                <Link href={task.rm} target="_blank">
+                <Link href={selectedTask.rm} target="_blank">
                   Перейти к задаче в Redmine
                 </Link>
-                <Link href={task.rd} target="_blank">
+                <Link href={selectedTask.rd} target="_blank">
                   Перейти к РД
                 </Link>
               </div>
             </div>
             <div className="tab-content__right">
-              <p>Время проведения работ1:</p>
+              <Text>Время проведения работ:</Text>
               <Select
                 style={{ width: 200 }}
-                value={interval}
-                options={timeOptions}
+                value={selectedTimeInterval}
+                options={timeSelectOptions}
                 onSelect={handleTimeSelect}
               />
             </div>
@@ -143,26 +148,27 @@ const PprEditorTabs: React.FC<Props> = ({ taskId, onWorkTimeChange }) => {
           <div className="tab-content tab-content--equipment">
             <p className="equipment-title">Задействовано оборудование:</p>
             <ul className="equipment-list">
-              {equipmentItems.map((eq) => (
-                <li key={eq} className="equipment-item">
+              {equipmentList.map((equipment) => (
+                <li key={equipment} className="equipment-item">
                   <Checkbox
-                    checked={selectedEquip.includes(eq)}
-                    onChange={(e) =>
-                      setSelectedEquip((prev) =>
-                        e.target.checked ? [...prev, eq] : prev.filter((i) => i !== eq),
+                    checked={currentlySelectedEquipment.includes(equipment)}
+                    onChange={(evt) =>
+                      setCurrentlySelectedEquipment((prev) =>
+                        evt.target.checked
+                          ? [...prev, equipment]
+                          : prev.filter((item) => item !== equipment),
                       )
                     }
                   />
-                  <span className="equipment-name">{eq}</span>
+                  <span className="equipment-name">{equipment}</span>
                 </li>
               ))}
             </ul>
-
             <Button
               className="selected-equip-survey"
               type="primary"
-              disabled={selectedEquip.length === 0}
-              onClick={() => console.log('Опрос:', selectedEquip)}
+              disabled={currentlySelectedEquipment.length === 0}
+              onClick={() => console.log('Опрос:', currentlySelectedEquipment)}
             >
               Провести опрос
             </Button>
@@ -171,21 +177,24 @@ const PprEditorTabs: React.FC<Props> = ({ taskId, onWorkTimeChange }) => {
         <TabPane tab="Исполнители" key="3">
           <div className="tab-content tab-content--members">
             <p className="members-title">Участники:</p>
-            {added.map((exec, i) => (
-              <div key={exec.id} className="members-row">
+            {selectedExecutors.map((executor, index) => (
+              <div key={executor.id} className="members-row">
                 <UserOutlined className="members-icon" />
-
                 <span className="members-name">
-                  {exec.role} — {exec.author}
+                  {executor.role} — {executor.author}
                 </span>
-
-                {i > 0 && (
-                  <Button className="members-remove" onClick={() => delExec(exec.id)}>
+                {index > 0 ? (
+                  <Button
+                    className="members-remove"
+                    onClick={() => handleRemoveExecutor(executor.id)}
+                  >
                     Удалить
                   </Button>
-                )}
-                {i === 0 && (
-                  <Button className="yaml-executor-add-btn" onClick={() => setModal(true)}>
+                ) : (
+                  <Button
+                    className="yaml-executor-add-btn"
+                    onClick={() => setAddExecutorModalVisible(true)}
+                  >
                     Добавить исполнителя
                   </Button>
                 )}
@@ -194,22 +203,24 @@ const PprEditorTabs: React.FC<Props> = ({ taskId, onWorkTimeChange }) => {
           </div>
         </TabPane>
       </Tabs>
+
       <AddExecutorModal
-        open={modal}
-        onClose={() => setModal(false)}
+        open={isAddExecutorModalVisible}
+        onClose={() => setAddExecutorModalVisible(false)}
         onSelect={(id) => {
-          addExec(id);
-          setModal(false);
+          handleAddExecutor(id);
+          setAddExecutorModalVisible(false);
         }}
       />
+
       <TimeIntervalModal
-        open={modalOpen}
-        onCancel={() => setModalOpen(false)}
+        open={isCustomIntervalModalVisible}
+        onCancel={() => setCustomIntervalModalVisible(false)}
         onOk={(value) => {
-          setInterval(value);
+          setSelectedTimeInterval(value);
           const [start, end] = value.split('–');
           onWorkTimeChange({ start, end });
-          setModalOpen(false);
+          setCustomIntervalModalVisible(false);
         }}
       />
     </>

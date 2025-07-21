@@ -1,0 +1,11 @@
+mutation InsertPlannedTasks($objects: [planned_tasks_insert_input!]!) {
+  insert_planned_tasks(
+    objects: $objects
+    on_conflict: {
+      constraint: planned_tasks_pkey
+      update_columns: [time_work, description, equipment]
+    }
+  ) {
+    affected_rows
+  }
+}

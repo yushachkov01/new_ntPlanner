@@ -6,13 +6,25 @@ import { Form } from 'antd';
 import React from 'react';
 
 import type { FieldCfg } from '@/features/pprEdit/model/types';
+import { toArray } from '@/features/pprEdit/ui/DynamicYamlForm/helpers/toArray';
 
+/**
+ * Информация о группе для заголовков колонок
+ */
+interface GroupInfo {
+  key: string;
+  name: string;
+}
+
+/**
+ * Свойства компонента FieldsTable
+ * @property groups — массив групп { key, name }
+ * @property groupFields — объект, где для каждой группы — массив конфигов полей
+ * @property rootFields — массив корневых полей
+ * @property form — экземпляр FormInstance для чтения значений
+ */
 interface Props {
-  /** флаг режима переключения */
-  switching: boolean;
-  /** массив групп */
-  groups: { key: string; name: string }[];
-  /** поля, сгруппированные по ключам групп */
+  groups: GroupInfo[];
   groupFields: Record<string, FieldCfg[]>;
   /** корневые поля для простого режима */
   rootFields: FieldCfg[];
@@ -21,84 +33,91 @@ interface Props {
 }
 
 /**
- * Компонент отображает таблицу со значениями из формы.
- *
- * @param switching    — Переключение
- * @param groups       — метаданные групп (ключ и отображаемое имя)
- * @param groupFields  — настройки полей по группам
- * @param rootFields   — настройки полей в простом режиме
- * @param form         — инстанс Ant Form для чтения полей
+ * Компонент для табличного отображения введённых значений.
  */
-export const FieldsTable: React.FC<Props> = ({
-  switching,
-  groups,
-  groupFields,
-  rootFields,
-  form,
-}) => {
-  const allValues = Form.useWatch([], form) as Record<string, any>;
+const FieldsTable: React.FC<Props> = ({ groups, groupFields, rootFields, form }) => {
+  const allFormValues = Form.useWatch([], form) ?? {};
 
   /**
-   * Получает значение в объекте allValue
-   * @param path — массив ключей для доступа к значению
+   * Отсортированные колонки (поле) для простого режима:
+   * убираем дубликаты по key, сортируем по position
    */
-  const getVal = (path: string[]) => {
-    const raw = path.reduce<any>((acc, k) => (acc ? acc[k] : undefined), allValues);
-    if (Array.isArray(raw)) return raw.join(', ');
-    return raw ?? '';
+  const sortedRootColumns = React.useMemo(() => {
+    const uniqueColumns = new Map<string, FieldCfg>();
+    [...rootFields]
+      .sort((fieldA, fieldB) => (fieldA.position ?? 0) - (fieldB.position ?? 0))
+      .forEach((fieldConfig) => {
+        if (!uniqueColumns.has(fieldConfig.key)) {
+          uniqueColumns.set(fieldConfig.key, fieldConfig);
+        }
+      });
+    return [...uniqueColumns.values()];
+  }, [rootFields]);
+
+  /**
+   * Максимальное число строк:
+   * смотрим, какая из групп длиннее
+   */
+  const maxSimpleRows = React.useMemo(
+    () =>
+      groups.reduce((maxCount, groupInfo) => {
+        const lengthForGroup = groupFields[groupInfo.key]?.length ?? 0;
+        return Math.max(maxCount, lengthForGroup);
+      }, 0),
+    [groups, groupFields],
+  );
+
+  /**
+   * Получает значение из allFormValues по пути namePath
+   * @param namePath — массив ключей вложенности
+   */
+  const getValueByPath = (namePath: string[]): string => {
+    const rawValue = namePath.reduce<any>(
+      (accumulator, key) => (accumulator ? accumulator[key] : undefined),
+      allFormValues,
+    );
+    return Array.isArray(rawValue) ? rawValue.join(', ') : (rawValue ?? '');
   };
 
-  /** режим переключения: две колонки **/
-  if (switching && groups.length === 2) {
-    const [formGroup, toGroup] = groups;
-    const rows = Math.max(
-      groupFields[formGroup.key]?.length || 0,
-      groupFields[toGroup.key]?.length || 0,
-    );
+  /**
+   * Формирует строку для ячейки:
+   * если поле — группа, объединяет значения её дочерних полей,
+   * иначе — просто выводит значение
+   */
+  const getCellValue = (columnConfig: FieldCfg): string =>
+    columnConfig.widget === 'group'
+      ? toArray(columnConfig)
+          .map((childField) => getValueByPath([columnConfig.key, childField.key]))
+          .filter(Boolean)
+          .join(', ')
+      : getValueByPath([columnConfig.key]);
 
-    return (
-      <table className="dyf-table">
-        <thead>
-          <tr>
-            <th>#</th>
-            <th>{`Переключаем с: ${formGroup.name}`}</th>
-            <th>{`Переключаем на: ${toGroup.name}`}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {Array.from({ length: rows }).map((_, i) => {
-            const fA = groupFields[formGroup.key]?.[i];
-            const fB = groupFields[toGroup.key]?.[i];
-            return (
-              <tr key={i}>
-                <td>{i + 1}</td>
-                <td>{fA ? getVal([formGroup.key, fA.key]) : ''}</td>
-                <td>{fB ? getVal([toGroup.key, fB.key]) : ''}</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    );
-  }
-
-  /** простой режим: одна колонка значений */
   return (
-    <table className="dyf-table">
-      <thead>
-        <tr>
-          <th>#</th>
-          <th>Значение</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rootFields.map((f, i) => (
-          <tr key={f.key}>
-            <td>{i + 1}</td>
-            <td>{getVal([f.key])}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <div className="dyf-table-container">
+      <div className="dyf-table-scroll">
+        <table className="dyf-table dyf-table--multi">
+          <thead>
+            <tr>
+              <th>#</th>
+              {sortedRootColumns.map((colCfg) => (
+                <th key={colCfg.key}>{colCfg.name}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {Array.from({ length: Math.max(1, maxSimpleRows) }).map((_, rowIdx) => (
+              <tr key={rowIdx}>
+                <td>{rowIdx + 1}</td>
+                {sortedRootColumns.map((colCfg) => (
+                  <td key={colCfg.key}>{rowIdx === 0 ? getCellValue(colCfg) : ''}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 };
+
+export { FieldsTable };

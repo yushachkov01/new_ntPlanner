@@ -4,26 +4,28 @@ import React, { useState } from 'react';
 import './TimeIntervalModal.css';
 
 interface Props {
-  /**
-   * флаг «показать / скрыть» модалку
-   */
+  /** Флаг: показать или скрыть модальное окно */
   open: boolean;
-  /**
-   * закрыть без изменений
-   */
+  /** Функция: отмена выбора, закрытие без изменений */
   onCancel: () => void;
-
-  /**
-   * сохранить выбранный интервал в формате «HH:mm–HH:mm»
-   */
-  onOk: (interval: string) => void; // «HH:mm–HH:mm»
+  /** Функция: сохранение выбранного интервала в формате «HH:mm–HH:mm» */
+  onOk: (interval: string) => void;
 }
 
-const getPopupContainer = (el: HTMLElement) => el.parentElement!;
+/**
+ * Возвращает контейнер для всплывающего TimePicker
+ */
+const getPopupContainer = (triggerElement: HTMLElement): HTMLElement =>
+  triggerElement.parentElement!;
 
+/**
+ * Модальное окно выбора интервала времени работ.
+ */
 export const TimeIntervalModal: React.FC<Props> = ({ open, onCancel, onOk }) => {
-  const [from, setFrom] = useState<Dayjs | null>(null);
-  const [to, setTo] = useState<Dayjs | null>(null);
+  /** Выбранное время начала (Dayjs) */
+  const [startTime, setStartTime] = useState<Dayjs | null>(null);
+  /** Выбранное время окончания (Dayjs) */
+  const [endTime, setEndTime] = useState<Dayjs | null>(null);
 
   return (
     <Modal
@@ -32,16 +34,18 @@ export const TimeIntervalModal: React.FC<Props> = ({ open, onCancel, onOk }) => 
       title="Выберите интервал работ"
       okText="Сохранить"
       cancelText="Отмена"
-      okButtonProps={{ disabled: !from || !to }}
+      okButtonProps={{ disabled: !startTime || !endTime }}
       onCancel={onCancel}
       onOk={() => {
-        if (from && to) onOk(`${from.format('HH:mm')}–${to.format('HH:mm')}`);
+        if (startTime && endTime) {
+          onOk(`${startTime.format('HH:mm')}–${endTime.format('HH:mm')}`);
+        }
       }}
     >
       <Space>
         <TimePicker
-          value={from}
-          onChange={setFrom}
+          value={startTime}
+          onChange={setStartTime}
           placeholder="Начало"
           format="HH:mm"
           minuteStep={5}
@@ -49,8 +53,8 @@ export const TimeIntervalModal: React.FC<Props> = ({ open, onCancel, onOk }) => 
         />
         —
         <TimePicker
-          value={to}
-          onChange={setTo}
+          value={endTime}
+          onChange={setEndTime}
           placeholder="Окончание"
           format="HH:mm"
           minuteStep={5}

@@ -1,10 +1,8 @@
 /**
  * Рендерит поле по его конфигурации.
- * Если передан onRemove — показываем кнопку ужаления слева в label.
+ * Если передан onRemove — показываем кнопку удаления в label.
  */
-import { DeleteOutlined } from '@ant-design/icons';
-import { Form, Input, Select, Switch, Button } from 'antd';
-import React from 'react';
+import { Form, Input, Select, Switch } from 'antd';
 
 import type { FieldCfg } from '@/features/pprEdit/model/types';
 
@@ -33,55 +31,41 @@ interface Props {
  * Рендерит отдельное поле на основе его конфигурации.
  *
  * @param field — объект с описанием поля
- * @param path  — массив сегментов пути до этого поля в форме
- * @param onRemove — колбэк, вызываемый при клике на иконку удаления этого поля
- * @returns JSX-элемент соответствующего ant-поле или группу полей
+ * @param path — массив сегментов пути до этого поля в форме
+ * @param onRemove — колбэк, вызываемый при клике на иконку удаления
  */
-export function FieldRenderer({ field: f, path = [], onRemove }: Props) {
-  /**
-   * Формируем уникальный ключ и имя для Form.Item
-   */
-  const namePath = [...path, f.key];
-  /**
-   * Задаём максимальную ширину инпутов
-   */
-  const style = { maxWidth: 250 };
-  switch (f.widget) {
+export function FieldRenderer({ field, path = [], onRemove }: Props) {
+  /** Формируем уникальный массив сегментов пути для Form.Item name */
+  const namePath = [...path, field.key];
+  /** Общий стиль для всех полей */
+  const inputStyle = { maxWidth: 250 };
+  switch (field.widget) {
     case 'input':
       return (
         <Form.Item
           key={namePath.join('.')}
-          label={
-            onRemove ? (
-              <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Button type="text" icon={<DeleteOutlined />} onClick={onRemove} />
-                {f.name}
-              </span>
-            ) : (
-              f.name
-            )
-          }
+          label={field.name}
           name={namePath}
-          initialValue={f.defaultValue}
+          initialValue={field.defaultValue}
         >
-          <Input style={style} />
+          <Input style={inputStyle} />
         </Form.Item>
       );
 
     case 'textarea':
       return (
-        <Form.Item key={namePath.join('.')} label={f.name} name={namePath}>
-          <TextArea rows={3} style={style} />
+        <Form.Item key={namePath.join('.')} label={field.name} name={namePath}>
+          <TextArea rows={3} style={inputStyle} />
         </Form.Item>
       );
 
     case 'dropdown':
       return (
-        <Form.Item key={namePath.join('.')} label={f.name} name={namePath}>
-          <Select mode="multiple" placeholder={`Выберите ${f.name}`} style={style}>
-            {f.options?.map((o) => (
-              <Option key={o} value={o}>
-                {o}
+        <Form.Item key={namePath.join('.')} label={field.name} name={namePath}>
+          <Select mode="multiple" placeholder={`Выберите ${field.name}`} style={inputStyle}>
+            {field.options?.map((option) => (
+              <Option key={option} value={option}>
+                {option}
               </Option>
             ))}
           </Select>
@@ -90,7 +74,12 @@ export function FieldRenderer({ field: f, path = [], onRemove }: Props) {
 
     case 'checkbox':
       return (
-        <Form.Item key={namePath.join('.')} label={f.name} name={namePath} valuePropName="checked">
+        <Form.Item
+          key={namePath.join('.')}
+          label={field.name}
+          name={namePath}
+          valuePropName="checked"
+        >
           <Switch />
         </Form.Item>
       );
@@ -98,10 +87,15 @@ export function FieldRenderer({ field: f, path = [], onRemove }: Props) {
     case 'group':
       return (
         <div key={namePath.join('.')} className="dyf__group">
-          <h4>{f.name}</h4>
+          <h4>{field.name}</h4>
           <div className="field-group__row">
-            {toArray(f).map((child) => (
-              <FieldRenderer key={child.key} field={child} path={namePath} onRemove={onRemove} />
+            {toArray(field).map((childField) => (
+              <FieldRenderer
+                key={childField.key}
+                field={childField}
+                path={namePath}
+                onRemove={onRemove}
+              />
             ))}
           </div>
         </div>

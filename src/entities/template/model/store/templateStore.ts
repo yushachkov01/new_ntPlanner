@@ -1,106 +1,212 @@
-/**
- *  для кэширования и загрузки YAML-шаблонов из MinIO.
- *  Данные хранятся в Map<cacheKey, Template[]>
- *  Одновременно отслеживает выполняющиеся загрузки в Set<cacheKey>
- *  При повторном запросе возвращает данные из кэша или ждёт завершения текущей загрузки
- */
-
 import { create } from 'zustand';
+import { devtools, persist } from 'zustand/middleware';
 
 import { parseYaml } from '@/shared/lib/yamlUtils/yamlUtils';
 import { listObjects, getObjectText } from '@/shared/minio/MinioClient';
 
-export interface Template {
+/**
+ * Описание поля в колонке таблицы шаблона
+ */
+export interface TemplateColumnField {
   key: string;
   name: string;
-  raw: any;
+  position: number;
+  widget: 'input' | 'dropdown' | 'group';
+  type: 'string' | 'boolean' | 'number';
+  options?: string[];
+  defaultValue?: string | number | boolean;
 }
 
-interface State {
-  /** Кэш загруженных шаблонов: Map<cacheKey, Template[]> */
-  cache: Map<string, Template[]>;
-  /** Множество ключей, для которых идёт загрузка */
+/**
+ * Описание колонки шаблона
+ */
+export interface TemplateColumn {
+  key: string;
+  name: string;
+  position: number;
+  widget: 'input' | 'dropdown' | 'group';
+  comment?: string;
+  engineer?: string;
+  /** Если widget === "group" */
+  fields?: Record<string, TemplateColumnField>;
+}
+
+/**
+ * Конфигурация этапа шаблона
+ */
+export interface StageField {
+  description: string;
+  engineer: string;
+  timer_default: number;
+  if_success: string;
+  if_failure?: string;
+  commands_hand: boolean;
+  /** Вложенные параметры этапа */
+  fields?: Record<string, TemplateColumnField>;
+}
+
+/**
+ * Полная сущность шаблона
+ */
+export interface Template {
+  templateName: string;
+  settings: Record<string, TemplateColumn>;
+  stage_status: string;
+  timer_default: number;
+  current_stages: string[];
+  stages_field: Record<string, StageField>;
+  /** Оригинальный текст YAML */
+  rawYaml: string;
+  /** Распарсенный объект */
+  raw: Record<string, unknown>;
+}
+
+/**
+ * Состояние стора шаблонов
+ */
+interface TemplatesState {
+  /** Все загруженные шаблоны по ключу */
+  templates: Record<string, Template>;
+  /** Текущий выбранный ключ шаблона */
+  currentTemplateKey: string | null;
+  memoryCache: Record<string, Template[]>;
+  /** Набор ключей, для которых в данный момент идёт загрузка */
   loading: Set<string>;
-  /**
-   * Загрузить шаблоны из MinIO:
-   * - при наличии в кэше возвращает сразу
-   * - при активной загрузке ждёт её окончания
-   * - иначе делает запросы listObjects + getObjectText + parseYaml
-   *
-   * @param bucket — имя бакета в MinIO
-   * @param prefix — префикс внутри бакета
-   * @returns Promise<Template[]> — массив моделей шаблонов
-   */
+  /** Сохранить список шаблонов */
+  setTemplates: (list: Template[]) => void;
+  /** Выбрать активный шаблон по имени */
+  selectTemplate: (name: string) => void;
+  /** Асинхронно загрузить список шаблонов */
   fetchTemplates: (bucket: string, prefix?: string) => Promise<Template[]>;
+  /** Обновить шаблон функцией */
+  updateTemplate: (name: string, updater: (prev: Template) => Template) => void;
+  /** Частично обновить шаблон по patch */
+  patchTemplate: (name: string, patch: Partial<Template>) => void;
+  /** Сбросить все данные стора */
+  reset: () => void;
 }
 
-export const useTemplateStore = create<State>((set, get) => ({
-  cache: new Map(),
-  loading: new Set(),
+export const useTemplateStore = create<TemplatesState>()(
+  devtools(
+    persist(
+      (set, get) => ({
+        templates: {},
+        currentTemplateKey: null,
+        memoryCache: {},
+        loading: new Set<string>(),
 
-  async fetchTemplates(bucket, prefix = '') {
-    const cacheKey = `${bucket}/${prefix}`;
+        /** сохраняем список шаблонов */
+        setTemplates: (templateArray) =>
+          set({
+            templates: Object.fromEntries(templateArray.map((tpl) => [tpl.templateName, tpl])),
+          }),
 
-    /**  Если в кэше уже есть данные — возвращаем их сразу */
-    const cached = get().cache.get(cacheKey);
-    if (cached) return cached;
+        /** выбираем текущий шаблон по ключу */
+        selectTemplate: (templateName) => {
+          if (get().templates[templateName]) {
+            set({ currentTemplateKey: templateName });
+          }
+        },
 
-    /**  Если для этого ключа уже идёт загрузка — ждём её завершения */
-    if (get().loading.has(cacheKey)) {
-      return await new Promise<Template[]>((resolve) => {
-        const unsub = useTemplateStore.subscribe(
-          (s) => s.cache.get(cacheKey),
-          (value) => {
-            if (value) {
-              unsub();
-              resolve(value);
+        /** обновляем шаблон через функцию‑updater */
+        updateTemplate: (templateName, updater) => {
+          const previous = get().templates[templateName];
+          if (!previous) return;
+          set((state) => ({
+            templates: {
+              ...state.templates,
+              [templateName]: updater(previous),
+            },
+          }));
+        },
+
+        /** патчим части шаблона */
+        patchTemplate: (templateName, patch) =>
+          get().updateTemplate(templateName, (prev) => ({ ...prev, ...patch })),
+
+        /** асинхронный fetch шаблонов из Minio */
+        async fetchTemplates(bucket: string, prefix = '') {
+          const cacheKey = `${bucket}/${prefix}`;
+
+          const cachedTemplates = get().memoryCache[cacheKey];
+          if (cachedTemplates) return cachedTemplates;
+
+          if (get().loading.has(cacheKey)) {
+            return new Promise<Template[]>((resolve) => {
+              /** Подписываемся на любые изменения стора */
+              const unsubscribe = useTemplateStore.subscribe((state) => {
+                if (!state.loading.has(cacheKey)) {
+                  unsubscribe();
+                  resolve(get().memoryCache[cacheKey] ?? []);
+                }
+              });
+            });
+          }
+
+          set((state) => ({ loading: new Set(state.loading).add(cacheKey) }));
+
+          try {
+            const objects = await listObjects(bucket, prefix);
+            const loadedTemplates: Template[] = [];
+
+            /** читаем и парсим каждый YAML-файл */
+            for (const obj of objects) {
+              if (!obj.Key?.endsWith('.yaml')) continue;
+              const yamlText = await getObjectText(bucket, obj.Key);
+              const { data, error } = parseYaml(yamlText);
+              if (error) {
+                console.error('YAML parse error', obj.Key, error);
+                continue;
+              }
+              loadedTemplates.push({
+                templateName: (data as any).templateName ?? (data as any).name ?? obj.Key!,
+                settings: (data as any).settings ?? {},
+                stage_status: (data as any).stage_status ?? '',
+                timer_default: (data as any).timer_default ?? 0,
+                current_stages: (data as any).current_stages ?? [],
+                stages_field: (data as any).stages_field ?? {},
+                rawYaml: yamlText,
+                raw: data as Record<string, unknown>,
+              });
             }
-          },
-        );
-      });
-    }
 
-    /**  Выполняем новую загрузку шаблонов */
-    try {
-      set((s) => ({ loading: new Set(s.loading).add(cacheKey) }));
+            set((state) => ({
+              memoryCache: {
+                ...state.memoryCache,
+                [cacheKey]: loadedTemplates,
+              },
+            }));
+            /** копируем в основной map */
+            get().setTemplates(loadedTemplates);
+            if (!get().currentTemplateKey && loadedTemplates.length) {
+              set({ currentTemplateKey: loadedTemplates[0].templateName });
+            }
+            return loadedTemplates;
+          } finally {
+            /** снимаем пометку загрузки */
+            set((state) => {
+              const nextLoading = new Set(state.loading);
+              nextLoading.delete(cacheKey);
+              return { loading: nextLoading };
+            });
+          }
+        },
 
-      const objs = await listObjects(bucket, prefix);
-      const templates: Template[] = [];
-
-      for (const o of objs) {
-        if (!o.Key?.endsWith('.yaml')) continue;
-        const key = o.Key!;
-        const text = await getObjectText(bucket, key);
-        const { data, error } = parseYaml(text);
-        if (error) {
-          console.error(`Ошибка парсинга шаблона "${key}":`, error);
-          continue;
-        }
-        templates.push({
-          key,
-          name: (data as any)?.name ?? key,
-          raw: data,
-        });
-      }
-
-      /** сохраняем в кэш и снимаем флаг загрузки */
-      set((s) => {
-        const nextCache = new Map(s.cache);
-        nextCache.set(cacheKey, templates);
-        const nextLoading = new Set(s.loading);
-        nextLoading.delete(cacheKey);
-        return { cache: nextCache, loading: nextLoading };
-      });
-
-      return templates;
-    } catch (e) {
-      /** на ошибке тоже снимаем флаг загрузки */
-      set((s) => {
-        const nextLoading = new Set(s.loading);
-        nextLoading.delete(cacheKey);
-        return { loading: nextLoading };
-      });
-      throw e;
-    }
-  },
-}));
+        reset: () =>
+          set({
+            templates: {},
+            currentTemplateKey: null,
+            memoryCache: {},
+            loading: new Set<string>(),
+          }),
+      }),
+      {
+        name: 'templates-store',
+        version: 9,
+        partialize: (state) => ({
+          currentTemplateKey: state.currentTemplateKey,
+        }),
+      },
+    ),
+  ),
+);

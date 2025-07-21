@@ -22,6 +22,7 @@
   font-size: 1.25rem;
   font-weight: bold;
   color: var(--task-text-primary, #1f2937);
+  margin-bottom: 10px;
 }
 .task-detail__controls {
   display: flex;
