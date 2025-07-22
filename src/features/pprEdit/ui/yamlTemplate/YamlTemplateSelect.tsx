@@ -5,7 +5,7 @@ import { useEffect, useState, useMemo } from 'react';
 import type { Executor } from '@/entities/executor/model/store/executorStore';
 import { executorStore } from '@/entities/executor/model/store/executorStore';
 import type { Template } from '@/entities/template/model/store/templateStore';
-import { useTemplateStore } from '@/entities/template/model/store/templateStore';
+import { templateStore } from '@/entities/template/model/store/templateStore';
 import AddExecutorModal from '@/features/pprEdit/ui/AddExecutorModal/AddExecutorModal';
 import './YamlTemplateSelect.css';
 
@@ -38,7 +38,7 @@ const YamlTemplateSelect: FC<Props> = ({
   addExecutor,
   removeExecutor,
 }) => {
-  const fetchTemplates = useTemplateStore((store) => store.fetchTemplates);
+  const fetchTemplates = templateStore((store) => store.fetchTemplates);
 
   /** Состояние списка шаблонов, индикатор загрузки и выбор модалки */
   const [templateList, setTemplateList] = useState<Template[]>([]);

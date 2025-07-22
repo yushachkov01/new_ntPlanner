@@ -40,7 +40,7 @@
   align-items: flex-start;
 }
 .tab-content--work .tab-content__right {
-  flex: 0 0 auto;
+  flex: 0 0;
   margin-left: auto;
 }
 .tab-content-project {

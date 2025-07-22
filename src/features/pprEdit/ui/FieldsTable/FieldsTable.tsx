@@ -1,46 +1,36 @@
 /**
- * Табличное представление введённых значений.
+ * Табличное представление введённых значений с возможностью
+ * редактирования и удаления строк.
+ *
  */
-import type { FormInstance } from 'antd';
-import { Form } from 'antd';
+import { EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import React from 'react';
 
 import type { FieldCfg } from '@/features/pprEdit/model/types';
-import { toArray } from '@/features/pprEdit/ui/DynamicYamlForm/helpers/toArray';
+import './FieldsTable.css';
 
-/**
- * Информация о группе для заголовков колонок
- */
-interface GroupInfo {
-  key: string;
-  name: string;
-}
-
-/**
- * Свойства компонента FieldsTable
- * @property groups — массив групп { key, name }
- * @property groupFields — объект, где для каждой группы — массив конфигов полей
- * @property rootFields — массив корневых полей
- * @property form — экземпляр FormInstance для чтения значений
- */
 interface Props {
-  groups: GroupInfo[];
-  groupFields: Record<string, FieldCfg[]>;
-  /** корневые поля для простого режима */
   rootFields: FieldCfg[];
-  /** инстанс формы для получения значений */
-  form: FormInstance;
+  data: Record<string, any>[];
+  onEdit: (rowIndex: number) => void;
+  onDelete: (rowIndex: number) => void;
 }
 
 /**
- * Компонент для табличного отображения введённых значений.
+ *
+ * @param rootFields  — массив конфигураций полей, по которым строятся колонки таблицы
+ * @param data        — массив объектов, содержащих значения полей для каждой строки
+ * @param onEdit      — колбэк, вызываемый при нажатии на иконку «редактировать»
+ * @param onDelete    — колбэк, вызываемый при нажатии на иконку «удалить»
  */
-const FieldsTable: React.FC<Props> = ({ groups, groupFields, rootFields, form }) => {
-  const allFormValues = Form.useWatch([], form) ?? {};
 
+export const FieldsTable: React.FC<Props> = ({ rootFields, data, onEdit, onDelete }) => {
   /**
-   * Отсортированные колонки (поле) для простого режима:
-   * убираем дубликаты по key, сортируем по position
+   * Формирует уникальный и отсортированный список колонок для таблицы.
+   *  Сортирует поля по значению `position` (возрастание).
+   *  Убирает дубликаты по `key`, оставляя только первое встреченное.
+   * @param rootFields — исходный массив конфигураций полей
+   * @returns массив уникальных значений, отсортированных по `position`
    */
   const sortedRootColumns = React.useMemo(() => {
     const uniqueColumns = new Map<string, FieldCfg>();
@@ -54,44 +44,6 @@ const FieldsTable: React.FC<Props> = ({ groups, groupFields, rootFields, form })
     return [...uniqueColumns.values()];
   }, [rootFields]);
 
-  /**
-   * Максимальное число строк:
-   * смотрим, какая из групп длиннее
-   */
-  const maxSimpleRows = React.useMemo(
-    () =>
-      groups.reduce((maxCount, groupInfo) => {
-        const lengthForGroup = groupFields[groupInfo.key]?.length ?? 0;
-        return Math.max(maxCount, lengthForGroup);
-      }, 0),
-    [groups, groupFields],
-  );
-
-  /**
-   * Получает значение из allFormValues по пути namePath
-   * @param namePath — массив ключей вложенности
-   */
-  const getValueByPath = (namePath: string[]): string => {
-    const rawValue = namePath.reduce<any>(
-      (accumulator, key) => (accumulator ? accumulator[key] : undefined),
-      allFormValues,
-    );
-    return Array.isArray(rawValue) ? rawValue.join(', ') : (rawValue ?? '');
-  };
-
-  /**
-   * Формирует строку для ячейки:
-   * если поле — группа, объединяет значения её дочерних полей,
-   * иначе — просто выводит значение
-   */
-  const getCellValue = (columnConfig: FieldCfg): string =>
-    columnConfig.widget === 'group'
-      ? toArray(columnConfig)
-          .map((childField) => getValueByPath([columnConfig.key, childField.key]))
-          .filter(Boolean)
-          .join(', ')
-      : getValueByPath([columnConfig.key]);
-
   return (
     <div className="dyf-table-container">
       <div className="dyf-table-scroll">
@@ -99,18 +51,39 @@ const FieldsTable: React.FC<Props> = ({ groups, groupFields, rootFields, form })
           <thead>
             <tr>
               <th>#</th>
-              {sortedRootColumns.map((colCfg) => (
-                <th key={colCfg.key}>{colCfg.name}</th>
+              {sortedRootColumns.map((col) => (
+                <th key={col.key}>{col.name}</th>
               ))}
+              <th>Действия</th>
             </tr>
           </thead>
           <tbody>
-            {Array.from({ length: Math.max(1, maxSimpleRows) }).map((_, rowIdx) => (
-              <tr key={rowIdx}>
-                <td>{rowIdx + 1}</td>
-                {sortedRootColumns.map((colCfg) => (
-                  <td key={colCfg.key}>{rowIdx === 0 ? getCellValue(colCfg) : ''}</td>
-                ))}
+            {data.length === 0 && (
+              <tr>
+                <td colSpan={sortedRootColumns.length + 2} style={{ textAlign: 'center' }}>
+                  Нет записей
+                </td>
+              </tr>
+            )}
+            {data.map((row, idx) => (
+              <tr key={idx}>
+                <td>{idx + 1}</td>
+                {sortedRootColumns.map((col) => {
+                  const rawValue = row[col.key];
+                  if (col.widget === 'group') {
+                    const groupObj = rawValue as Record<string, any> | undefined;
+                    const text = groupObj ? Object.values(groupObj).join(', ') : '';
+                    return <td key={col.key}>{text}</td>;
+                  }
+                  if (Array.isArray(rawValue)) {
+                    return <td key={col.key}>{(rawValue as any[]).join(', ')}</td>;
+                  }
+                  return <td key={col.key}>{rawValue ?? ''}</td>;
+                })}
+                <td className="dyf-cell-actions">
+                  <EditOutlined onClick={() => onEdit(idx)} />
+                  <DeleteOutlined onClick={() => onDelete(idx)} />
+                </td>
               </tr>
             ))}
           </tbody>
@@ -119,5 +92,3 @@ const FieldsTable: React.FC<Props> = ({ groups, groupFields, rootFields, form })
     </div>
   );
 };
-
-export { FieldsTable };

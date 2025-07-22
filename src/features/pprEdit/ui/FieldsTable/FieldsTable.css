@@ -1,0 +1,19 @@
+.dyf-cell-actions {
+  white-space: nowrap;
+  text-align: center;
+}
+
+.dyf-cell-actions .anticon {
+  margin: 0 4px;
+  opacity: 1;
+  cursor: pointer;
+}
+
+.dyf-table--multi tbody tr:hover .dyf-cell-actions .anticon {
+  opacity: 1;
+}
+
+.dyf-cell-actions .anticon-delete,
+.dyf-cell-actions .anticon-delete svg {
+  color: #ff4d4f;
+}

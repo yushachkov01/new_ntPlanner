@@ -84,16 +84,32 @@ interface TemplatesState {
   patchTemplate: (name: string, patch: Partial<Template>) => void;
   /** Сбросить все данные стора */
   reset: () => void;
+  /** Хранилище введённых строк формы */
+  templateValues: Record<string, Record<string, any>[]>;
+  /** Сохранить массив записей под ключом (executorId|headline) */
+  setTemplateValues: (key: string, entries: Record<string, any>[]) => void;
+  /** Получить массив записей по ключу */
+  getTemplateValues: (key: string) => Record<string, any>[];
+  /** Очистить записи по ключу */
+  clearTemplateValues: (key: string) => void;
 }
 
-export const useTemplateStore = create<TemplatesState>()(
+export const templateStore = create<TemplatesState>()(
   devtools(
     persist(
       (set, get) => ({
+        templateValues: {},
         templates: {},
         currentTemplateKey: null,
         memoryCache: {},
         loading: new Set<string>(),
+
+        clearTemplateValues: (key: string) =>
+          set((state) => {
+            const copy = { ...state.templateValues };
+            delete copy[key];
+            return { templateValues: copy };
+          }),
 
         /** сохраняем список шаблонов */
         setTemplates: (templateArray) =>
@@ -123,26 +139,16 @@ export const useTemplateStore = create<TemplatesState>()(
         /** патчим части шаблона */
         patchTemplate: (templateName, patch) =>
           get().updateTemplate(templateName, (prev) => ({ ...prev, ...patch })),
-
+        setTemplateValues: (key, entries) =>
+          set((state) => ({
+            templateValues: { ...state.templateValues, [key]: entries },
+          })),
+        getTemplateValues: (key) => get().templateValues[key] ?? [],
         /** асинхронный fetch шаблонов из Minio */
         async fetchTemplates(bucket: string, prefix = '') {
           const cacheKey = `${bucket}/${prefix}`;
-
           const cachedTemplates = get().memoryCache[cacheKey];
           if (cachedTemplates) return cachedTemplates;
-
-          if (get().loading.has(cacheKey)) {
-            return new Promise<Template[]>((resolve) => {
-              /** Подписываемся на любые изменения стора */
-              const unsubscribe = useTemplateStore.subscribe((state) => {
-                if (!state.loading.has(cacheKey)) {
-                  unsubscribe();
-                  resolve(get().memoryCache[cacheKey] ?? []);
-                }
-              });
-            });
-          }
-
           set((state) => ({ loading: new Set(state.loading).add(cacheKey) }));
 
           try {
@@ -205,6 +211,7 @@ export const useTemplateStore = create<TemplatesState>()(
         version: 9,
         partialize: (state) => ({
           currentTemplateKey: state.currentTemplateKey,
+          templateValues: state.templateValues,
         }),
       },
     ),

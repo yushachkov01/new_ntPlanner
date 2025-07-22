@@ -1,5 +1,5 @@
-import { Form, Typography } from 'antd';
-import React, { useEffect, useState, useMemo } from 'react';
+import { Form, Typography, Button } from 'antd';
+import React, { useEffect, useState } from 'react';
 
 import { toArray } from './helpers/toArray';
 
@@ -8,6 +8,8 @@ import type { FieldCfg } from '@/features/pprEdit/model/types';
 import { FieldRenderer } from '@features/pprEdit/ui/DynamicYamlForm/FieldRenderer/FieldRenderer';
 
 import { FieldsTable } from '../FieldsTable/FieldsTable';
+
+import { templateStore } from '@/entities/template/model/store/templateStore';
 
 const { Title } = Typography;
 
@@ -46,47 +48,102 @@ export default function DynamicYamlForm({ schema }: Props) {
   const [groupFields, setGroupFields] = useState<Record<string, FieldCfg[]>>({});
   /** Состояние корневых полей */
   const [rootFields, setRootFields] = useState<FieldCfg[]>([]);
+  const [localData, setLocalData] = useState<Record<string, any>[]>([]);
+  /** Индекс редактируемой строки, или null если добавление */
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+
+  const setTemplateValues = templateStore((s) => s.setTemplateValues);
+  const getTemplateValues = templateStore((s) => s.getTemplateValues);
 
   /**
-   * при изменении schema заполняем либо groupFields, либо rootFields.
+   * Обновляем поля
+   *
+   * @param schema.headline  — заголовок шаблона
+   * @param schema.settings  — настройки полей шаблона
    */
   useEffect(() => {
-    if (!schema.settings) return;
     setRootFields(toArray({ fields: schema.settings }));
-    setGroupFields({});
-  }, [schema]);
+    form.resetFields();
+    setLocalData([]);
+    setEditingIndex(null);
+  }, [schema.headline, schema.settings, form]);
 
   /**
-   * Массив групп для формы
+   * Обработчик сабмита формы:
+   * добавляет новую запись или сохраняет изменения существующей.
+   * @param vals — значения полей формы
    */
-  const simpleGroups = useMemo(
-    () =>
-      Object.entries(schema.settings || {})
-        .sort(([, configA], [, configB]) => (configA.position ?? 0) - (configB.position ?? 0))
-        .map(([groupKey, groupConfig]) => ({
-          key: groupKey,
-          name: groupConfig.name,
-        })),
-    [schema.settings],
-  );
+  const onFinish = (vals: Record<string, any>) => {
+    const key = schema.headline;
+    const prevGlobal = getTemplateValues(key);
+    let nextLocal: Record<string, any>[];
+
+    if (editingIndex === null) {
+      nextLocal = [...localData, vals];
+      setLocalData(nextLocal);
+      setTemplateValues(key, [...prevGlobal, vals]);
+    } else {
+      nextLocal = localData.map((row, i) => (i === editingIndex ? vals : row));
+      setLocalData(nextLocal);
+      setTemplateValues(
+        key,
+        prevGlobal.map((row, i) => (i === editingIndex ? vals : row)),
+      );
+    }
+
+    form.resetFields();
+    setEditingIndex(null);
+  };
+
+  /** Удаляем одну строку
+   *  @param index — индекс строки для удаления
+   */
+  const handleDelete = (index: number) => {
+    const key = schema.headline;
+    const prevGlobal = getTemplateValues(key);
+    const nextLocal = localData.filter((_, i) => i !== index);
+    setLocalData(nextLocal);
+    setTemplateValues(
+      key,
+      prevGlobal.filter((_, i) => i !== index),
+    );
+    if (editingIndex === index) {
+      form.resetFields();
+      setEditingIndex(null);
+    }
+  };
+
+  /**
+   * Загружает выбранную запись в форму для редактирования.
+   * @param index — индекс строки для редактирования
+   */
+  const handleEdit = (index: number) => {
+    setEditingIndex(index);
+    form.setFieldsValue(localData[index]);
+  };
 
   return (
     <section className="dyf__root">
-      {schema.headline && <Title level={3}>{schema.headline}</Title>}
+      <Title level={4}>{schema.headline}</Title>
       <div className="dyf__layout">
         <div className="dyf__form-col">
-          <Form form={form} layout="vertical">
-            {rootFields.map((fieldCfg) => (
-              <FieldRenderer key={fieldCfg.key} field={fieldCfg} path={[]} onRemove={() => {}} />
+          <Form form={form} layout="vertical" onFinish={onFinish}>
+            {rootFields.map((field) => (
+              <FieldRenderer key={field.key} field={field} path={[]} onRemove={() => {}} />
             ))}
+            <Form.Item>
+              <Button type="primary" htmlType="submit" block>
+                {editingIndex === null ? 'Добавить запись' : 'Сохранить изменения'}
+              </Button>
+            </Form.Item>
           </Form>
         </div>
         <div className="dyf__table-col">
           <FieldsTable
-            groups={simpleGroups}
-            groupFields={groupFields}
             rootFields={rootFields}
-            form={form}
+            data={localData}
+            onEdit={handleEdit}
+            onDelete={handleDelete}
           />
         </div>
       </div>
