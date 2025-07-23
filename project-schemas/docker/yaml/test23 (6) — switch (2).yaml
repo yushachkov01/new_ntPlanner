@@ -1,0 +1,65 @@
+templateName: 'Переключение - проверка222'
+
+settings:
+  intA:
+    key: intA
+    name: 'Переключаем с: IntA'
+    position: 1
+    engineer: 'Инженер СМР'
+    widget: 'dropdown'
+    type: 'string'
+    options: ['Gi1/0/1', 'Gi1/0/2', 'Gi1/0/3']
+
+  intB:
+    key: intB
+    name: 'Переключаем на: IntB'
+    position: 2
+    engineer: 'Инженер СМР'
+    widget: 'dropdown'
+    type: 'string'
+    options: ['edge-01', 'edge-02', 'edge-03']
+
+current_stages:
+  - step1
+stages_field:
+  step1:
+    description: 'Подготовка'
+    engineer: 'Сетевой инженер'
+    timer_default: 30
+    if_success: step2
+    commands_hand: true
+    fields:
+      ack:
+        key: ack
+        name: 'ACK получен?'
+        widget: 'dropdown'
+        type: 'boolean'
+        options: ['true', 'false']
+
+  step2:
+    description: 'Основная операция'
+    engineer: 'Инженер СМР'
+    timer_default: 32
+    if_success: step3
+    commands_hand: true
+    fields:
+      mode:
+        key: mode
+        name: 'Режим'
+        widget: 'dropdown'
+        type: 'string'
+        options: ['CLI', 'NETCONF', 'UI']
+
+  step3:
+    description: 'Проверка / отчёт'
+    engineer: 'Инженер СМР'
+    timer_default: 35
+    if_success: exit
+    commands_hand: true
+    fields:
+      result_ok:
+        key: result_ok
+        name: 'Результат ОК?'
+        widget: 'dropdown'
+        type: 'boolean'
+        options: ['true', 'false']

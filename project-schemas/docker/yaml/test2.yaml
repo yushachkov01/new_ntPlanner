@@ -1,0 +1,104 @@
+templateName: 'Аудит сети, 5 полей'
+
+settings:
+  deviceType:
+    key: deviceType
+    name: 'Тип устройства'
+    position: 1
+    engineer: 'Сетевой инженер'
+    widget: 'dropdown'
+    type: 'string'
+    options:
+      - 'Switch'
+      - 'Router'
+      - 'Firewall'
+      - 'Access Point'
+
+  osVersion:
+    key: osVersion
+    name: 'Версия ОС'
+    position: 2
+    engineer: 'Сетевой инженер'
+    widget: 'dropdown'
+    type: 'string'
+    options:
+      - 'IOS XE 17.3'
+      - 'NX‑OS 9.2'
+      - 'JunOS 20.4R3'
+
+  scanProfile:
+    key: scanProfile
+    name: 'Профиль сканирования'
+    position: 3
+    engineer: 'Сетевой инженер'
+    widget: 'dropdown'
+    type: 'string'
+    options:
+      - 'Quick'
+      - 'Full'
+      - 'Custom'
+
+  location:
+    key: location
+    name: 'ACK получен?'
+    position: 4
+    engineer: 'Сетевой инженер'
+    widget: 'dropdown'
+    type: 'string'
+    options:
+      - 'True'
+      - 'False'
+
+current_stages:
+  - auditStart
+
+stages_field:
+  auditStart:
+    description: 'Инициализация аудита'
+    engineer: 'Сетевой инженер'
+    timer_default: 40
+    if_success: auditCollect
+    commands_hand: false
+    fields:
+      initConfirm:
+        key: initConfirm
+        name: 'Готов к старту?'
+        widget: 'dropdown'
+        type: 'boolean'
+        options:
+          - 'true'
+          - 'false'
+
+  auditCollect:
+    description: 'Сбор информации'
+    engineer: 'Сетевой инженер'
+    timer_default: 40
+    if_success: auditReport
+    commands_hand: true
+    fields:
+      collectMode:
+        key: collectMode
+        name: 'Режим сбора'
+        widget: 'dropdown'
+        type: 'string'
+        options:
+          - 'SNMP'
+          - 'CLI'
+          - 'Netconf'
+
+  auditReport:
+    description: 'Генерация отчёта'
+    engineer: 'Сетевой инженер'
+    timer_default: 46
+    if_success: complete
+    commands_hand: false
+    fields:
+      reportFormat:
+        key: reportFormat
+        name: 'Формат отчёта'
+        widget: 'dropdown'
+        type: 'string'
+        options:
+          - 'PDF'
+          - 'HTML'
+          - 'Markdown'

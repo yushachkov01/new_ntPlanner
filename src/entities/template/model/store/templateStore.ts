@@ -55,9 +55,7 @@ export interface Template {
   timer_default: number;
   current_stages: string[];
   stages_field: Record<string, StageField>;
-  /** Оригинальный текст YAML */
   rawYaml: string;
-  /** Распарсенный объект */
   raw: Record<string, unknown>;
 }
 

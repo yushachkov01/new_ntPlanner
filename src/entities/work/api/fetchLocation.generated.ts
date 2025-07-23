@@ -105,6 +105,214 @@ export type Date_Comparison_Exp = {
   _nin?: InputMaybe<Array<Scalars['date']['input']>>;
 };
 
+/** columns and relationships of "executor" */
+export type Executor = {
+  __typename?: 'executor';
+  author: Scalars['String']['output'];
+  id: Scalars['Int']['output'];
+  role: Scalars['String']['output'];
+};
+
+/** aggregated selection of "executor" */
+export type Executor_Aggregate = {
+  __typename?: 'executor_aggregate';
+  aggregate?: Maybe<Executor_Aggregate_Fields>;
+  nodes: Array<Executor>;
+};
+
+/** aggregate fields of "executor" */
+export type Executor_Aggregate_Fields = {
+  __typename?: 'executor_aggregate_fields';
+  avg?: Maybe<Executor_Avg_Fields>;
+  count: Scalars['Int']['output'];
+  max?: Maybe<Executor_Max_Fields>;
+  min?: Maybe<Executor_Min_Fields>;
+  stddev?: Maybe<Executor_Stddev_Fields>;
+  stddev_pop?: Maybe<Executor_Stddev_Pop_Fields>;
+  stddev_samp?: Maybe<Executor_Stddev_Samp_Fields>;
+  sum?: Maybe<Executor_Sum_Fields>;
+  var_pop?: Maybe<Executor_Var_Pop_Fields>;
+  var_samp?: Maybe<Executor_Var_Samp_Fields>;
+  variance?: Maybe<Executor_Variance_Fields>;
+};
+
+/** aggregate fields of "executor" */
+export type Executor_Aggregate_FieldsCountArgs = {
+  columns?: InputMaybe<Array<Executor_Select_Column>>;
+  distinct?: InputMaybe<Scalars['Boolean']['input']>;
+};
+
+/** aggregate avg on columns */
+export type Executor_Avg_Fields = {
+  __typename?: 'executor_avg_fields';
+  id?: Maybe<Scalars['Float']['output']>;
+};
+
+/** Boolean expression to filter rows from the table "executor". All fields are combined with a logical 'AND'. */
+export type Executor_Bool_Exp = {
+  _and?: InputMaybe<Array<Executor_Bool_Exp>>;
+  _not?: InputMaybe<Executor_Bool_Exp>;
+  _or?: InputMaybe<Array<Executor_Bool_Exp>>;
+  author?: InputMaybe<String_Comparison_Exp>;
+  id?: InputMaybe<Int_Comparison_Exp>;
+  role?: InputMaybe<String_Comparison_Exp>;
+};
+
+/** unique or primary key constraints on table "executor" */
+export enum Executor_Constraint {
+  /** unique or primary key constraint on columns "id" */
+  ExecutorPkey = 'executor_pkey',
+}
+
+/** input type for incrementing numeric columns in table "executor" */
+export type Executor_Inc_Input = {
+  id?: InputMaybe<Scalars['Int']['input']>;
+};
+
+/** input type for inserting data into table "executor" */
+export type Executor_Insert_Input = {
+  author?: InputMaybe<Scalars['String']['input']>;
+  id?: InputMaybe<Scalars['Int']['input']>;
+  role?: InputMaybe<Scalars['String']['input']>;
+};
+
+/** aggregate max on columns */
+export type Executor_Max_Fields = {
+  __typename?: 'executor_max_fields';
+  author?: Maybe<Scalars['String']['output']>;
+  id?: Maybe<Scalars['Int']['output']>;
+  role?: Maybe<Scalars['String']['output']>;
+};
+
+/** aggregate min on columns */
+export type Executor_Min_Fields = {
+  __typename?: 'executor_min_fields';
+  author?: Maybe<Scalars['String']['output']>;
+  id?: Maybe<Scalars['Int']['output']>;
+  role?: Maybe<Scalars['String']['output']>;
+};
+
+/** response of any mutation on the table "executor" */
+export type Executor_Mutation_Response = {
+  __typename?: 'executor_mutation_response';
+  /** number of rows affected by the mutation */
+  affected_rows: Scalars['Int']['output'];
+  /** data from the rows affected by the mutation */
+  returning: Array<Executor>;
+};
+
+/** on_conflict condition type for table "executor" */
+export type Executor_On_Conflict = {
+  constraint: Executor_Constraint;
+  update_columns?: Array<Executor_Update_Column>;
+  where?: InputMaybe<Executor_Bool_Exp>;
+};
+
+/** Ordering options when selecting data from "executor". */
+export type Executor_Order_By = {
+  author?: InputMaybe<Order_By>;
+  id?: InputMaybe<Order_By>;
+  role?: InputMaybe<Order_By>;
+};
+
+/** primary key columns input for table: executor */
+export type Executor_Pk_Columns_Input = {
+  id: Scalars['Int']['input'];
+};
+
+/** select columns of table "executor" */
+export enum Executor_Select_Column {
+  /** column name */
+  Author = 'author',
+  /** column name */
+  Id = 'id',
+  /** column name */
+  Role = 'role',
+}
+
+/** input type for updating data in table "executor" */
+export type Executor_Set_Input = {
+  author?: InputMaybe<Scalars['String']['input']>;
+  id?: InputMaybe<Scalars['Int']['input']>;
+  role?: InputMaybe<Scalars['String']['input']>;
+};
+
+/** aggregate stddev on columns */
+export type Executor_Stddev_Fields = {
+  __typename?: 'executor_stddev_fields';
+  id?: Maybe<Scalars['Float']['output']>;
+};
+
+/** aggregate stddev_pop on columns */
+export type Executor_Stddev_Pop_Fields = {
+  __typename?: 'executor_stddev_pop_fields';
+  id?: Maybe<Scalars['Float']['output']>;
+};
+
+/** aggregate stddev_samp on columns */
+export type Executor_Stddev_Samp_Fields = {
+  __typename?: 'executor_stddev_samp_fields';
+  id?: Maybe<Scalars['Float']['output']>;
+};
+
+/** Streaming cursor of the table "executor" */
+export type Executor_Stream_Cursor_Input = {
+  /** Stream column input with initial value */
+  initial_value: Executor_Stream_Cursor_Value_Input;
+  /** cursor ordering */
+  ordering?: InputMaybe<Cursor_Ordering>;
+};
+
+/** Initial value of the column from where the streaming should start */
+export type Executor_Stream_Cursor_Value_Input = {
+  author?: InputMaybe<Scalars['String']['input']>;
+  id?: InputMaybe<Scalars['Int']['input']>;
+  role?: InputMaybe<Scalars['String']['input']>;
+};
+
+/** aggregate sum on columns */
+export type Executor_Sum_Fields = {
+  __typename?: 'executor_sum_fields';
+  id?: Maybe<Scalars['Int']['output']>;
+};
+
+/** update columns of table "executor" */
+export enum Executor_Update_Column {
+  /** column name */
+  Author = 'author',
+  /** column name */
+  Id = 'id',
+  /** column name */
+  Role = 'role',
+}
+
+export type Executor_Updates = {
+  /** increments the numeric columns with given value of the filtered values */
+  _inc?: InputMaybe<Executor_Inc_Input>;
+  /** sets the columns of the filtered rows to the given values */
+  _set?: InputMaybe<Executor_Set_Input>;
+  /** filter the rows which have to be updated */
+  where: Executor_Bool_Exp;
+};
+
+/** aggregate var_pop on columns */
+export type Executor_Var_Pop_Fields = {
+  __typename?: 'executor_var_pop_fields';
+  id?: Maybe<Scalars['Float']['output']>;
+};
+
+/** aggregate var_samp on columns */
+export type Executor_Var_Samp_Fields = {
+  __typename?: 'executor_var_samp_fields';
+  id?: Maybe<Scalars['Float']['output']>;
+};
+
+/** aggregate variance on columns */
+export type Executor_Variance_Fields = {
+  __typename?: 'executor_variance_fields';
+  id?: Maybe<Scalars['Float']['output']>;
+};
+
 /** columns and relationships of "job_sheet_devices" */
 export type Job_Sheet_Devices = {
   __typename?: 'job_sheet_devices';
@@ -819,6 +1027,10 @@ export type Locations_Variance_Fields = {
 /** mutation root */
 export type Mutation_Root = {
   __typename?: 'mutation_root';
+  /** delete data from the table: "executor" */
+  delete_executor?: Maybe<Executor_Mutation_Response>;
+  /** delete single row from the table: "executor" */
+  delete_executor_by_pk?: Maybe<Executor>;
   /** delete data from the table: "job_sheet_devices" */
   delete_job_sheet_devices?: Maybe<Job_Sheet_Devices_Mutation_Response>;
   /** delete single row from the table: "job_sheet_devices" */
@@ -847,6 +1059,10 @@ export type Mutation_Root = {
   delete_works?: Maybe<Works_Mutation_Response>;
   /** delete single row from the table: "works" */
   delete_works_by_pk?: Maybe<Works>;
+  /** insert data into the table: "executor" */
+  insert_executor?: Maybe<Executor_Mutation_Response>;
+  /** insert a single row into the table: "executor" */
+  insert_executor_one?: Maybe<Executor>;
   /** insert data into the table: "job_sheet_devices" */
   insert_job_sheet_devices?: Maybe<Job_Sheet_Devices_Mutation_Response>;
   /** insert a single row into the table: "job_sheet_devices" */
@@ -875,6 +1091,12 @@ export type Mutation_Root = {
   insert_works?: Maybe<Works_Mutation_Response>;
   /** insert a single row into the table: "works" */
   insert_works_one?: Maybe<Works>;
+  /** update data of the table: "executor" */
+  update_executor?: Maybe<Executor_Mutation_Response>;
+  /** update single row of the table: "executor" */
+  update_executor_by_pk?: Maybe<Executor>;
+  /** update multiples rows of table: "executor" */
+  update_executor_many?: Maybe<Array<Maybe<Executor_Mutation_Response>>>;
   /** update data of the table: "job_sheet_devices" */
   update_job_sheet_devices?: Maybe<Job_Sheet_Devices_Mutation_Response>;
   /** update single row of the table: "job_sheet_devices" */
@@ -917,6 +1139,16 @@ export type Mutation_Root = {
   update_works_by_pk?: Maybe<Works>;
   /** update multiples rows of table: "works" */
   update_works_many?: Maybe<Array<Maybe<Works_Mutation_Response>>>;
+};
+
+/** mutation root */
+export type Mutation_RootDelete_ExecutorArgs = {
+  where: Executor_Bool_Exp;
+};
+
+/** mutation root */
+export type Mutation_RootDelete_Executor_By_PkArgs = {
+  id: Scalars['Int']['input'];
 };
 
 /** mutation root */
@@ -987,6 +1219,18 @@ export type Mutation_RootDelete_WorksArgs = {
 /** mutation root */
 export type Mutation_RootDelete_Works_By_PkArgs = {
   idInt: Scalars['Int']['input'];
+};
+
+/** mutation root */
+export type Mutation_RootInsert_ExecutorArgs = {
+  objects: Array<Executor_Insert_Input>;
+  on_conflict?: InputMaybe<Executor_On_Conflict>;
+};
+
+/** mutation root */
+export type Mutation_RootInsert_Executor_OneArgs = {
+  object: Executor_Insert_Input;
+  on_conflict?: InputMaybe<Executor_On_Conflict>;
 };
 
 /** mutation root */
@@ -1071,6 +1315,25 @@ export type Mutation_RootInsert_WorksArgs = {
 export type Mutation_RootInsert_Works_OneArgs = {
   object: Works_Insert_Input;
   on_conflict?: InputMaybe<Works_On_Conflict>;
+};
+
+/** mutation root */
+export type Mutation_RootUpdate_ExecutorArgs = {
+  _inc?: InputMaybe<Executor_Inc_Input>;
+  _set?: InputMaybe<Executor_Set_Input>;
+  where: Executor_Bool_Exp;
+};
+
+/** mutation root */
+export type Mutation_RootUpdate_Executor_By_PkArgs = {
+  _inc?: InputMaybe<Executor_Inc_Input>;
+  _set?: InputMaybe<Executor_Set_Input>;
+  pk_columns: Executor_Pk_Columns_Input;
+};
+
+/** mutation root */
+export type Mutation_RootUpdate_Executor_ManyArgs = {
+  updates: Array<Executor_Updates>;
 };
 
 /** mutation root */
@@ -1516,6 +1779,12 @@ export type Planned_Tasks_Variance_Fields = {
 
 export type Query_Root = {
   __typename?: 'query_root';
+  /** fetch data from the table: "executor" */
+  executor: Array<Executor>;
+  /** fetch aggregated fields from the table: "executor" */
+  executor_aggregate: Executor_Aggregate;
+  /** fetch data from the table: "executor" using primary key columns */
+  executor_by_pk?: Maybe<Executor>;
   /** fetch data from the table: "job_sheet_devices" */
   job_sheet_devices: Array<Job_Sheet_Devices>;
   /** fetch aggregated fields from the table: "job_sheet_devices" */
@@ -1558,6 +1827,26 @@ export type Query_Root = {
   works_aggregate: Works_Aggregate;
   /** fetch data from the table: "works" using primary key columns */
   works_by_pk?: Maybe<Works>;
+};
+
+export type Query_RootExecutorArgs = {
+  distinct_on?: InputMaybe<Array<Executor_Select_Column>>;
+  limit?: InputMaybe<Scalars['Int']['input']>;
+  offset?: InputMaybe<Scalars['Int']['input']>;
+  order_by?: InputMaybe<Array<Executor_Order_By>>;
+  where?: InputMaybe<Executor_Bool_Exp>;
+};
+
+export type Query_RootExecutor_AggregateArgs = {
+  distinct_on?: InputMaybe<Array<Executor_Select_Column>>;
+  limit?: InputMaybe<Scalars['Int']['input']>;
+  offset?: InputMaybe<Scalars['Int']['input']>;
+  order_by?: InputMaybe<Array<Executor_Order_By>>;
+  where?: InputMaybe<Executor_Bool_Exp>;
+};
+
+export type Query_RootExecutor_By_PkArgs = {
+  id: Scalars['Int']['input'];
 };
 
 export type Query_RootJob_Sheet_DevicesArgs = {
@@ -1702,6 +1991,14 @@ export type Query_RootWorks_By_PkArgs = {
 
 export type Subscription_Root = {
   __typename?: 'subscription_root';
+  /** fetch data from the table: "executor" */
+  executor: Array<Executor>;
+  /** fetch aggregated fields from the table: "executor" */
+  executor_aggregate: Executor_Aggregate;
+  /** fetch data from the table: "executor" using primary key columns */
+  executor_by_pk?: Maybe<Executor>;
+  /** fetch data from the table in a streaming manner: "executor" */
+  executor_stream: Array<Executor>;
   /** fetch data from the table: "job_sheet_devices" */
   job_sheet_devices: Array<Job_Sheet_Devices>;
   /** fetch aggregated fields from the table: "job_sheet_devices" */
@@ -1758,6 +2055,32 @@ export type Subscription_Root = {
   works_by_pk?: Maybe<Works>;
   /** fetch data from the table in a streaming manner: "works" */
   works_stream: Array<Works>;
+};
+
+export type Subscription_RootExecutorArgs = {
+  distinct_on?: InputMaybe<Array<Executor_Select_Column>>;
+  limit?: InputMaybe<Scalars['Int']['input']>;
+  offset?: InputMaybe<Scalars['Int']['input']>;
+  order_by?: InputMaybe<Array<Executor_Order_By>>;
+  where?: InputMaybe<Executor_Bool_Exp>;
+};
+
+export type Subscription_RootExecutor_AggregateArgs = {
+  distinct_on?: InputMaybe<Array<Executor_Select_Column>>;
+  limit?: InputMaybe<Scalars['Int']['input']>;
+  offset?: InputMaybe<Scalars['Int']['input']>;
+  order_by?: InputMaybe<Array<Executor_Order_By>>;
+  where?: InputMaybe<Executor_Bool_Exp>;
+};
+
+export type Subscription_RootExecutor_By_PkArgs = {
+  id: Scalars['Int']['input'];
+};
+
+export type Subscription_RootExecutor_StreamArgs = {
+  batch_size: Scalars['Int']['input'];
+  cursor: Array<InputMaybe<Executor_Stream_Cursor_Input>>;
+  where?: InputMaybe<Executor_Bool_Exp>;
 };
 
 export type Subscription_RootJob_Sheet_DevicesArgs = {
@@ -2756,8 +3079,8 @@ export type FetchLocationQuery = {
 };
 
 export const FetchLocationDocument = gql`
-  query FetchLocation {
-    locations(limit: 1) {
+  query fetchLocation {
+    locations {
       provider
       branch
       city
@@ -2778,7 +3101,7 @@ const defaultWrapper: SdkFunctionWrapper = (action, _operationName, _operationTy
 
 export function getSdk(client: GraphQLClient, withWrapper: SdkFunctionWrapper = defaultWrapper) {
   return {
-    FetchLocation(
+    fetchLocation(
       variables?: FetchLocationQueryVariables,
       requestHeaders?: GraphQLClientRequestHeaders,
       signal?: RequestInit['signal'],
@@ -2791,7 +3114,7 @@ export function getSdk(client: GraphQLClient, withWrapper: SdkFunctionWrapper = 
             requestHeaders: { ...requestHeaders, ...wrappedRequestHeaders },
             signal,
           }),
-        'FetchLocation',
+        'fetchLocation',
         'query',
         variables,
       );

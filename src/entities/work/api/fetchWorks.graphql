@@ -1,4 +1,3 @@
-# fetchWorks.graphql
 query FetchWorks {
   works {
     idInt: id

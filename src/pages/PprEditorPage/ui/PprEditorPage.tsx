@@ -4,6 +4,7 @@ import './PprEditorPage.css';
 import LocationOverview from '@/widgets/layout/LocationOverview/ui/LocationOverview';
 import type { Template } from '@entities/template/model/store/templateStore.ts';
 import { userStore } from '@entities/user/model/store/UserStore';
+import { WorkTimeStore } from '@entities/workTimeStore/model/store/workTimeStore';
 import { addMinutes } from '@features/pprEdit/lib/time/addMinutes';
 import DynamicYamlForm from '@features/pprEdit/ui/DynamicYamlForm/DynamicYamlForm';
 import { PlannedTaskDropdown } from '@features/pprEdit/ui/PlannedTaskDropdown/PlannedTaskDropdown';
@@ -13,7 +14,6 @@ import type { StageCfg } from '@pages/PprPage';
 import PprPage from '@pages/PprPage';
 
 import { Button } from 'antd';
-import { WorkTimeStore } from '@entities/workTimeStore/model/store/workTimeStore';
 
 interface WindowInterval {
   start: string;

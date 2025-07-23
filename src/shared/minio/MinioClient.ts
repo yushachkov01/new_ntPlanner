@@ -3,7 +3,7 @@ import { S3Client, ListObjectsV2Command, GetObjectCommand } from '@aws-sdk/clien
 /**
  * Настройка MinIO
  * - endpoint: адрес локального MinIO
- * - credentials: учётные данные (по умолчанию login/password)
+ * - credentials: учётные данные (по умолчанию admin/secretpassword)
  * - forcePathStyle: обязательно для корректного построения URL
  */
 export const minio = new S3Client({

@@ -9,6 +9,10 @@ import StatusBar from '../../StatusBar/StatusBar.tsx';
 import './WorkTable.css';
 import type { PropsWorkTable, RowWithStep } from '@widgets/WorkTable/model/RowWithStep.ts';
 
+/**
+ * WorkTable — компонент таблицы работ
+ * - Отображает список задач с прогрессом
+ */
 const WorkTable: FC<PropsWorkTable> = ({
   data,
   isArchive = false,
@@ -24,10 +28,12 @@ const WorkTable: FC<PropsWorkTable> = ({
   ],
 }) => {
   const [rows, setRows] = useState<RowWithStep[]>([]);
+  /** Ключ раскрытой строки */
   const [expandedKey, setExpandedKey] = useState<number | null>(null);
+  /** Номер текущей страницы */
   const [page, setPage] = useState(1);
+  /** Размер страницы */
   const [size, setSize] = useState(5);
-
   const today = new Date().toISOString().slice(0, 10);
   const SEGMENTS = 4;
 
@@ -35,6 +41,11 @@ const WorkTable: FC<PropsWorkTable> = ({
     setRows(data);
   }, [data]);
 
+  /**
+   * Обработчик клика по статус-бару для продвижения шага
+   * @param id - идентификатор строки
+   * @param e - событие клика
+   */
   const handleStep = (id: number, e: MouseEvent) => {
     e.stopPropagation();
     setRows((rs) =>
@@ -42,11 +53,17 @@ const WorkTable: FC<PropsWorkTable> = ({
     );
   };
 
+  /**
+   * Переключаем состояние раскрытия строки
+   * @param id - идентификатор строки
+   */
   const toggleExpand = (id: number) => {
     setExpandedKey((prev) => (prev === id ? null : id));
   };
 
-  // Базовые колонки:
+  /**
+   * Описание базовых колонок таблицы
+   */
   const baseCols: ColumnsType<RowWithStep> = [
     { title: '#', dataIndex: 'id', key: 'id', width: 80 },
     { title: 'Дата', dataIndex: 'date', key: 'date', width: 120 },
@@ -63,6 +80,9 @@ const WorkTable: FC<PropsWorkTable> = ({
       title: 'Текущий статус',
       key: 'status',
       width: 280,
+      /**
+       * Рендер статус-бара с возможностью шага
+       */
       render: (_, r) => {
         const isFuture = !isArchive && r.date > today;
         return (
@@ -78,7 +98,6 @@ const WorkTable: FC<PropsWorkTable> = ({
         );
       },
     },
-    // колонка «Действия»
     ...(!isArchive
       ? [
           {
@@ -92,9 +111,7 @@ const WorkTable: FC<PropsWorkTable> = ({
                 </Button>
               ) : (
                 <div className="action-links">
-                  <a onClick={(e) => handleStep(r.id, e)} style={{ paddingRight: '10px' }}>
-                    К ППР
-                  </a>
+                  <a onClick={(e) => handleStep(r.id, e)}>К ППР</a>
                   <a onClick={(e) => handleStep(r.id, e)}>Отменить</a>
                 </div>
               ),
@@ -103,7 +120,9 @@ const WorkTable: FC<PropsWorkTable> = ({
       : []),
   ];
 
-  // Отфильтруем по visibleColumns:
+  /**
+   * Фильтруем колонки по списку ключей
+   */
   const columnsToRender = baseCols.filter((col) => visibleColumns!.includes(col.key as string));
 
   return (
@@ -116,17 +135,6 @@ const WorkTable: FC<PropsWorkTable> = ({
       columns={columnsToRender}
       expandable={{
         expandIconColumnIndex: -1,
-        expandedRowRender: (rec) => {
-          const ot = rec.plan - rec.ppr - rec.work;
-          return (
-            <div className="time-estimate-row">
-              Плановая оценка времени:&nbsp;
-              <strong>{rec.ppr}ч (ППР)</strong>,&nbsp;
-              <strong>{rec.work}ч (Работы)</strong>,&nbsp;
-              <strong>{ot}ч (Сверхурочные)</strong>
-            </div>
-          );
-        },
         expandedRowKeys: expandedKey ? [expandedKey] : [],
         rowExpandable: () => true,
         expandIcon: () => null,
@@ -142,6 +150,7 @@ const WorkTable: FC<PropsWorkTable> = ({
           setSize(s);
         },
       }}
+      // Клик по строке — переключение expand
       onRow={(rec) => ({ onClick: () => toggleExpand(rec.id) })}
       locale={{
         emptyText: <Empty description={isArchive ? 'Нет архивных задач' : 'Нет задач'} />,

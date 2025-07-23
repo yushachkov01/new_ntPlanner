@@ -1,0 +1,103 @@
+templateName: 'Обновление прошивки, 4 поля'
+
+settings:
+  intA:
+    key: intA
+    name: 'Тип устройства'
+    position: 1
+    engineer: 'Инженер СМР'
+    widget: 'dropdown'
+    type: 'string'
+    options:
+      - 'Switch'
+      - 'Router'
+      - 'Firewall'
+
+  intB:
+    key: intB
+    name: 'Версия прошивки'
+    position: 2
+    engineer: 'Инженер СМР'
+    widget: 'dropdown'
+    type: 'string'
+    options:
+      - 'v1.0.0'
+      - 'v1.0.2'
+      - 'v1.0.3'
+
+  intC:
+    key: intC
+    name: 'Профиль сканирования'
+    position: 3
+    engineer: 'Инженер СМР'
+    widget: 'dropdown'
+    type: 'string'
+    options:
+      - 'Quick'
+      - 'Full'
+      - 'Custom'
+
+  intD:
+    key: intD
+    name: 'Площадка'
+    position: 1
+    engineer: 'Инженер СМР'
+    widget: 'dropdown'
+    type: 'string'
+    options:
+      - 'MSK‑01'
+      - 'MSK‑02'
+      - 'MSK‑03'
+
+current_stages:
+  - step1
+
+stages_field:
+  step1:
+    description: 'Подготовка'
+    engineer: 'Сетевой инженер'
+    timer_default: 33
+    if_success: step2
+    commands_hand: true
+    fields:
+      ack:
+        key: ack
+        name: 'ACK получен?'
+        widget: 'dropdown'
+        type: 'boolean'
+        options:
+          - 'true'
+          - 'false'
+
+  step2:
+    description: 'Основная операция'
+    engineer: 'Инженер СМР'
+    timer_default: 38
+    if_success: step3
+    commands_hand: true
+    fields:
+      mode:
+        key: mode
+        name: 'Режим'
+        widget: 'dropdown'
+        type: 'string'
+        options:
+          - 'CLI'
+          - 'NETCONF'
+          - 'UI'
+
+  step3:
+    description: 'Проверка / отчёт'
+    engineer: 'Инженер СМР'
+    timer_default: 39
+    if_success: exit
+    commands_hand: true
+    fields:
+      result_ok:
+        key: result_ok
+        name: 'Результат ОК?'
+        widget: 'dropdown'
+        type: 'boolean'
+        options:
+          - 'true'
+          - 'false'
