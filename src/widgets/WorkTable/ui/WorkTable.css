@@ -17,7 +17,7 @@
 }
 
 .ant-btn-primary {
-  background-color: var(--btn-primary-bg);
+  background-color: white;
   border-color: var(--btn-primary-bg);
   color: var(--btn-primary-color);
 }

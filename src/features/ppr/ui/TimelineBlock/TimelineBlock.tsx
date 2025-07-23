@@ -33,6 +33,24 @@ const TimelineBlock: FC<TimelineBlockProps> = ({
    */
   const [showPopover, setShowPopover] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+
+  /**
+   * При показе popover, свернуть детальную карточку
+   */
+  const handleClick = useCallback(() => {
+    setShowPopover((prev) => !prev);
+    if (expandedBlockId) setExpandedBlockId(null);
+  }, [expandedBlockId, setExpandedBlockId]);
+
+  /**
+   * Двойной клик — popover прячется, разворачивается детальная панель
+   */
+  const handleDoubleClick = useCallback(() => {
+    setShowPopover(false);
+    setExpandedBlockId(block.id);
+    onDoubleClickBlock(block.id);
+  }, [block.id, onDoubleClickBlock, setExpandedBlockId]);
+
   /**
    * Закрываем popover, если открыт блок с другим id
    */
@@ -66,21 +84,6 @@ const TimelineBlock: FC<TimelineBlockProps> = ({
   const leftPercent = (Math.max(0, relStart) / totalWindowMin) * 100;
   const widthPercent =
     ((Math.min(totalWindowMin, relEnd) - Math.max(0, relStart)) / totalWindowMin) * 100;
-  /**
-   * При показе popover, свернуть детальную карточку
-   */
-  const handleClick = useCallback(() => {
-    setShowPopover((prev) => !prev);
-    if (expandedBlockId) setExpandedBlockId(null);
-  }, [expandedBlockId, setExpandedBlockId]);
-  /**
-   * Двойной клик — popover прячется, разворачивается детальная панель
-   */
-  const handleDoubleClick = useCallback(() => {
-    setShowPopover(false);
-    setExpandedBlockId(block.id);
-    onDoubleClickBlock(block.id);
-  }, [block.id, onDoubleClickBlock, setExpandedBlockId]);
 
   /** итоговый класс по статусу и покрытию */
   const className = [
