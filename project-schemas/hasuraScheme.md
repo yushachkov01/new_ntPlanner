@@ -2,82 +2,93 @@
 
 ```mermaid
 erDiagram
-    PLANNED_TASK {
-        uuid task_id      "ID задачи"
-        string name         "Название"
-        string description  "Описание"
-        string project      "Проект"
-        string rm           "Redmine"
-        string rd           "Rd"
+    PROVIDERS {
+        uuid   id   "Первичный ключ"
+        string name "Имя провайдера"
     }
 
-    TIME_WORK {
-        uuid time_work_id "ID записи"
-        uuid task_id      "→ PLANNED_TASK.task_id"
-        string time_work    "Интервал "
+    BRANCHES {
+        uuid   id          "Первичный ключ"
+        string name        "Филиал"
+        uuid   provider_id "→ PROVIDERS.id"
     }
 
-    EQUIPMENT {
-        uuid equipment_id "ID оборудования"
-        uuid task_id      "→ PLANNED_TASK.task_id"
-        string name         "Наименование оборудования"
+    CITIES {
+        uuid   id        "Первичный ключ"
+        string name      "Город"
+        uuid   branch_id "→ BRANCHES.id"
     }
 
-    %% связи «1 ко многим»
-    PLANNED_TASK ||--o{ TIME_WORK : has
-    PLANNED_TASK ||--o{ EQUIPMENT : uses
-    EQUIPMENT ||--o{ PLANNED_TASK : has
-
-
-    PROVIDER {
-        string provider_id    "Имя провайдера (PK)"
+    NODES {
+        uuid   id      "Первичный ключ"
+        string name    "Название узла"
+        string address "Адрес"
+        uuid   city_id "→ CITIES.id"
     }
 
-    BRANCH {
-        string branch_id      "Филиал (PK)"
-        uuid provider_id    "→ PROVIDER.provider_id"
+    EQUIPMENTS {
+        uuid   id       "Первичный ключ"
+        string hostname "Наименование оборудования"
+        uuid   node_id  "→ NODES.id"
     }
 
-    CITY {
-        string city_id        "Город (PK)"
-        uuid branch_id      "→ BRANCH.branch_id"
+    PLANNED_TASKS {
+        uuid   id          "Первичный ключ"
+        string name        "Название задачи"
+        string description "Описание"
+        string project     "Проект"
+        string rm          "Redmine"
+        string rd          "Rd"
+        uuid   author_id   "→ USERS.id"
     }
 
-    LOCATION {
-        string street_id      "Улица (PK)"
-        uuid city_id        "→ CITY.city_id"
-    }
-    EQUIPMENT {
-    uuid equipment_id
-    string name              "Наименование оборудования"
+    TIME_WORKS {
+        uuid   id       "Первичный ключ"
+        uuid   task_id  "→ PLANNED_TASKS.id"
+        string time_work "Интервал"
     }
 
-    %% связи «1 ко многим»
-    PROVIDER ||--o{ BRANCH : has
-    PROVIDER ||--o{ EQUIPMENT : has
-    BRANCH   ||--o{ CITY   : has
-    BRANCH   ||--o{ EQUIPMENT   : has
-    CITY     ||--o{ LOCATION : has
-    CITY     ||--o{ EQUIPMENT : has
-    LOCATION   ||--o{ EQUIPMENT : has
-
-
-
-    USER {
-        uuid number "Первичный ключ"
-        email string "Адрес электронной почты"
-        name string "Отображаемое имя"
-        role_name string "→ ROLE.role"
+    USERS {
+        uuid   id      "Первичный ключ"
+        string email   "Адрес электронной почты"
+        string name    "Отображаемое имя"
+        uuid   role_id "→ ROLES.id"
     }
 
-    ROLE {
-        role string "Роль"
+    ROLES {
+        uuid   id   "Первичный ключ"
+        string role "Роль"
     }
 
-    %% связь «1 ROLE ко многим USER»
-    ROLE ||--o{ USER : has
-    ROLE ||--o{ PLANNED_TASK : has
-    USER ||--o{ PLANNED_TASK : has
+    USER_PLANNED_TASKS {
+        uuid user_id "→ USERS.id"
+        uuid task_id "→ PLANNED_TASKS.id"
+    }
+
+    PLANNED_TASKS_EQUIPMENTS {
+        uuid task_id      "→ PLANNED_TASKS.id"
+        uuid equipment_id "→ EQUIPMENTS.id"
+    }
+
+    PROVIDERS   ||--o{ BRANCHES                  : has
+    BRANCHES    ||--o{ CITIES                    : has
+    CITIES      ||--o{ NODES                     : has
+    NODES       ||--o{ EQUIPMENTS                : hosts
+
+    ROLES       ||--o{ USERS                     : has
+    USERS       ||--o{ PLANNED_TASKS             : author
+
+    PLANNED_TASKS ||--o{ TIME_WORKS              : has
+
+    %% N:M «пользователи ↔ задачи»
+    USERS          ||--o{ USER_PLANNED_TASKS     : assigned
+    PLANNED_TASKS  ||--o{ USER_PLANNED_TASKS     : includes
+
+    %% N:M «задачи ↔ оборудование»
+    PLANNED_TASKS  ||--o{ PLANNED_TASKS_EQUIPMENTS : needs
+    EQUIPMENTS     ||--o{ PLANNED_TASKS_EQUIPMENTS : partOf
+
+
 ```
 
 ---
