@@ -2,34 +2,49 @@
 
 ```mermaid
 erDiagram
-    PROVIDERS {
-        uuid   id   "Первичный ключ"
-        string name "Имя провайдера"
-    }
+PROVIDERS {
+uuid   id      "Первичный ключ"
+string name    "Имя провайдера"
+}
 
     BRANCHES {
         uuid   id          "Первичный ключ"
         string name        "Филиал"
-        uuid   provider_id "→ PROVIDERS.id"
+        uuid   provider_id " PROVIDERS.id — провайдер"
     }
 
     CITIES {
-        uuid   id        "Первичный ключ"
-        string name      "Город"
-        uuid   branch_id "→ BRANCHES.id"
+        uuid   id          "Первичный ключ"
+        string name        "Название города"
+        string time_zone   "Часовой пояс города"
+        uuid   branch_id   "BRANCHES.id — филиал"
     }
 
     NODES {
-        uuid   id      "Первичный ключ"
-        string name    "Название узла"
-        string address "Адрес"
-        uuid   city_id "→ CITIES.id"
+        uuid   id        "Первичный ключ"
+        string name      "Название узла"
+        string address   "Адрес"
+        uuid   city_id   "CITIES.id — город"
     }
 
     EQUIPMENTS {
-        uuid   id       "Первичный ключ"
-        string hostname "Наименование оборудования"
-        uuid   node_id  "→ NODES.id"
+        uuid   id        "Первичный ключ"
+        string hostname  "Наименование оборудования"
+        uuid   node_id   " NODES.id — узел"
+    }
+
+    ROLES {
+        uuid   id    "Первичный ключ"
+        string role  "Системное имя роли"
+    }
+
+    USERS {
+        uuid   id            "Первичный ключ"
+        string email         "Адрес электронной почты"
+        string name          "Отображаемое имя"
+        string time_zone     "Часовой пояс инженера"
+        bool   is_active     "Активен?"
+        uuid   role_id       "ROLES.id — основная роль"
     }
 
     PLANNED_TASKS {
@@ -39,56 +54,42 @@ erDiagram
         string project     "Проект"
         string rm          "Redmine"
         string rd          "Rd"
-        uuid   author_id   "→ USERS.id"
+        uuid   author_id   "USERS.id — автор"
     }
 
     TIME_WORKS {
-        uuid   id       "Первичный ключ"
-        uuid   task_id  "→ PLANNED_TASKS.id"
-        string time_work "Интервал"
-    }
-
-    USERS {
-        uuid   id      "Первичный ключ"
-        string email   "Адрес электронной почты"
-        string name    "Отображаемое имя"
-        uuid   role_id "→ ROLES.id"
-    }
-
-    ROLES {
-        uuid   id   "Первичный ключ"
-        string role "Роль"
+        uuid        id       "Первичный ключ"
+        uuid        task_id  " PLANNED_TASKS.id"
+        timestamptz start_at "Время начала"
+        timestamptz end_at   "Время окончания"
     }
 
     USER_PLANNED_TASKS {
-        uuid user_id "→ USERS.id"
-        uuid task_id "→ PLANNED_TASKS.id"
+        uuid user_id " USERS.id — инженер"
+        uuid task_id "PLANNED_TASKS.id — задача"
     }
 
     PLANNED_TASKS_EQUIPMENTS {
-        uuid task_id      "→ PLANNED_TASKS.id"
-        uuid equipment_id "→ EQUIPMENTS.id"
+        uuid task_id      " PLANNED_TASKS.id — задача"
+        uuid equipment_id " EQUIPMENTS.id — оборудование"
     }
 
-    PROVIDERS   ||--o{ BRANCHES                  : has
-    BRANCHES    ||--o{ CITIES                    : has
-    CITIES      ||--o{ NODES                     : has
-    NODES       ||--o{ EQUIPMENTS                : hosts
+    PROVIDERS     ||--o{ BRANCHES      : has
+    BRANCHES      ||--o{ CITIES        : has
+    CITIES        ||--o{ NODES         : has
+    NODES         ||--o{ EQUIPMENTS    : hosts
 
-    ROLES       ||--o{ USERS                     : has
-    USERS       ||--o{ PLANNED_TASKS             : author
+    ROLES         ||--o{ USERS         : has
+    USERS         ||--o{ PLANNED_TASKS : author
 
-    PLANNED_TASKS ||--o{ TIME_WORKS              : has
+    %% PLANNED_TASKS ||--|| TIME_WORKS    : interval
+    TIME_WORKS    ||--o{ PLANNED_TASKS    : interval
 
-    %% N:M «пользователи ↔ задачи»
-    USERS          ||--o{ USER_PLANNED_TASKS     : assigned
-    PLANNED_TASKS  ||--o{ USER_PLANNED_TASKS     : includes
+    USERS         ||--o{ USER_PLANNED_TASKS       : assigned
+    PLANNED_TASKS ||--o{ USER_PLANNED_TASKS       : includes
 
-    %% N:M «задачи ↔ оборудование»
-    PLANNED_TASKS  ||--o{ PLANNED_TASKS_EQUIPMENTS : needs
-    EQUIPMENTS     ||--o{ PLANNED_TASKS_EQUIPMENTS : partOf
-
-
+    PLANNED_TASKS ||--o{ PLANNED_TASKS_EQUIPMENTS : needs
+    EQUIPMENTS    ||--o{ PLANNED_TASKS_EQUIPMENTS : partOf
 ```
 
 ---
