@@ -2,21 +2,35 @@
 
 ```mermaid
 erDiagram
-PROVIDERS {
-uuid   id      "Первичный ключ"
-string name    "Имя провайдера"
+RM_PROJECTS {
+uuid   id       "Первичный ключ"
+int    ext_id   "Внешний ID из Redmine"
+string name     "Название проекта"
 }
+
+    RM_TASKS {
+        uuid   id        "Первичный ключ"
+        int    ext_id    "Внешний ID из Redmine"
+        string name      "название задачи"
+        string status    "Статус задачи в Redmine"
+        uuid   project_id "RM_PROJECTS.id — проект"
+    }
+
+    PROVIDERS {
+        uuid   id      "Первичный ключ"
+        string name    "Имя провайдера"
+    }
 
     BRANCHES {
         uuid   id          "Первичный ключ"
-        string name        "Филиал"
-        uuid   provider_id " PROVIDERS.id — провайдер"
+        string name        "Название филиала"
+        uuid   provider_id "PROVIDERS.id — провайдер"
     }
 
     CITIES {
         uuid   id          "Первичный ключ"
         string name        "Название города"
-        string time_zone   "Часовой пояс города"
+        string time_zone   "Часовой пояс"
         uuid   branch_id   "BRANCHES.id — филиал"
     }
 
@@ -30,7 +44,7 @@ string name    "Имя провайдера"
     EQUIPMENTS {
         uuid   id        "Первичный ключ"
         string hostname  "Наименование оборудования"
-        uuid   node_id   " NODES.id — узел"
+        uuid   node_id   "NODES.id — узел"
     }
 
     ROLES {
@@ -39,39 +53,39 @@ string name    "Имя провайдера"
     }
 
     USERS {
-        uuid   id            "Первичный ключ"
-        string email         "Адрес электронной почты"
-        string name          "Отображаемое имя"
-        string time_zone     "Часовой пояс инженера"
-        bool   is_active     "Активен?"
-        uuid   role_id       "ROLES.id — основная роль"
+        uuid   id           "Первичный ключ"
+        string email        "E‑mail"
+        string name         "Отображаемое имя"
+        string time_zone    "Часовой пояс"
+        bool   is_active    "Активен?"
+        uuid   role_id      "ROLES.id — роль"
     }
 
     PLANNED_TASKS {
-        uuid   id          "Первичный ключ"
-        string name        "Название задачи"
-        string description "Описание"
-        string project     "Проект"
-        string rm          "Redmine"
-        string rd          "Rd"
-        uuid   author_id   "USERS.id — автор"
+        uuid   id            "Первичный ключ"
+        string name          "Название"
+        string description   "Описание"
+        uuid   rm_project_id "RM_PROJECTS.id"
+        uuid   rm_task_id    "RM_TASKS.id"
+        string yaml_url      "URL YAML‑файла"
+        uuid   author_id     "USERS.id — автор"
     }
 
     TIME_WORKS {
-        uuid        id       "Первичный ключ"
-        uuid        task_id  " PLANNED_TASKS.id"
-        timestamptz start_at "Время начала"
-        timestamptz end_at   "Время окончания"
+        uuid        id        "Первичный ключ"
+        uuid        task_id   "UNIQUE, FK  PLANNED_TASKS.id"
+        timestamptz start_at  "Время начала"
+        timestamptz end_at    "Время окончания"
     }
 
     USER_PLANNED_TASKS {
-        uuid user_id " USERS.id — инженер"
-        uuid task_id "PLANNED_TASKS.id — задача"
+        uuid user_id "USERS.id"
+        uuid task_id "PLANNED_TASKS.id"
     }
 
     PLANNED_TASKS_EQUIPMENTS {
-        uuid task_id      " PLANNED_TASKS.id — задача"
-        uuid equipment_id " EQUIPMENTS.id — оборудование"
+        uuid task_id      "PLANNED_TASKS.id"
+        uuid equipment_id "EQUIPMENTS.id"
     }
 
     PROVIDERS     ||--o{ BRANCHES      : has
@@ -82,14 +96,18 @@ string name    "Имя провайдера"
     ROLES         ||--o{ USERS         : has
     USERS         ||--o{ PLANNED_TASKS : author
 
-    %% PLANNED_TASKS ||--|| TIME_WORKS    : interval
-    TIME_WORKS    ||--o{ PLANNED_TASKS    : interval
+    TIME_WORKS ||--o{ PLANNED_TASKS    : interval
 
     USERS         ||--o{ USER_PLANNED_TASKS       : assigned
     PLANNED_TASKS ||--o{ USER_PLANNED_TASKS       : includes
 
     PLANNED_TASKS ||--o{ PLANNED_TASKS_EQUIPMENTS : needs
     EQUIPMENTS    ||--o{ PLANNED_TASKS_EQUIPMENTS : partOf
+
+    RM_PROJECTS   ||--o{ RM_TASKS      : has
+    RM_PROJECTS   ||--o{ PLANNED_TASKS : project
+    RM_TASKS      ||--o{ PLANNED_TASKS : ticket
+
 ```
 
 ---
