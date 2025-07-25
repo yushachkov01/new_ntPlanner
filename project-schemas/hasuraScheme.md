@@ -65,15 +65,14 @@ string name     "Название проекта"
         uuid   id            "Первичный ключ"
         string name          "Название"
         string description   "Описание"
-        uuid   rm_project_id "RM_PROJECTS.id"
         uuid   rm_task_id    "RM_TASKS.id"
         string yaml_url      "URL YAML‑файла"
-        uuid   author_id     "USERS.id — автор"
+        uuid   time_work_id " TIME_WORKS.id — интервал"
+        uuid   author_id     "USERS.id — автор"
     }
 
     TIME_WORKS {
         uuid        id        "Первичный ключ"
-        uuid        task_id   " PLANNED_TASKS.id"
         timestamptz start_at  "Время начала"
         timestamptz end_at    "Время окончания"
     }
