@@ -54,7 +54,7 @@ string name     "Название проекта"
 
     USERS {
         uuid   id           "Первичный ключ"
-        string email        "E‑mail"
+        string email        "Адрес электронной почты"
         string name         "Отображаемое имя"
         string time_zone    "Часовой пояс"
         bool   is_active    "Активен?"
@@ -73,19 +73,19 @@ string name     "Название проекта"
 
     TIME_WORKS {
         uuid        id        "Первичный ключ"
-        uuid        task_id   "UNIQUE, FK  PLANNED_TASKS.id"
+        uuid        task_id   " PLANNED_TASKS.id"
         timestamptz start_at  "Время начала"
         timestamptz end_at    "Время окончания"
     }
 
     USER_PLANNED_TASKS {
-        uuid user_id "USERS.id"
-        uuid task_id "PLANNED_TASKS.id"
+        uuid user_id "USERS.id — инженер"
+        uuid task_id "PLANNED_TASKS.id — задача"
     }
 
     PLANNED_TASKS_EQUIPMENTS {
-        uuid task_id      "PLANNED_TASKS.id"
-        uuid equipment_id "EQUIPMENTS.id"
+        uuid task_id      "PLANNED_TASKS.id — задача"
+        uuid equipment_id "EQUIPMENTS.id — оборудование"
     }
 
     PROVIDERS     ||--o{ BRANCHES      : has
