@@ -1,6 +1,6 @@
-# Запуск проекта nt-6827
+# Запуск проекта nt-6827-3
 
-## 1. Клонировать nt-6827
+## 1. Клонировать nt-6827-3
 
 ## 2. Установить зависимости
 
@@ -14,6 +14,12 @@ npm config set strict-ssl false
 * И потом обязательно включить ее обратно!
 ```
 npm config set strict-ssl true
+```
+
+## 2.1 Собрать проект
+
+```bash
+npm run build
 ```
 
 ## 3. Запустить dev‑сервер
@@ -32,25 +38,9 @@ http://localhost:5173
 
 ---
 
-## 4. Поднимаем MINIO
-
-Скачать и запустить контейнер на портах 9000 (API), 9001 (консоль):
-
-```bash
-docker run -d --name minio -p 9000:9000 -p 9001:9001 -e "MINIO_ROOT_USER=admin" -e "MINIO_ROOT_PASSWORD=secretpassword" quay.io/minio/minio server /data --console-address ":9001"
-```
-
-Открыть консоль:
-
-```
-http://localhost:9001
-```
-
-Загрузить тестовые yaml файлы, которые находятся: `project-schemas/docker/yaml`
-
 ---
 
-## 5. Поднимаем Hasura и закидываем данные
+## 4. Поднимаем Hasura, minio и nginx и закидываем данные
 
 ```bash
 docker compose up -d
@@ -68,9 +58,24 @@ Admin Secret для Hasura:
 myadminsecretkey
 ```
 
+## 5. Поднимаем MINIO
+
+Открыть консоль:
+
+```
+http://localhost:9001
+```
+
+```
+Username: admin,
+Password: secretpassword
+```
+
+Загрузить тестовые yaml файлы, которые находятся: `project-schemas/docker/yaml`
+
 ---
 
-## 6. Таблица с planned_tasks
+## 6. Hasura. Таблица с planned_tasks
 
 ```sql
 CREATE TABLE public.planned_tasks (

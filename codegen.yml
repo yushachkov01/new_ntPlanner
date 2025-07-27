@@ -11,7 +11,7 @@ generates:
     preset: near-operation-file-preset
     presetConfig:
       extension: .generated.ts
-      baseTypesPath: ../../types/graphql.ts
+      baseTypesPath: ../../../shared/api/graphql.ts
     plugins:
       - typescript
       - typescript-operations
