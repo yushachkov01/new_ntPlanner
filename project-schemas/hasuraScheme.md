@@ -40,16 +40,40 @@ string name     "Название проекта"
         string address   "Адрес"
         uuid   city_id   "CITIES.id — город"
     }
+    VENDORS {
+        uuid   id      "Первичный ключ"
+        string name    "Имя вендора"
+    }
 
-    EQUIPMENTS {
+    DEVICE_MODELS {
+        uuid   id        "Первичный ключ"
+        string name      "Модель устройства"
+        uuid   vendor_id " VENDORS.id"
+    }
+
+    DEVICE_ROLES {
+        uuid   id    "Первичный ключ"
+        string role  "Тип устройства"
+        uuid   model_id " DEVICE_MODELS.id"
+    }
+
+    DEVICES {
         uuid   id        "Первичный ключ"
         string hostname  "Наименование оборудования"
         uuid   node_id   "NODES.id — узел"
+        uuid   role_id    "DEVICE_ROLES.id"
+
+    }
+
+    USER_GROUPS {
+        uuid   id       "Первичный ключ"
+        string name     "Имя группы"
     }
 
     ROLES {
         uuid   id    "Первичный ключ"
         string role  "Системное имя роли"
+        uuid   group_id  "USER_GROUPS.id - группа"
     }
 
     USERS {
@@ -82,31 +106,34 @@ string name     "Название проекта"
         uuid task_id "PLANNED_TASKS.id — задача"
     }
 
-    PLANNED_TASKS_EQUIPMENTS {
+    PLANNED_TASKS_DEVICES {
         uuid task_id      "PLANNED_TASKS.id — задача"
-        uuid equipment_id "EQUIPMENTS.id — оборудование"
+        uuid equipment_id "DEVICES.id — оборудование"
     }
 
     PROVIDERS     ||--o{ BRANCHES      : has
     BRANCHES      ||--o{ CITIES        : has
     CITIES        ||--o{ NODES         : has
-    NODES         ||--o{ EQUIPMENTS    : hosts
+    NODES         ||--o{ DEVICES    : hosts
 
     ROLES         ||--o{ USERS         : has
     USERS         ||--o{ PLANNED_TASKS : author
 
-    TIME_WORKS ||--o{ PLANNED_TASKS    : interval
+    TIME_WORKS    ||--o{ PLANNED_TASKS    : interval
 
     USERS         ||--o{ USER_PLANNED_TASKS       : assigned
     PLANNED_TASKS ||--o{ USER_PLANNED_TASKS       : includes
 
-    PLANNED_TASKS ||--o{ PLANNED_TASKS_EQUIPMENTS : needs
-    EQUIPMENTS    ||--o{ PLANNED_TASKS_EQUIPMENTS : partOf
+    PLANNED_TASKS ||--o{ PLANNED_TASKS_DEVICES: needs
+    DEVICES       ||--o{ PLANNED_TASKS_DEVICES: partOf
 
     RM_PROJECTS   ||--o{ RM_TASKS      : has
     RM_PROJECTS   ||--o{ PLANNED_TASKS : project
     RM_TASKS      ||--o{ PLANNED_TASKS : ticket
-
+    USER_GROUPS   ||--o{ ROLES : has
+    VENDORS       ||--o{ DEVICE_MODELS : has
+    DEVICE_MODELS ||--o{ DEVICE_ROLES : has
+    DEVICE_ROLES ||--o{ DEVICES : has
 ```
 
 ---
