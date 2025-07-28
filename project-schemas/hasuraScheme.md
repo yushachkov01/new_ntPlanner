@@ -128,7 +128,6 @@ string name     "Название проекта"
     DEVICES       ||--o{ PLANNED_TASKS_DEVICES: partOf
 
     RM_PROJECTS   ||--o{ RM_TASKS      : has
-    RM_PROJECTS   ||--o{ PLANNED_TASKS : project
     RM_TASKS      ||--o{ PLANNED_TASKS : ticket
     USER_GROUPS   ||--o{ ROLES : has
     VENDORS       ||--o{ DEVICE_MODELS : has
