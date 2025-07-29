@@ -54,7 +54,7 @@ string name     "Название проекта"
     DEVICE_ROLES {
         uuid   id    "Первичный ключ"
         string role  "Тип устройства"
-        uuid   model_id " DEVICE_MODELS.id"
+        uuid   vendor_id  "VENDORS.id"
     }
 
     DEVICES {
@@ -62,6 +62,7 @@ string name     "Название проекта"
         string hostname  "Наименование оборудования"
         uuid   node_id   "NODES.id — узел"
         uuid   role_id    "DEVICE_ROLES.id"
+        uuid   model_id " DEVICE_MODELS.id"
 
     }
 
@@ -73,7 +74,6 @@ string name     "Название проекта"
     ROLES {
         uuid   id    "Первичный ключ"
         string role  "Системное имя роли"
-        uuid   group_id  "USER_GROUPS.id - группа"
     }
 
     USERS {
@@ -83,6 +83,7 @@ string name     "Название проекта"
         string time_zone    "Часовой пояс"
         bool   is_active    "Активен?"
         uuid   role_id      "ROLES.id — роль"
+        uuid   group_id     "USER_GROUPS.id - группа"
     }
 
     PLANNED_TASKS {
@@ -128,10 +129,12 @@ string name     "Название проекта"
     DEVICES       ||--o{ PLANNED_TASKS_DEVICES: partOf
 
     RM_PROJECTS   ||--o{ RM_TASKS      : has
+    RM_PROJECTS   ||--o{ PLANNED_TASKS : project
     RM_TASKS      ||--o{ PLANNED_TASKS : ticket
-    USER_GROUPS   ||--o{ ROLES : has
+    USER_GROUPS   ||--o{ USERS : has
+    VENDORS       ||--o{ DEVICE_ROLES : has
     VENDORS       ||--o{ DEVICE_MODELS : has
-    DEVICE_MODELS ||--o{ DEVICE_ROLES : has
+    DEVICE_MODELS ||--o{ DEVICES : has
     DEVICE_ROLES ||--o{ DEVICES : has
 ```
 
