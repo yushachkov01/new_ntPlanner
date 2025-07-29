@@ -48,6 +48,7 @@ string name     "Название проекта"
     DEVICE_MODELS {
         uuid   id        "Первичный ключ"
         string name      "Модель устройства"
+        string version    "Версия модели"
         uuid   vendor_id " VENDORS.id"
     }
 
@@ -80,6 +81,9 @@ string name     "Название проекта"
         uuid   id           "Первичный ключ"
         string email        "Адрес электронной почты"
         string name         "Отображаемое имя"
+        string first_name   "Имя"
+        string last_name    "Фамилия"
+        string middle_name  "Отчество"
         string time_zone    "Часовой пояс"
         bool   is_active    "Активен?"
         uuid   role_id      "ROLES.id — роль"
