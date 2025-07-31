@@ -1,0 +1,15 @@
+# Исполнители (users)
+query fetchExecutors {
+  public7_users {
+    id
+    email
+    name
+    first_name
+    middle_name
+    last_name
+    time_zone
+    is_active
+    role_id
+    group_id
+  }
+}

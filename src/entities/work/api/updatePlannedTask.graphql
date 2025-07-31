@@ -1,0 +1,14 @@
+mutation updatePlannedTaskByPk(
+  $pk_columns: public7_planned_tasks_pk_columns_input!
+  $_set: public7_planned_tasks_set_input!
+) {
+  update_public7_planned_tasks_by_pk(pk_columns: $pk_columns, _set: $_set) {
+    id
+    name
+    description
+    rm_task_id
+    yaml_url
+    time_work_id
+    author_id
+  }
+}

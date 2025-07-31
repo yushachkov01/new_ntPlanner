@@ -1,0 +1,6 @@
+query fetchRoles {
+  public7_roles {
+    id
+    role
+  }
+}

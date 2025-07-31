@@ -19336,21 +19336,26 @@ export type Works_Variance_Fields = {
   work_hours?: Maybe<Scalars['Float']['output']>;
 };
 
-export type FetchUserQueryVariables = Types.Exact<{
-  id: Types.Scalars['Int']['input'];
-}>;
+export type FetchCitiesQueryVariables = Types.Exact<{ [key: string]: never }>;
 
-export type FetchUserQuery = {
+export type FetchCitiesQuery = {
   __typename?: 'query_root';
-  users_by_pk?: { __typename?: 'users'; id: number; role: string; author: string } | null;
+  public7_cities: Array<{
+    __typename?: 'public7_cities';
+    id: any;
+    name: string;
+    time_zone: string;
+    branch_id: any;
+  }>;
 };
 
-export const FetchUserDocument = gql`
-  query FetchUser($id: Int!) {
-    users_by_pk(id: $id) {
+export const FetchCitiesDocument = gql`
+  query fetchCities {
+    public7_cities {
       id
-      role
-      author
+      name
+      time_zone
+      branch_id
     }
   }
 `;
@@ -19367,20 +19372,20 @@ const defaultWrapper: SdkFunctionWrapper = (action, _operationName, _operationTy
 
 export function getSdk(client: GraphQLClient, withWrapper: SdkFunctionWrapper = defaultWrapper) {
   return {
-    FetchUser(
-      variables: FetchUserQueryVariables,
+    fetchCities(
+      variables?: FetchCitiesQueryVariables,
       requestHeaders?: GraphQLClientRequestHeaders,
       signal?: RequestInit['signal'],
-    ): Promise<FetchUserQuery> {
+    ): Promise<FetchCitiesQuery> {
       return withWrapper(
         (wrappedRequestHeaders) =>
-          client.request<FetchUserQuery>({
-            document: FetchUserDocument,
+          client.request<FetchCitiesQuery>({
+            document: FetchCitiesDocument,
             variables,
             requestHeaders: { ...requestHeaders, ...wrappedRequestHeaders },
             signal,
           }),
-        'FetchUser',
+        'fetchCities',
         'query',
         variables,
       );

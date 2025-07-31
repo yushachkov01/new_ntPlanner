@@ -1,0 +1,7 @@
+# Получаем провайдеров
+query fetchProviders {
+  public7_providers {
+    id
+    name
+  }
+}

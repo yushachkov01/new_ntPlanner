@@ -1,0 +1,11 @@
+mutation createPlannedTask($object: public7_planned_tasks_insert_input!) {
+  insert_public7_planned_tasks_one(object: $object) {
+    id
+    name
+    description
+    rm_task_id
+    yaml_url
+    time_work_id
+    author_id
+  }
+}

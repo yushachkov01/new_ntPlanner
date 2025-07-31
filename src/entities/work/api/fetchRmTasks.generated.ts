@@ -19336,21 +19336,28 @@ export type Works_Variance_Fields = {
   work_hours?: Maybe<Scalars['Float']['output']>;
 };
 
-export type FetchUserQueryVariables = Types.Exact<{
-  id: Types.Scalars['Int']['input'];
-}>;
+export type FetchRmTasksQueryVariables = Types.Exact<{ [key: string]: never }>;
 
-export type FetchUserQuery = {
+export type FetchRmTasksQuery = {
   __typename?: 'query_root';
-  users_by_pk?: { __typename?: 'users'; id: number; role: string; author: string } | null;
+  public7_rm_tasks: Array<{
+    __typename?: 'public7_rm_tasks';
+    id: any;
+    ext_id: number;
+    name: string;
+    status: string;
+    project_id: any;
+  }>;
 };
 
-export const FetchUserDocument = gql`
-  query FetchUser($id: Int!) {
-    users_by_pk(id: $id) {
+export const FetchRmTasksDocument = gql`
+  query fetchRmTasks {
+    public7_rm_tasks {
       id
-      role
-      author
+      ext_id
+      name
+      status
+      project_id
     }
   }
 `;
@@ -19367,20 +19374,20 @@ const defaultWrapper: SdkFunctionWrapper = (action, _operationName, _operationTy
 
 export function getSdk(client: GraphQLClient, withWrapper: SdkFunctionWrapper = defaultWrapper) {
   return {
-    FetchUser(
-      variables: FetchUserQueryVariables,
+    fetchRmTasks(
+      variables?: FetchRmTasksQueryVariables,
       requestHeaders?: GraphQLClientRequestHeaders,
       signal?: RequestInit['signal'],
-    ): Promise<FetchUserQuery> {
+    ): Promise<FetchRmTasksQuery> {
       return withWrapper(
         (wrappedRequestHeaders) =>
-          client.request<FetchUserQuery>({
-            document: FetchUserDocument,
+          client.request<FetchRmTasksQuery>({
+            document: FetchRmTasksDocument,
             variables,
             requestHeaders: { ...requestHeaders, ...wrappedRequestHeaders },
             signal,
           }),
-        'FetchUser',
+        'fetchRmTasks',
         'query',
         variables,
       );

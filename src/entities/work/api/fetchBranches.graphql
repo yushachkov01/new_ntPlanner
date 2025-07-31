@@ -1,0 +1,7 @@
+query fetchBranches {
+  public7_branches {
+    id
+    name
+    provider_id
+  }
+}

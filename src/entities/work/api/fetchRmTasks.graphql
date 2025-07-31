@@ -1,0 +1,9 @@
+query fetchRmTasks {
+  public7_rm_tasks {
+    id
+    ext_id
+    name
+    status
+    project_id
+  }
+}

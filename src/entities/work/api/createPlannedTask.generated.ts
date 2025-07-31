@@ -19336,21 +19336,34 @@ export type Works_Variance_Fields = {
   work_hours?: Maybe<Scalars['Float']['output']>;
 };
 
-export type FetchUserQueryVariables = Types.Exact<{
-  id: Types.Scalars['Int']['input'];
+export type CreatePlannedTaskMutationVariables = Types.Exact<{
+  object: Types.Public7_Planned_Tasks_Insert_Input;
 }>;
 
-export type FetchUserQuery = {
-  __typename?: 'query_root';
-  users_by_pk?: { __typename?: 'users'; id: number; role: string; author: string } | null;
+export type CreatePlannedTaskMutation = {
+  __typename?: 'mutation_root';
+  insert_public7_planned_tasks_one?: {
+    __typename?: 'public7_planned_tasks';
+    id: any;
+    name: string;
+    description?: string | null;
+    rm_task_id: any;
+    yaml_url?: string | null;
+    time_work_id: any;
+    author_id: any;
+  } | null;
 };
 
-export const FetchUserDocument = gql`
-  query FetchUser($id: Int!) {
-    users_by_pk(id: $id) {
+export const CreatePlannedTaskDocument = gql`
+  mutation createPlannedTask($object: public7_planned_tasks_insert_input!) {
+    insert_public7_planned_tasks_one(object: $object) {
       id
-      role
-      author
+      name
+      description
+      rm_task_id
+      yaml_url
+      time_work_id
+      author_id
     }
   }
 `;
@@ -19367,21 +19380,21 @@ const defaultWrapper: SdkFunctionWrapper = (action, _operationName, _operationTy
 
 export function getSdk(client: GraphQLClient, withWrapper: SdkFunctionWrapper = defaultWrapper) {
   return {
-    FetchUser(
-      variables: FetchUserQueryVariables,
+    createPlannedTask(
+      variables: CreatePlannedTaskMutationVariables,
       requestHeaders?: GraphQLClientRequestHeaders,
       signal?: RequestInit['signal'],
-    ): Promise<FetchUserQuery> {
+    ): Promise<CreatePlannedTaskMutation> {
       return withWrapper(
         (wrappedRequestHeaders) =>
-          client.request<FetchUserQuery>({
-            document: FetchUserDocument,
+          client.request<CreatePlannedTaskMutation>({
+            document: CreatePlannedTaskDocument,
             variables,
             requestHeaders: { ...requestHeaders, ...wrappedRequestHeaders },
             signal,
           }),
-        'FetchUser',
-        'query',
+        'createPlannedTask',
+        'mutation',
         variables,
       );
     },

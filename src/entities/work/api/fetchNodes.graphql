@@ -1,0 +1,9 @@
+# Узлы
+query fetchNodes {
+  public7_nodes {
+    id
+    name
+    address
+    city_id
+  }
+}

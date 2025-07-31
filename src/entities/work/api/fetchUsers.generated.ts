@@ -19336,21 +19336,38 @@ export type Works_Variance_Fields = {
   work_hours?: Maybe<Scalars['Float']['output']>;
 };
 
-export type FetchUserQueryVariables = Types.Exact<{
-  id: Types.Scalars['Int']['input'];
-}>;
+export type FetchUsersQueryVariables = Types.Exact<{ [key: string]: never }>;
 
-export type FetchUserQuery = {
+export type FetchUsersQuery = {
   __typename?: 'query_root';
-  users_by_pk?: { __typename?: 'users'; id: number; role: string; author: string } | null;
+  public7_users: Array<{
+    __typename?: 'public7_users';
+    id: any;
+    email: string;
+    name: string;
+    first_name: string;
+    middle_name: string;
+    last_name: string;
+    time_zone: string;
+    is_active: boolean;
+    role_id: any;
+    group_id: any;
+  }>;
 };
 
-export const FetchUserDocument = gql`
-  query FetchUser($id: Int!) {
-    users_by_pk(id: $id) {
+export const FetchUsersDocument = gql`
+  query fetchUsers {
+    public7_users {
       id
-      role
-      author
+      email
+      name
+      first_name
+      middle_name
+      last_name
+      time_zone
+      is_active
+      role_id
+      group_id
     }
   }
 `;
@@ -19367,20 +19384,20 @@ const defaultWrapper: SdkFunctionWrapper = (action, _operationName, _operationTy
 
 export function getSdk(client: GraphQLClient, withWrapper: SdkFunctionWrapper = defaultWrapper) {
   return {
-    FetchUser(
-      variables: FetchUserQueryVariables,
+    fetchUsers(
+      variables?: FetchUsersQueryVariables,
       requestHeaders?: GraphQLClientRequestHeaders,
       signal?: RequestInit['signal'],
-    ): Promise<FetchUserQuery> {
+    ): Promise<FetchUsersQuery> {
       return withWrapper(
         (wrappedRequestHeaders) =>
-          client.request<FetchUserQuery>({
-            document: FetchUserDocument,
+          client.request<FetchUsersQuery>({
+            document: FetchUsersDocument,
             variables,
             requestHeaders: { ...requestHeaders, ...wrappedRequestHeaders },
             signal,
           }),
-        'FetchUser',
+        'fetchUsers',
         'query',
         variables,
       );

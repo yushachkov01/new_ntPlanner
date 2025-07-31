@@ -1,14 +1,12 @@
-query FetchPlannedTasks {
-  planned_tasks(order_by: { id: asc }) {
+# Плановые задачи
+query fetchPlannedTasks {
+  public7_planned_tasks {
     id
     name
-    time_work
-    rm
-    rd
-    project
     description
-    equipment
-    role
-    author
+    rm_task_id
+    yaml_url
+    time_work_id
+    author_id
   }
 }

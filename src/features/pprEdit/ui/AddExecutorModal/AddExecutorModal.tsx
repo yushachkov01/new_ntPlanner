@@ -1,8 +1,7 @@
-import { Modal, Spin, Tabs } from 'antd';
+import { Modal, Spin, Tabs, List, Button } from 'antd';
 import React, { useEffect, useMemo } from 'react';
 
-import { executorStore } from '@/entities/executor/model/store/executorStore';
-import ExecList from '@features/pprEdit/ui/executorSelect/ui/ExecList';
+import { useUserStore } from '@/entities/users/model/store/userStore';
 import './AddExecutorModal.css';
 
 /**
@@ -15,44 +14,36 @@ import './AddExecutorModal.css';
 interface Props {
   open: boolean;
   onClose: () => void;
-  onSelect: (id: number) => void;
+  onSelect: (id: string) => void;
   filterRoles?: string[];
 }
 
+const { TabPane } = Tabs;
 /**
  * Модальное окно для выбора исполнителя по ролям
  */
 const AddExecutorModal: React.FC<Props> = ({ open, onClose, onSelect, filterRoles = [] }) => {
   /** Загрузка ролей и исполнителей из zustand-стора */
-  const { roles, executors, loadRoles, loadByRole } = executorStore();
+  const { users, roles, load, loading, error } = useUserStore();
 
   /**
    * загрузить список ролей
    */
   useEffect(() => {
     if (open && roles.length === 0) {
-      loadRoles();
+      load();
     }
-  }, [open, roles, loadRoles]);
+  }, [open, roles.length, load]);
 
   /**
-   * Мемоизированный список ролей для вкладок:
+   * Мемоизированный список ролей для вкладок
    * если передан filterRoles — показываем только эти роли,
    * иначе — все роли из стора.
    */
-  const visibleRoles = useMemo(() => {
-    return filterRoles.length ? roles.filter((roleName) => filterRoles.includes(roleName)) : roles;
-  }, [roles, filterRoles]);
-
-  /**
-   * при открытии окна и наличии видимых ролей —
-   * автоматически подгружаем исполнителей первой вкладки
-   */
-  useEffect(() => {
-    if (open && visibleRoles.length > 0) {
-      loadByRole(visibleRoles[0]);
-    }
-  }, [open, visibleRoles, loadByRole]);
+  const visibleRoles = useMemo(
+    () => (filterRoles.length > 0 ? roles.filter((r) => filterRoles.includes(r.name)) : roles),
+    [roles, filterRoles],
+  );
 
   return (
     <Modal
@@ -62,23 +53,34 @@ const AddExecutorModal: React.FC<Props> = ({ open, onClose, onSelect, filterRole
       title="Добавить исполнителя"
       rootClassName="add-executor-modal"
     >
-      {visibleRoles.length === 0 ? (
+      {loading ? (
         <Spin />
+      ) : error ? (
+        <div style={{ color: 'red' }}>{error.message}</div>
       ) : (
-        <Tabs
-          onChange={loadByRole}
-          items={visibleRoles.map((role) => ({
-            key: role,
-            label: role,
-            children: (
-              <ExecList
-                data={executors[role]}
-                onLoad={() => loadByRole(role)}
-                onSelect={onSelect}
+        <Tabs>
+          {visibleRoles.map((role) => (
+            <TabPane tab={role.name} key={role.id}>
+              <List
+                dataSource={users.filter((u) => u.roleId === role.id)}
+                renderItem={(user) => (
+                  <List.Item>
+                    <Button
+                      type="text"
+                      className="add-executor-modal__tabs"
+                      onClick={() => {
+                        onSelect(user.id);
+                        onClose();
+                      }}
+                    >
+                      {user.name}
+                    </Button>
+                  </List.Item>
+                )}
               />
-            ),
-          }))}
-        />
+            </TabPane>
+          ))}
+        </Tabs>
       )}
     </Modal>
   );

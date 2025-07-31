@@ -9,7 +9,7 @@ import { addMinutes } from '@features/pprEdit/lib/time/addMinutes';
 import DynamicYamlForm from '@features/pprEdit/ui/DynamicYamlForm/DynamicYamlForm';
 import { PlannedTaskDropdown } from '@features/pprEdit/ui/PlannedTaskDropdown/PlannedTaskDropdown';
 import PprEditorTabs from '@features/pprEdit/ui/PprEditorTabs/PprEditorTabs';
-import YamlTemplateSelect from '@features/pprEdit/ui/yamlTemplate/YamlTemplateSelect.tsx';
+import YamlTemplateSelect from '@features/pprEdit/ui/yamlTemplate/YamlTemplateSelect';
 import type { StageCfg } from '@pages/PprPage';
 import PprPage from '@pages/PprPage';
 
@@ -70,9 +70,10 @@ const PprEditorPage: React.FC = () => {
   /** Текущий пользователь из стора */
   const currentUser = userStore((state) => state.user)!;
   /** Исполнители для каждого шаблона */
-  const [executorsByTemplate, setExecutorsByTemplate] = useState([
-    currentUser ? [currentUser] : [],
-  ] as any[][]);
+  const [executorsByTemplate, setExecutorsByTemplate] = useState(
+    currentUser ? [[currentUser]] : [[]],
+  );
+  const [tabExecutors, setTabExecutors] = useState(executorsByTemplate[0] ?? []);
 
   /** Ключи шаблонов для передачи в PprPage */
   const templateKeys = [
@@ -98,6 +99,7 @@ const PprEditorPage: React.FC = () => {
         nextList[0] = [currentUser];
         return nextList;
       });
+      setTabExecutors([currentUser]);
     }
   }, [mainTemplate, currentUser, executorsByTemplate]);
 
@@ -109,6 +111,9 @@ const PprEditorPage: React.FC = () => {
   const addExecutor = (templateIndex: number, executor: any) =>
     setExecutorsByTemplate((prevList) => {
       const nextList = [...prevList];
+      if (!Array.isArray(nextList[templateIndex])) {
+        nextList[templateIndex] = [];
+      }
       if (!nextList[templateIndex].some((item: any) => item.id === executor.id)) {
         nextList[templateIndex].push(executor);
       }
@@ -271,9 +276,13 @@ const PprEditorPage: React.FC = () => {
               <PprEditorTabs
                 taskId={selectedTaskId}
                 onWorkTimeChange={setTimelineWindow}
-                executors={executorsByTemplate[0]}
-                addExecutor={addExecutor}
-                removeExecutor={removeExecutor}
+                executors={tabExecutors}
+                addExecutor={(exe) =>
+                  setTabExecutors((prev) =>
+                    prev.some((e) => e.id === exe.id) ? prev : [...prev, exe],
+                  )
+                }
+                removeExecutor={(id) => setTabExecutors((prev) => prev.filter((e) => e.id !== id))}
               />
             </div>
           </div>

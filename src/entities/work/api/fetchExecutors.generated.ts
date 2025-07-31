@@ -19336,21 +19336,38 @@ export type Works_Variance_Fields = {
   work_hours?: Maybe<Scalars['Float']['output']>;
 };
 
-export type FetchUserQueryVariables = Types.Exact<{
-  id: Types.Scalars['Int']['input'];
-}>;
+export type FetchExecutorsQueryVariables = Types.Exact<{ [key: string]: never }>;
 
-export type FetchUserQuery = {
+export type FetchExecutorsQuery = {
   __typename?: 'query_root';
-  users_by_pk?: { __typename?: 'users'; id: number; role: string; author: string } | null;
+  public7_users: Array<{
+    __typename?: 'public7_users';
+    id: any;
+    email: string;
+    name: string;
+    first_name: string;
+    middle_name: string;
+    last_name: string;
+    time_zone: string;
+    is_active: boolean;
+    role_id: any;
+    group_id: any;
+  }>;
 };
 
-export const FetchUserDocument = gql`
-  query FetchUser($id: Int!) {
-    users_by_pk(id: $id) {
+export const FetchExecutorsDocument = gql`
+  query fetchExecutors {
+    public7_users {
       id
-      role
-      author
+      email
+      name
+      first_name
+      middle_name
+      last_name
+      time_zone
+      is_active
+      role_id
+      group_id
     }
   }
 `;
@@ -19367,20 +19384,20 @@ const defaultWrapper: SdkFunctionWrapper = (action, _operationName, _operationTy
 
 export function getSdk(client: GraphQLClient, withWrapper: SdkFunctionWrapper = defaultWrapper) {
   return {
-    FetchUser(
-      variables: FetchUserQueryVariables,
+    fetchExecutors(
+      variables?: FetchExecutorsQueryVariables,
       requestHeaders?: GraphQLClientRequestHeaders,
       signal?: RequestInit['signal'],
-    ): Promise<FetchUserQuery> {
+    ): Promise<FetchExecutorsQuery> {
       return withWrapper(
         (wrappedRequestHeaders) =>
-          client.request<FetchUserQuery>({
-            document: FetchUserDocument,
+          client.request<FetchExecutorsQuery>({
+            document: FetchExecutorsDocument,
             variables,
             requestHeaders: { ...requestHeaders, ...wrappedRequestHeaders },
             signal,
           }),
-        'FetchUser',
+        'fetchExecutors',
         'query',
         variables,
       );

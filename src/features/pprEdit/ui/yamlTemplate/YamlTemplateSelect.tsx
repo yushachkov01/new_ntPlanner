@@ -1,11 +1,11 @@
 import { Select, Spin, Typography, Button } from 'antd';
-import type { FC } from 'react';
 import { useEffect, useState, useMemo } from 'react';
+import type { FC } from 'react';
 
 import type { Executor } from '@/entities/executor/model/store/executorStore';
-import { executorStore } from '@/entities/executor/model/store/executorStore';
 import type { Template } from '@/entities/template/model/store/templateStore';
 import { templateStore } from '@/entities/template/model/store/templateStore';
+import { useUserStore } from '@/entities/users/model/store/userStore';
 import AddExecutorModal from '@/features/pprEdit/ui/AddExecutorModal/AddExecutorModal';
 import './YamlTemplateSelect.css';
 
@@ -39,7 +39,7 @@ const YamlTemplateSelect: FC<Props> = ({
   removeExecutor,
 }) => {
   const fetchTemplates = templateStore((store) => store.fetchTemplates);
-
+  const { users, roles } = useUserStore();
   /** Состояние списка шаблонов, индикатор загрузки и выбор модалки */
   const [templateList, setTemplateList] = useState<Template[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -146,11 +146,14 @@ const YamlTemplateSelect: FC<Props> = ({
         onClose={() => setAddExecutorModalOpen(false)}
         filterRoles={filterRoles}
         onSelect={(executorId) => {
-          const foundExecutor = Object.values(executorStore.getState().executors)
-            .flat()
-            .find((exec) => exec.id === executorId);
-          if (foundExecutor) {
-            addExecutor?.(foundExecutor);
+          const foundExecutor = users.find((u) => u.id === executorId);
+          if (foundExecutor && addExecutor) {
+            const roleName = roles.find((r) => r.id === foundExecutor.roleId)?.name ?? '';
+            addExecutor({
+              id: foundExecutor.id,
+              author: foundExecutor.name,
+              role: roleName,
+            } as Executor);
           }
           setAddExecutorModalOpen(false);
         }}

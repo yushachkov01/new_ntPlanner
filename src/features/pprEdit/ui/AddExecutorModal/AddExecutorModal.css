@@ -83,3 +83,7 @@ body.dark .add-executor-modal .ant-btn-primary {
   border-color: #008fce;
   color: #fff;
 }
+
+.add-executor-modal__tabs {
+  color: white;
+}
