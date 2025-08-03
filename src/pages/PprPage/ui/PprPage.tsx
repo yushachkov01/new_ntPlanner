@@ -1,14 +1,13 @@
 import type { FC } from 'react';
-import React, { useEffect, useState, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 
 import type { StageField } from '@/entities/template/model/store/templateStore';
-import { executorStore } from '@entities/executor/model/store/executorStore';
-import type { Executor as ExecutorEntity } from '@entities/executor/model/store/executorStore';
 import { calcCoveredMap } from '@features/ppr/lib/calcCoveredMap';
 import TaskDetail from '@features/ppr/ui/TaskDetail/TaskDetail';
 import TimelineBlock from '@features/ppr/ui/TimelineBlock/TimelineBlock';
 import './PprPage.css';
-
+import type { User } from '@entities/users/model/mapping/mapping';
+import { useUserStore } from '@entities/users/model/store/userStore';
 /**
  * Интервал времени для подсветки на сетке
  * @property start - время начала в формате "HH:MM"
@@ -44,20 +43,6 @@ interface BlockExt {
 }
 
 /**
- * Тип исполнителя с блоками задач
- * @property id - уникальный идентификатор исполнителя
- * @property author - имя исполнителя
- * @property role - роль исполнителя (например, "разработчик")
- * @property blocks - список блоков задач исполнителя (необязательно)
- */
-interface Executor {
-  id: number;
-  author: string;
-  role: string;
-  blocks?: BlockExt[];
-}
-
-/**
  * Конфигурация этапов для задачи
  * @property currentStages - ключи текущих этапов
  * @property stagesField - данные по полям этапов
@@ -81,7 +66,7 @@ interface Props {
   gridStart?: string;
   gridEnd?: string;
   highlightWindows?: WindowInterval[];
-  executors: Executor[];
+  executors: User[];
   templateKeys: string[];
   onBlockClick: (tplIdx: number) => void;
   onTimerChange: (tplIdx: number, stageKey: string, newTimer: number) => void;
@@ -100,13 +85,10 @@ const PprPage: FC<Props> = ({
   onTimerChange,
 }) => {
   /** Получаем карту исполнителей из Zustand */
-  const executorMap = executorStore((state) => state.executors);
+  const executorMap = useUserStore((state) => state.users);
 
   /** Плоский массив всех исполнителей */
-  const flatExecutors: ExecutorEntity[] = useMemo(
-    () => Object.values(executorMap).flat(),
-    [executorMap],
-  );
+  const flatExecutors: User[] = useMemo(() => Object.values(executorMap).flat(), [executorMap]);
 
   /**
    * Преобразует строку времени "HH:MM" в минуты с начала суток
@@ -155,7 +137,7 @@ const PprPage: FC<Props> = ({
   const rowEntries = [totalRow, ...(isExpandedUsers ? executors : [])];
 
   /** Группировка исполнителей по этапам для активного блока */
-  const executorsByStage: Record<string, ExecutorEntity[]> = {};
+  const executorsByStage: Record<string, User[]> = {};
   if (activeBlock) {
     activeBlock.stageKeys.forEach((stageKey) => {
       executorsByStage[stageKey] = [
@@ -167,7 +149,7 @@ const PprPage: FC<Props> = ({
   /**
    * Добавляет исполнителя к этапу
    */
-  const handleExecutorAdd = (stageKey: string, executorEntity: ExecutorEntity) => {
+  const handleExecutorAdd = (stageKey: string, executorEntity: User) => {
     executorsByStage[stageKey] = [...(executorsByStage[stageKey] || []), executorEntity];
   };
 

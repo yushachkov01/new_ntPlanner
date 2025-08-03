@@ -1,46 +1,76 @@
 import { create } from 'zustand';
 
-import { graphqlClient } from '@/shared/lib/graphql/client';
-import type { FetchLocationQuery } from '@entities/work/api/fetchLocation.generated.ts';
-import { FetchLocationDocument } from '@entities/work/api/fetchLocation.generated.ts';
+import * as api from '@/entities/location/api/LocationApi';
+
+import type {
+  Provider,
+  Branch,
+  City,
+  Node,
+  RawProvider,
+  RawBranch,
+  RawCity,
+  RawNode,
+} from '../mapping/mapper';
+import { toDomainProvider, toDomainBranch, toDomainCity, toDomainNode } from '../mapping/mapper';
 
 /**
- * Описание модели локации
- * @property provider — название провайдера
- * @property branch — название филиала
- * @property city — город
- * @property street — улица
- */
-export interface Location {
-  provider: string;
-  branch: string;
-  city: string;
-  street: string;
-}
-
-/**
- * Состояние стора локации
- * @property location — текущая локация или null, если не загружена
- * @property load — асинхронная функция загрузки локации
+ * Zustand-хранилище для локаций
+ * @property providers — список провайдеров
+ * @property branches — список филиалов
+ * @property cities — список городов
+ * @property nodes — список площадок (узлов)
+ * @property loading — флаг загрузки данных
+ * @property error — информация об ошибке (если есть)
+ * @property load —  загрузка данных
  */
 interface LocationState {
-  location: Location | null;
+  providers: Provider[];
+  branches: Branch[];
+  cities: City[];
+  nodes: Node[];
+  loading: boolean;
+  error?: Error;
   load: () => Promise<void>;
 }
 
-/**
- * Zustand‑стор для хранения и загрузки локации
- */
-export const locationStore = create<LocationState>((set) => ({
-  /** Начальное состояние: локация не загружена */
-  location: null,
+export const useLocationStore = create<LocationState>((set) => ({
+  providers: [],
+  branches: [],
+  cities: [],
+  nodes: [],
+  loading: false,
+  error: undefined,
 
   /**
-   * Загружает первую запись из массива locations через GraphQL‑клиент
+   * Загружает сразу все 4 таблицы:
+   * providers, branches, cities, nodes
+   * @property нет параметров
    */
-  async load() {
-    const response = await graphqlClient.request<FetchLocationQuery>(FetchLocationDocument, {});
-    /** Сохраняем первую запись или null, если массив пуст */
-    set({ location: response.locations?.[0] ?? null });
+  load: async () => {
+    set({ loading: true, error: undefined });
+    try {
+      const [rawProv, rawBr, rawCt, rawNd] = await Promise.all([
+        /** RawProvider[] */
+        api.fetchProviders(),
+        /** RawBranch[] */
+        api.fetchBranches(),
+        /** RawCity[] */
+        api.fetchCities(),
+        /** RawNode[] */
+        api.fetchNodes(),
+      ]);
+
+      set({
+        providers: (rawProv as RawProvider[]).map(toDomainProvider),
+        branches: (rawBr as RawBranch[]).map(toDomainBranch),
+        cities: (rawCt as RawCity[]).map(toDomainCity),
+        nodes: (rawNd as RawNode[]).map(toDomainNode),
+        loading: false,
+      });
+    } catch (e: any) {
+      set({ error: e, loading: false });
+      console.error('LocationStore.load error', e);
+    }
   },
 }));

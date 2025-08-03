@@ -1,5 +1,5 @@
-import type { Executor } from '@entities/executor/model/store/executorStore.ts';
 import type { StageField } from '@entities/template/model/store/templateStore.ts';
+import type { User } from '@entities/users/model/mapping/mapping';
 
 /**
  *  статусы задачи
@@ -78,9 +78,9 @@ export interface TaskDetailProps {
   /** Колбэк закрытия детализации */
   onClose: () => void;
   /** Список доступных исполнителей */
-  executors?: Executor[];
+  executors?: User[];
   /** Функция добавления исполнителя */
-  addExecutor?: (executor: Executor) => void;
+  addExecutor?: (executor: User) => void;
   /** Функция удаления исполнителя по ID */
   removeExecutor?: (executorId: number) => void;
   /** Метаданные этапа */

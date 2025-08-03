@@ -6,12 +6,20 @@ import type {
   RawTimeWork,
   RawProject,
   RawRmTask,
+  RawDevice,
   PlannedTask,
   TimeWork,
   Project,
   RmTask,
+  Device,
 } from '../mapping/mapper';
-import { toDomainTask, toDomainTimeWork, toDomainProject, toDomainRmTask } from '../mapping/mapper';
+import {
+  toDomainTask,
+  toDomainTimeWork,
+  toDomainProject,
+  toDomainRmTask,
+  toDomainDevice,
+} from '../mapping/mapper';
 
 interface State {
   /**
@@ -30,6 +38,10 @@ interface State {
    * Список загруженных задач Redmine
    */
   rmTasks: RmTask[];
+  /**
+   * Список загруженных задач устройств
+   */
+  device: Device[];
   /**
    * Флаг состояния загрузки
    */
@@ -50,6 +62,7 @@ export const usePlannedTaskStore = create<State>((set) => ({
   timeWorks: [],
   projects: [],
   rmTasks: [],
+  device: [],
   loading: false,
   error: undefined,
 
@@ -60,11 +73,12 @@ export const usePlannedTaskStore = create<State>((set) => ({
   load: async () => {
     set({ loading: true, error: undefined });
     try {
-      const [rawTasks, rawTimes, rawProjects, rawRmTasks] = await Promise.all([
+      const [rawTasks, rawTimes, rawProjects, rawRmTasks, RawDevice] = await Promise.all([
         api.fetchPlannedTasks() as Promise<RawTask[]>,
         api.fetchTimeWorks() as Promise<RawTimeWork[]>,
         api.fetchRmProjects() as Promise<RawProject[]>,
         api.fetchRmTasks() as Promise<RawRmTask[]>,
+        api.fetchDevices() as Promise<RawDevice[]>,
       ]);
 
       set({
@@ -72,6 +86,7 @@ export const usePlannedTaskStore = create<State>((set) => ({
         timeWorks: rawTimes.map(toDomainTimeWork),
         projects: rawProjects.map(toDomainProject),
         rmTasks: rawRmTasks.map(toDomainRmTask),
+        device: RawDevice.map(toDomainDevice),
         loading: false,
       });
     } catch (e: any) {

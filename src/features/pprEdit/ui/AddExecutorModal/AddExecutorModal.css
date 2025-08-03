@@ -55,6 +55,10 @@ body.dark .add-executor-modal .ant-list {
   color: #fff;
 }
 
+.ant-list-item {
+  padding-top: 5px !important;
+}
+
 body.dark .add-executor-modal .ant-list-item {
   color: #fff;
   transition: background 0.2s;

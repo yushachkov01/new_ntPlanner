@@ -2,12 +2,12 @@ import { Select, Spin, Typography, Button } from 'antd';
 import { useEffect, useState, useMemo } from 'react';
 import type { FC } from 'react';
 
-import type { Executor } from '@/entities/executor/model/store/executorStore';
 import type { Template } from '@/entities/template/model/store/templateStore';
 import { templateStore } from '@/entities/template/model/store/templateStore';
 import { useUserStore } from '@/entities/users/model/store/userStore';
 import AddExecutorModal from '@/features/pprEdit/ui/AddExecutorModal/AddExecutorModal';
 import './YamlTemplateSelect.css';
+import type { User } from '@entities/users/model/mapping/mapping';
 
 interface Props {
   /** Имя «бакета» для запроса списка YAML‑шаблонов */
@@ -19,9 +19,9 @@ interface Props {
   /** Колбэк при выборе нового шаблона */
   onChange?: (template: Template) => void;
   /** Список текущих исполнителей для шаблона */
-  executors?: Executor[];
+  executors?: User[];
   /** Функция добавления исполнителя */
-  addExecutor?: (executor: Executor) => void;
+  addExecutor?: (executor: User) => void;
   /** Функция удаления исполнителя по ID */
   removeExecutor?: (executorId: number) => void;
 }
@@ -74,7 +74,7 @@ const YamlTemplateSelect: FC<Props> = ({
   const filterRoles = useMemo(() => {
     if (!selectedTemplate) return [];
     const rawSettings = (selectedTemplate.raw as any).settings;
-    if (!rawSettings || typeof rawSettings !== 'object') return [];
+    if (typeof rawSettings !== 'object') return [];
     return Object.values(rawSettings)
       .map((setting: any) => setting.engineer)
       .filter((roleName: any) => typeof roleName === 'string');
@@ -88,9 +88,7 @@ const YamlTemplateSelect: FC<Props> = ({
       templateList.map((templateItem, index) => ({
         value: `${prefix}${templateItem.templateName}#${index}`,
         label:
-          (templateItem.raw as any)?.headline ??
-          (templateItem.raw as any)?.name ??
-          templateItem.templateName,
+          (templateItem.raw as any)?.headline || (templateItem.raw as any)?.name || templateItem.templateName,
         template: templateItem,
       })),
     [templateList, prefix],
@@ -124,7 +122,7 @@ const YamlTemplateSelect: FC<Props> = ({
         <div key={executorItem.id} className="yaml-executor-row">
           <div className="yaml-executor-field">
             <Text className="executor-role">{executorItem.role}</Text>
-            <input className="yaml-executor-input" value={executorItem.author} readOnly />
+            <Text className="yaml-executor-input">{executorItem.author}</Text>
           </div>
           <Button
             danger
@@ -153,7 +151,7 @@ const YamlTemplateSelect: FC<Props> = ({
               id: foundExecutor.id,
               author: foundExecutor.name,
               role: roleName,
-            } as Executor);
+            } as User);
           }
           setAddExecutorModalOpen(false);
         }}

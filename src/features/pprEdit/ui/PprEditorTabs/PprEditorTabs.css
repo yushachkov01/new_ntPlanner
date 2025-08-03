@@ -60,7 +60,9 @@
   margin-bottom: 12px;
   font-size: 14px;
 }
-
+.tab-content--equipment--tabs {
+  margin-top: 10px;
+}
 .equipment-title {
   display: flex;
   align-content: flex-start;

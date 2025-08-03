@@ -1,0 +1,9 @@
+query fetchDevices {
+  public7_devices {
+    id
+    hostname
+    node_id
+    role_id
+    model_id
+  }
+}

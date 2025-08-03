@@ -2,6 +2,7 @@ import type { FetchPlannedTasksQuery } from '@/entities/work/api/fetchPlannedTas
 import type { FetchRmProjectsQuery } from '@/entities/work/api/fetchRmProjects.generated';
 import type { FetchRmTasksQuery } from '@/entities/work/api/fetchRmTasks.generated';
 import type { FetchTimeWorksQuery } from '@/entities/work/api/fetchTimeWorks.generated';
+import type { FetchDevicesQuery } from '@entities/work/api/fetchDevices.generated';
 
 /** Сырые данные задачи из public7_planned_tasks (snake_case) */
 export type RawTask = FetchPlannedTasksQuery['public7_planned_tasks'][number];
@@ -14,6 +15,9 @@ export type RawProject = FetchRmProjectsQuery['public7_rm_projects'][number];
 
 /** Сырые данные Redmine-задачи из public7_rm_tasks (snake_case) */
 export type RawRmTask = FetchRmTasksQuery['public7_rm_tasks'][number];
+
+/** Сырые данные Redmine-задачи из public7_devices (snake_case) */
+export type RawDevice = FetchDevicesQuery['public7_devices'][number];
 
 /** Доменная модель задачи (camelCase) */
 export interface PlannedTask {
@@ -47,6 +51,14 @@ export interface RmTask {
   name: string;
   status: string;
   projectId: string;
+}
+/** Доменная модель Device (camelCase) */
+export interface Device {
+  id: string;
+  hostname: string;
+  nodeId: string;
+  roleId: string;
+  modelId: string;
 }
 
 /** raw → domain для PlannedTask */
@@ -103,5 +115,15 @@ export function toRawTask(t: PlannedTask): RawTaskInput {
     yaml_url: t.yamlUrl,
     time_work_id: t.timeWorkId,
     author_id: t.authorId,
+  };
+}
+/** raw → domain для Device */
+export function toDomainDevice(r: RawDevice): Device {
+  return {
+    id: r.id,
+    hostname: r.hostname,
+    nodeId: r.node_id,
+    roleId: r.role_id,
+    modelId: r.model_id,
   };
 }

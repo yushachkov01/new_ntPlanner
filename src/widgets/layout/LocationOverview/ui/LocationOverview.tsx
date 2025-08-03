@@ -1,7 +1,7 @@
 import type { FC } from 'react';
 import { useEffect } from 'react';
 
-import { locationStore } from '@/entities/location/model/store/locationStore';
+import { useLocationStore } from '@/entities/location/model/store/locationStore';
 import './LocationOverview.css';
 
 /**
@@ -9,36 +9,62 @@ import './LocationOverview.css';
  */
 const LocationOverview: FC = () => {
   /**
-   /* Берём данные площадки и action для загрузки
+   * Достаём из стора все массивы и метод load
    */
+  const { providers, branches, cities, nodes, loading, error, load } = useLocationStore();
 
-  const { location, load } = locationStore();
   /**
    *Один раз при маунте запрашиваем локацию, если она ещё не загружена
    */
-
   useEffect(() => {
-    if (!location) {
+    if (!providers.length) {
       load();
     }
-  }, [location, load]);
-  /** Пока location отсутствует, не рендерим ничего */
-  if (!location) return null;
+  }, [providers.length, load]);
+
   /**
-   *  формируем url для Я.Карт
+   * Пока идёт загрузка или нет ни одной node — не рендерим
    */
-  const { provider, branch, city, street } = location;
-  /** Формируем строку для Яндекс Карт */
-  const query = encodeURIComponent(`${city}, ${street}`);
+  if (loading || error || !nodes.length) return null;
+
+  const node = nodes[0];
+
+  /**
+   * Найдём город
+   */
+  const city = cities.find((c) => c.id === node.cityId);
+  if (!city) return null;
+
+  /**
+   * Найдём ветку
+   */
+  const branch = branches.find((b) => b.id === city.branchId);
+  if (!branch) return null;
+
+  /**
+   * Найдём провайдера
+   */
+  const provider = providers.find((p) => p.id === branch.providerId);
+  if (!provider) return null;
+
+  /**
+   * У площадки используем либо адрес, либо имя
+   */
+  const street = node.address || node.name;
+
+  /**
+   * Формируем ссылку на Яндекс-Карты по городу и улице
+   */
+  const query = encodeURIComponent(`${city.name}, ${street}`);
   const yandexUrl = `https://yandex.ru/maps/?text=${query}`;
 
   return (
     <div className="location-overview">
-      <span className="location-part">{provider}</span>
+      <span className="location-part">{provider.name}</span>
       <span className="sep">›</span>
-      <span className="location-part">{branch}</span>
+      <span className="location-part">{branch.name}</span>
       <span className="sep">›</span>
-      <span className="location-part">{city}</span>
+      <span className="location-part">{city.name}</span>
       <span className="sep">›</span>
       <a href={yandexUrl} target="_blank" rel="noopener noreferrer" className="location-link">
         {street}

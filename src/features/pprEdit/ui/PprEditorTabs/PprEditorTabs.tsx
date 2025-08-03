@@ -1,16 +1,13 @@
-/**
- * вкладки: «Карта работ», «Сетевое оборудование», «Исполнители»
- */
 import { UserOutlined } from '@ant-design/icons';
-import { Tabs, Select, Typography, Checkbox, Button } from 'antd';
-import React, { useState, useMemo } from 'react';
+import { Tabs, Typography, List, Checkbox, Button, Select } from 'antd';
+import React, { useState, useMemo, useEffect } from 'react';
 
-import type { Executor } from '@/entities/executor/model/store/executorStore';
 import { usePlannedTaskStore } from '@/entities/PlannedTask/model/store/plannedTaskStore';
+import { useUserStore } from '@/entities/users/model/store/userStore';
 import AddExecutorModal from '@/features/pprEdit/ui/AddExecutorModal/AddExecutorModal';
 import { TimeIntervalModal } from '@/features/pprEdit/ui/timePicker/TimeIntervalModal';
+import type { User } from '@entities/users/model/mapping/mapping';
 import './PprEditorTabs.css';
-import { useUserStore } from '@/entities/users/model/store/userStore';
 
 const { TabPane } = Tabs;
 const { Text, Link } = Typography;
@@ -25,9 +22,9 @@ export const PRESET_TIMES = [
 
 interface Props {
   taskId: string;
-  executors: Executor[];
-  addExecutor: (executor: Executor) => void;
-  removeExecutor: (executorId: number) => void;
+  executors: User[];
+  addExecutor: (executor: User) => void;
+  removeExecutor: (executorId: string) => void;
   onWorkTimeChange: (interval: { start: string; end: string }) => void;
 }
 
@@ -44,7 +41,11 @@ const PprEditorTabs: React.FC<Props> = ({
   removeExecutor,
   onWorkTimeChange,
 }) => {
-  const { tasks, timeWorks, projects, rmTasks } = usePlannedTaskStore();
+  const { tasks, timeWorks, projects, rmTasks, device, load } = usePlannedTaskStore();
+
+  useEffect(() => {
+    load();
+  }, [load]);
   /** Получаем задачу по ID */
   const selectedTask = tasks.find((t) => t.id === taskId);
   if (!selectedTask) return null;
@@ -53,19 +54,27 @@ const PprEditorTabs: React.FC<Props> = ({
   const projectName = rmTask ? (projects.find((p) => p.id === rmTask.projectId)?.name ?? '') : '';
   /** Список оборудования из задачи */
   const equipmentList = useMemo(() => {
-    const raw = selectedTask.equipment ?? '';
-    return raw ? raw.split(',').map((e) => e.trim()) : [];
-  }, [selectedTask.equipment]);
-  const [currentEquip, setCurrentEquip] = useState<string[]>(equipmentList);
+    return device.filter((d) => d.nodeId === d.nodeId).map((d) => d.hostname);
+  }, [device]);
+
+  const [currentEquip, setCurrentEquip] = useState<string[]>([]);
+  useEffect(() => {
+    setCurrentEquip(equipmentList);
+  }, [equipmentList]);
+
   /** Интервал работ TimeWorks */
   const tw = timeWorks.find((t) => t.id === selectedTask.timeWorkId);
   const defaultInterval = tw
-    ? `${tw.startAt.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}` +
-      `–${tw.endAt.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`
+    ? `${tw.startAt.toLocaleTimeString('ru-RU', {
+        hour: '2-digit',
+        minute: '2-digit',
+      })}–${tw.endAt.toLocaleTimeString('ru-RU', {
+        hour: '2-digit',
+        minute: '2-digit',
+      })}`
     : PRESET_TIMES[0].value;
-
   /** Состояние выбранного интервала и управления кастомным вводом */
-  const [selectedTimeInterval, setSelectedTimeInterval] = useState<string>(defaultInterval);
+  const [selectedTimeInterval, setSelectedTimeInterval] = useState(defaultInterval);
   const [isCustomModal, setCustomModal] = useState(false);
 
   /**
@@ -96,8 +105,13 @@ const PprEditorTabs: React.FC<Props> = ({
     onWorkTimeChange({ start, end });
   };
 
+  const { users, roles: userRoles, load: loadUsers } = useUserStore();
   /** Управление модалкой добавления исполнителя */
   const [isAddExecutorModalVisible, setAddExecutorModalVisible] = useState(false);
+
+  useEffect(() => {
+    if (users.length === 0) loadUsers();
+  }, [users.length, loadUsers]);
 
   return (
     <>
@@ -125,7 +139,7 @@ const PprEditorTabs: React.FC<Props> = ({
               </div>
             </div>
             <div className="tab-content__right">
-              <Text>Время проведения работ:</Text>
+              <Text>Время работ:</Text>
               <Select
                 style={{ width: 200 }}
                 value={selectedTimeInterval}
@@ -135,26 +149,33 @@ const PprEditorTabs: React.FC<Props> = ({
             </div>
           </div>
         </TabPane>
-
         <TabPane tab="Сетевое оборудование" key="2">
           <div className="tab-content tab-content--equipment">
-            <p className="equipment-title">Задействовано оборудование:</p>
-            <ul className="equipment-list">
-              {equipmentList.map((equipment) => (
-                <li key={equipment} className="equipment-item">
-                  <Checkbox
-                    checked={currentEquip.includes(eq)}
-                    onChange={(e) =>
-                      setCurrentEquip((prev) =>
-                        e.target.checked ? [...prev, eq] : prev.filter((i) => i !== eq),
-                      )
-                    }
-                  />
-                  <span className="equipment-name">{eq}</span>
-                </li>
-              ))}
-            </ul>
+            <p className="equipment-title">Оборудование:</p>
+            {equipmentList.length === 0 ? (
+              <Text type="secondary">Нет оборудования</Text>
+            ) : (
+              <List
+                bordered
+                dataSource={equipmentList}
+                renderItem={(eq) => (
+                  <List.Item>
+                    <Checkbox
+                      checked={currentEquip.includes(eq)}
+                      onChange={(e) =>
+                        setCurrentEquip((prev) =>
+                          e.target.checked ? [...prev, eq] : prev.filter((i) => i !== eq),
+                        )
+                      }
+                    >
+                      {eq}
+                    </Checkbox>
+                  </List.Item>
+                )}
+              />
+            )}
             <Button
+              className="tab-content--equipment--tabs"
               type="primary"
               disabled={!currentEquip.length}
               onClick={() => console.log('Опрос:', currentEquip)}
@@ -166,14 +187,14 @@ const PprEditorTabs: React.FC<Props> = ({
         <TabPane tab="Исполнители" key="3">
           <div className="tab-content tab-content--members">
             <p className="members-title">Участники:</p>
-            {executors.map((executor, index) => (
-              <div key={executor.id} className="members-row">
+            {executors.map((exe, idx) => (
+              <div key={exe.id} className="members-row">
                 <UserOutlined className="members-icon" />
                 <span className="members-name">
-                  {executor.role} — {executor.author}
+                  {exe.role} — {exe.author}
                 </span>
-                {index > 0 ? (
-                  <Button className="members-remove" onClick={() => removeExecutor(executor.id)}>
+                {idx > 0 ? (
+                  <Button className="members-remove" onClick={() => removeExecutor(exe.id)}>
                     Удалить
                   </Button>
                 ) : (
@@ -193,15 +214,14 @@ const PprEditorTabs: React.FC<Props> = ({
       <AddExecutorModal
         open={isAddExecutorModalVisible}
         onClose={() => setAddExecutorModalVisible(false)}
-        filterRoles={['Сетевой инженер', 'Инженер СМР']}
         onSelect={(id) => {
-          const { users } = useUserStore.getState();
           const user = users.find((u) => u.id === id);
-          if (user) {
-            addExecutor({ id: user.id, author: user.name, role: user.name });
-          }
+          if (!user) return;
+          const roleName = userRoles.find((r) => r.id === user.roleId)?.name ?? '';
+          addExecutor({ id: user.id, author: user.name, role: roleName });
           setAddExecutorModalVisible(false);
         }}
+        filterRoles={['Сетевой инженер', 'Инженер СМР']}
       />
 
       <TimeIntervalModal
@@ -209,8 +229,8 @@ const PprEditorTabs: React.FC<Props> = ({
         onCancel={() => setCustomModal(false)}
         onOk={(val) => {
           setSelectedTimeInterval(val);
-          const [s, e] = val.split('–');
-          onWorkTimeChange({ start: s, end: e });
+          const [start, end] = val.split('–');
+          onWorkTimeChange({ start, end });
           setCustomModal(false);
         }}
       />
