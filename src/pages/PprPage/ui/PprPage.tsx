@@ -1,22 +1,23 @@
+import type { DragEndEvent } from '@dnd-kit/core';
+import {
+  DndContext,
+  PointerSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+  closestCenter,
+} from '@dnd-kit/core';
 import type { FC } from 'react';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback, useRef, useEffect, useLayoutEffect } from 'react';
 
 import type { StageField } from '@/entities/template/model/store/templateStore';
-import { calcCoveredMap } from '@features/ppr/lib/calcCoveredMap';
-import TaskDetail from '@features/ppr/ui/TaskDetail/TaskDetail';
-import TimelineBlock from '@features/ppr/ui/TimelineBlock/TimelineBlock';
-import './PprPage.css';
+import { parseTimeToMinutes, toTime } from '@/shared/ui/time/toTime';
 import type { User } from '@entities/users/model/mapping/mapping';
 import { useUserStore } from '@entities/users/model/store/userStore';
-/**
- * Интервал времени для подсветки на сетке
- * @property start - время начала в формате "HH:MM"
- * @property end - время окончания в формате "HH:MM"
- */
-interface WindowInterval {
-  start: string;
-  end: string;
-}
+import { calcCoveredMap } from '@features/ppr/lib/calcCoveredMap';
+import PprRow from '@features/ppr/ui/PprRow/PprRow';
+import TaskDetail from '@features/ppr/ui/TaskDetail/TaskDetail';
+import './PprPage.css';
 
 /**
  * Расширенный тип задачи (блока) для отображения на таймлайне
@@ -30,7 +31,7 @@ interface WindowInterval {
  * @property stageKeys - ключи этапов задачи
  * @property stagesField - данные по этапам для задачи
  */
-interface BlockExt {
+export interface BlockExt {
   id: number;
   label: string;
   startTime: string;
@@ -42,318 +43,255 @@ interface BlockExt {
   stagesField: Record<string, StageField>;
 }
 
-/**
- * Конфигурация этапов для задачи
- * @property currentStages - ключи текущих этапов
- * @property stagesField - данные по полям этапов
- */
-export interface StageCfg {
-  currentStages: string[];
-  stagesField: Record<string, StageField>;
+export interface Executor {
+  id: number;
+  author: string;
+  role: string;
+  blocks?: BlockExt[];
 }
 
 /**
  * Свойства компонента PprPage
  * @property gridStart - начало временной сетки "HH:MM" (по умолчанию "00:00")
  * @property gridEnd - конец временной сетки "HH:MM" (по умолчанию "23:00")
- * @property highlightWindows - интервалы для подсветки
  * @property executors - список исполнителей
- * @property templateKeys - ключи шаблонов для highlightWindows
  * @property onBlockClick - функция, вызываемая при клике на блок
  * @property onTimerChange - функция, вызываемая при изменении таймера задачи
  */
 interface Props {
   gridStart?: string;
   gridEnd?: string;
-  highlightWindows?: WindowInterval[];
   executors: User[];
-  templateKeys: string[];
   onBlockClick: (tplIdx: number) => void;
   onTimerChange: (tplIdx: number, stageKey: string, newTimer: number) => void;
 }
 
 /**
  * Отображает таймлайн задач по исполнителям с интерактивными блоками и деталями.
+ * @param gridStart - начало временной сетки
+ * @param gridEnd - конец временной сетки
+ * @param executors - список исполнителей
+ * @param onBlockClick - обработчик клика по блоку
+ * @param onTimerChange - обработчик изменения таймера задачи
  */
 const PprPage: FC<Props> = ({
   gridStart = '00:00',
   gridEnd = '23:00',
-  highlightWindows = [],
   executors,
-  templateKeys,
   onBlockClick,
   onTimerChange,
 }) => {
-  /** Получаем карту исполнителей из Zustand */
-  const executorMap = useUserStore((state) => state.users);
+  /** Локальный стейт строк (копия блоков исполнителей) */
+  const [rowsState, setRowsState] = useState<Executor[]>(executors);
+  useEffect(() => setRowsState(executors), [executors]);
 
-  /** Плоский массив всех исполнителей */
-  const flatExecutors: User[] = useMemo(() => Object.values(executorMap).flat(), [executorMap]);
+  /** Расширенный вид пользователей и “Все задачи” */
+  const [usersExpanded, setUsersExpanded] = useState(false);
+  const [showingAllTasks, setShowingAllTasks] = useState(false);
+  const [expandedExecutorId, setExpandedExecutorId] = useState<number | null>(null);
+
+  /** ID открытого блока (для popover / detail) */
+  const [activeBlockId, setActiveBlockId] = useState<number | null>(null);
+
+  /** рассчитываем окно времени в минутах */
+  const windowStartMin = parseTimeToMinutes(gridStart);
+  const rawEndMin = parseTimeToMinutes(gridEnd);
+  const windowEndMin = rawEndMin <= windowStartMin ? rawEndMin + 1440 : rawEndMin;
+  const windowSpanMin = windowEndMin - windowStartMin;
 
   /**
-   * Преобразует строку времени "HH:MM" в минуты с начала суток
+   * Массив меток часов, по которым строится сетка на таймлайне
    */
-  const timeStringToMinutes = (timeString: string): number => {
-    const [hours, minutes] = timeString.split(':').map(Number);
-    return hours * 60 + minutes;
-  };
-
-  /** Начало и конец сетки в минутах */
-  const startMinutes = timeStringToMinutes(gridStart);
-  const endMinutes =
-    timeStringToMinutes(gridEnd) <= startMinutes
-      ? timeStringToMinutes(gridEnd) + 1440
-      : timeStringToMinutes(gridEnd);
-  const spanMinutes = endMinutes - startMinutes;
-
-  /** Метки часов для заголовка сетки */
-  const hourLabels = Array.from({ length: Math.ceil(spanMinutes / 60) + 1 }, (_, index) =>
-    Math.floor(((startMinutes + index * 60) % 1440) / 60),
+  const hourLabels = Array.from({ length: Math.ceil(windowSpanMin / 60) + 1 }, (_, index) =>
+    Math.floor(((windowStartMin + index * 60) % 1440) / 60),
   );
 
-  /** Собираем все блоки задач */
-  const blocksList: BlockExt[] = executors.flatMap((executor) => executor.blocks ?? []);
+  /** Список всех блоков для расчёта перекрытий */
+  const allBlocks = rowsState.flatMap((row) => row.blocks ?? []);
+  const coverageMap = useMemo(() => calcCoveredMap(allBlocks), [allBlocks]);
 
-  /** Карта для «перекрытых» блоков (для затемнения) */
-  const coverageMap = useMemo(() => calcCoveredMap(blocksList), [blocksList]);
-
-  /** Локальное состояние для управления отображением */
-  const [openBlockId, setOpenBlockId] = useState<number | null>(null);
-  const [isExpandedUsers, setExpandedUsers] = useState(false);
-  const [isShowingAll, setShowingAll] = useState(false);
-  const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
-
-  /** Активный блок деталей по идентификатору */
-  const activeBlock: BlockExt | null = useMemo(
-    () => blocksList.find((block) => block.id === openBlockId) ?? null,
-    [openBlockId, blocksList],
+  /** DRAG & DROP: сенсоры для pointer & touch */
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { delay: 200, tolerance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } }),
   );
-  const getOwnerName = (blockId: number): string =>
-    executors.find((executor) => executor.blocks?.some((block) => block.id === blockId))?.author ??
-    'Неизвестен';
 
-  /** Формируем строки для рендеринга: всего и по исполнителям */
-  const totalRow = { id: 0, author: 'Весь день', blocks: blocksList };
-  const rowEntries = [totalRow, ...(isExpandedUsers ? executors : [])];
+  /** Ref контейнера таймлайна для измерения ширины */
+  const timelineContainerRef = useRef<HTMLDivElement>(null);
+  const [timelineWidthPx, setTimelineWidthPx] = useState(0);
+  useLayoutEffect(() => {
+    if (timelineContainerRef.current) {
+      setTimelineWidthPx(timelineContainerRef.current.getBoundingClientRect().width);
+    }
+  }, []);
 
-  /** Группировка исполнителей по этапам для активного блока */
-  const executorsByStage: Record<string, User[]> = {};
-  if (activeBlock) {
-    activeBlock.stageKeys.forEach((stageKey) => {
-      executorsByStage[stageKey] = [
-        { id: activeBlock.id, author: getOwnerName(activeBlock.id), role: '' },
-      ];
+  /**
+   * Обработчик завершения перетаскивания блока:
+   * пересчитывает время задач и перемещает bundle блоков в строке
+   * @param event - событие окончания drag
+   */
+  const handleDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      const activeIdStr = event.active.id.toString();
+      if (!activeIdStr.startsWith('template-')) return;
+
+      const uniqueId = Number(activeIdStr.replace('template-', ''));
+      const sourceRowId = Math.floor(uniqueId / 1000);
+      const templateIndex = uniqueId % 1000;
+      const targetRowId = typeof event.over?.id === 'number' ? event.over.id : sourceRowId;
+
+      const containerWidth = timelineContainerRef.current?.getBoundingClientRect().width ?? 1;
+      const deltaMinutes = (event.delta.x / containerWidth) * windowSpanMin;
+
+      setRowsState((prevRows) => {
+        const nextRows = prevRows.map((r) => ({
+          ...r,
+          blocks: [...(r.blocks ?? [])],
+        }));
+        const sourceRow = nextRows.find((r) => r.id === sourceRowId);
+        if (!sourceRow) return prevRows;
+
+        const movingBundle = sourceRow.blocks!.filter((b) => b.tplIdx === templateIndex);
+        sourceRow.blocks = sourceRow.blocks!.filter((b) => b.tplIdx !== templateIndex);
+
+        movingBundle.forEach((block) => {
+          block.startTime = toTime(parseTimeToMinutes(block.startTime) + deltaMinutes);
+          block.endTime = toTime(parseTimeToMinutes(block.endTime) + deltaMinutes);
+        });
+
+        const destRow = nextRows.find((r) => r.id === targetRowId) ?? sourceRow;
+        destRow.blocks!.push(...movingBundle);
+
+        return nextRows;
+      });
+    },
+    [windowSpanMin],
+  );
+
+  /** Список всех пользователей из стора для деталей задач */
+  const storedUsers: User[] = useUserStore((s) => s.users);
+  const allExecutorsList = useMemo(() => [...storedUsers], [storedUsers]);
+
+  /**
+   * Находит автора блока по его ID
+   * @param blockId - ID блока задачи
+   * @returns имя автора или "Неизвестен"
+   */
+  const findOwnerName = (blockId: number): string =>
+    rowsState.find((r) => r.blocks?.some((b) => b.id === blockId))?.author ?? 'Неизвестен';
+
+  /**
+   * Формирует маппинг исполнителей по этапам блока для TaskDetail
+   * @param block - расширенный блок задачи
+   */
+  const buildExecutorsByStage = (block: BlockExt) => {
+    const result: Record<string, { id: number; author: string; role: string }[]> = {};
+    block.stageKeys.forEach((stageKey) => {
+      result[stageKey] = [{ id: block.id, author: findOwnerName(block.id), role: '' }];
     });
-  }
-
-  /**
-   * Добавляет исполнителя к этапу
-   */
-  const handleExecutorAdd = (stageKey: string, executorEntity: User) => {
-    executorsByStage[stageKey] = [...(executorsByStage[stageKey] || []), executorEntity];
+    return result;
   };
 
   /**
-   * Удаляет исполнителя из этапа
+   * Определяет список строк для рендеринга:
+   * сначала «Все Задачи», затем по исполнителям
    */
-  const handleExecutorRemove = (stageKey: string, executorId: number) => {
-    executorsByStage[stageKey] =
-      executorsByStage[stageKey]?.filter((e) => e.id !== executorId) ?? [];
-  };
+  const rowsToRender: Executor[] = [
+    { id: 0, author: 'Все Задачи', role: '', blocks: allBlocks },
+    ...(usersExpanded ? rowsState : rowsState.filter((r) => r.id === expandedExecutorId)),
+  ];
+
+  const activeBlock = allBlocks.find((b) => b.id === activeBlockId) ?? null;
 
   return (
-    <div className="ppr-page">
-      <h2 className="ppr-page__title">
-        Таймлайн ({gridStart}–{gridEnd})
-      </h2>
-      <div
-        className="timeline-header"
-        style={{ gridTemplateColumns: `4rem 4rem repeat(${hourLabels.length},1fr)` }}
-      >
-        <div />
-        <div />
-        {hourLabels.map((hour) => (
-          <div key={hour}>{String(hour).padStart(2, '0')}:00</div>
-        ))}
-      </div>
-      {rowEntries.map((row, rowIndex) => (
-        <div key={rowIndex} className="timeline-row">
-          <div className="timeline-row__icon-cell">
-            {row.id === 0 ? (
-              <div
-                className="avatar-combined"
-                onClick={() => {
-                  setExpandedUsers((prev) => !prev);
-                  setShowingAll(false);
-                  setSelectedUserId(null);
-                  setOpenBlockId(null);
-                }}
-              >
-                {executors.slice(0, 2).map((executor, idx) => (
-                  <div
-                    key={executor.id}
-                    className="avatar-combined__circle"
-                    style={{ left: `${idx * 0.75}rem` }}
-                  >
-                    <span className="avatar-icon">👤</span>
-                  </div>
-                ))}
-                {executors.length > 2 && (
-                  <div
-                    className="avatar-combined__circle avatar-combined__more"
-                    style={{ left: '1.5rem' }}
-                  >
-                    +{executors.length - 2}
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div
-                className="avatar-with-name"
-                onClick={() => {
-                  setSelectedUserId((prev) => (prev === row.id ? null : row.id));
-                  setShowingAll(false);
-                  setOpenBlockId(null);
-                }}
-              >
-                <div className="avatar-single">
-                  <span className="avatar-icon">👤</span>
-                </div>
-                <div className="avatar-name">{row.author}</div>
-              </div>
-            )}
-          </div>
-          <div className="timeline-row__label-cell">
-            {row.id === 0 && (
-              <span
-                className="timeline-row__day-label"
-                onClick={() => {
-                  setShowingAll((prev) => !prev);
-                  setExpandedUsers(false);
-                  setOpenBlockId(null);
-                }}
-              >
-                Все
-                <br />
-                Задачи
-              </span>
-            )}
-          </div>
-          <div
-            className="timeline-row__blocks"
-            style={{ gridTemplateColumns: `repeat(${hourLabels.length},1fr)` }}
-          >
-            {hourLabels.map((_, idx) => (
-              <div key={idx} className="timeline-row__grid-cell" />
-            ))}
-            {row.id === 0 &&
-              highlightWindows!.map((w, idx) => {
-                const startVal =
-                  timeStringToMinutes(w.start) < startMinutes
-                    ? timeStringToMinutes(w.start) + 1440
-                    : timeStringToMinutes(w.start);
-                const endVal =
-                  timeStringToMinutes(w.end) < startMinutes
-                    ? timeStringToMinutes(w.end) + 1440
-                    : timeStringToMinutes(w.end);
-                const leftPercent = ((startVal - startMinutes) / spanMinutes) * 100;
-                const widthPercent = ((endVal - startMinutes) / spanMinutes) * 100 - leftPercent;
-                return (
-                  <div
-                    key={idx}
-                    className="template-frame"
-                    title={`${templateKeys[idx]}: ${w.start}–${w.end}`}
-                    style={{ left: `${leftPercent}%`, width: `${widthPercent}%` }}
-                  />
-                );
-              })}
-            {row.blocks?.map((block) => (
-              <TimelineBlock
-                key={block.id}
-                block={block}
-                totalWindowMin={spanMinutes}
-                windowStartMin={startMinutes}
-                expandedBlockId={openBlockId}
-                setExpandedBlockId={setOpenBlockId}
-                onDoubleClickBlock={() => setOpenBlockId(block.id)}
-                isCovered={!!coverageMap[block.id]}
-                onClick={() => onBlockClick(block.tplIdx)}
-              />
-            ))}
-          </div>
+    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+      <div className="ppr-page">
+        <h2 className="ppr-page__title">
+          Таймлайн ({gridStart}–{gridEnd})
+        </h2>
+        <div
+          className="timeline-header"
+          style={{
+            gridTemplateColumns: `4rem 4rem repeat(${hourLabels.length},1fr)`,
+          }}
+        >
+          <div />
+          <div />
+          {hourLabels.map((hourValue) => (
+            <div key={hourValue}>{String(hourValue).padStart(2, '0')}:00</div>
+          ))}
         </div>
-      ))}
-      {isShowingAll && (
-        <div className="all-tasks-container">
-          {blocksList.map((block) => (
-            <TaskDetail
-              key={block.id}
-              id={block.id}
-              label={block.label}
-              startTime={block.startTime}
-              endTime={block.endTime}
-              performer={`РТК‑С, ${getOwnerName(block.id)}`}
-              status={block.status}
-              subSteps={block.subSteps}
-              allExecutors={flatExecutors}
-              executorsByStage={executorsByStage}
-              onExecutorAdd={handleExecutorAdd}
-              onExecutorRemove={handleExecutorRemove}
-              onTimerChange={(stageKey, val) => onTimerChange(block.tplIdx, stageKey, val)}
-              stageKeys={block.stageKeys}
-              stagesField={block.stagesField}
-              onClose={() => setShowingAll(false)}
+
+        <div ref={timelineContainerRef}>
+          {rowsToRender.map((row) => (
+            <PprRow
+              key={row.id}
+              row={row}
+              rowsState={rowsState}
+              hourLabels={hourLabels}
+              spanMin={windowSpanMin}
+              startMin={windowStartMin}
+              coverageMap={coverageMap}
+              openBlockId={activeBlockId}
+              setOpenBlockId={setActiveBlockId}
+              onBlockClick={onBlockClick}
+              onTimerChange={onTimerChange}
+              setExpandedUsers={setUsersExpanded}
+              setShowingAll={setShowingAllTasks}
+              timelineWidthPx={timelineWidthPx}
+              expandedExecutorId={expandedExecutorId}
+              setExpandedExecutorId={setExpandedExecutorId}
             />
           ))}
         </div>
-      )}
-      {selectedUserId != null && (
-        <div className="user-tasks-container">
-          {executors
-            .find((executor) => executor.id === selectedUserId)
-            ?.blocks?.map((block) => (
+
+        {showingAllTasks && (
+          <div className="all-tasks-container">
+            {allBlocks.map((block) => (
               <TaskDetail
                 key={block.id}
                 id={block.id}
                 label={block.label}
                 startTime={block.startTime}
                 endTime={block.endTime}
-                performer={`РТК‑С, ${getOwnerName(block.id)}`}
+                performer={`РТК-С, ${findOwnerName(block.id)}`}
                 status={block.status}
                 subSteps={block.subSteps}
-                allExecutors={flatExecutors}
-                executorsByStage={executorsByStage}
-                onExecutorAdd={handleExecutorAdd}
-                onExecutorRemove={handleExecutorRemove}
+                allExecutors={allExecutorsList}
+                executorsByStage={buildExecutorsByStage(block)}
+                onExecutorAdd={() => {}}
+                onExecutorRemove={() => {}}
                 onTimerChange={(stageKey, val) => onTimerChange(block.tplIdx, stageKey, val)}
                 stageKeys={block.stageKeys}
                 stagesField={block.stagesField}
-                onClose={() => setSelectedUserId(null)}
+                onClose={() => setShowingAllTasks(false)}
               />
             ))}
-        </div>
-      )}
-      {activeBlock && (
-        <TaskDetail
-          key={activeBlock.id}
-          id={activeBlock.id}
-          label={activeBlock.label}
-          startTime={activeBlock.startTime}
-          endTime={activeBlock.endTime}
-          performer={`РТК‑С, ${getOwnerName(activeBlock.id)}`}
-          status={activeBlock.status}
-          subSteps={activeBlock.subSteps}
-          allExecutors={flatExecutors}
-          executorsByStage={executorsByStage}
-          onExecutorAdd={handleExecutorAdd}
-          onExecutorRemove={handleExecutorRemove}
-          onTimerChange={(stageKey, val) => onTimerChange(activeBlock.tplIdx, stageKey, val)}
-          stageKeys={activeBlock.stageKeys}
-          stagesField={activeBlock.stagesField}
-          onClose={() => setOpenBlockId(null)}
-        />
-      )}
-    </div>
+          </div>
+        )}
+
+        {activeBlock && (
+          <TaskDetail
+            key={activeBlock.id}
+            id={activeBlock.id}
+            label={activeBlock.label}
+            startTime={activeBlock.startTime}
+            endTime={activeBlock.endTime}
+            performer={`РТК‑С, ${findOwnerName(activeBlock.id)}`}
+            status={activeBlock.status}
+            subSteps={activeBlock.subSteps}
+            allExecutors={allExecutorsList}
+            executorsByStage={buildExecutorsByStage(activeBlock)}
+            onExecutorAdd={() => {}}
+            onExecutorRemove={() => {}}
+            onTimerChange={(stageKey, val) => onTimerChange(activeBlock.tplIdx, stageKey, val)}
+            stageKeys={activeBlock.stageKeys}
+            stagesField={activeBlock.stagesField}
+            onClose={() => setActiveBlockId(null)}
+          />
+        )}
+      </div>
+    </DndContext>
   );
 };
 

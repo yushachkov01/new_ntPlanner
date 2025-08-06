@@ -221,7 +221,7 @@ const PprEditorTabs: React.FC<Props> = ({
           addExecutor({ id: user.id, author: user.name, role: roleName });
           setAddExecutorModalVisible(false);
         }}
-        filterRoles={['Сетевой инженер', 'Инженер СМР']}
+        filterRoles={['Сетевой инженер', 'Инженер СМР', 'Представитель Заказчика']}
       />
 
       <TimeIntervalModal

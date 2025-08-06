@@ -1,13 +1,18 @@
 .timeline-block {
   position: absolute;
-  height: 2rem;
-  background-color: #4285f4;
-  border-radius: 4px;
-  color: #fff !important;
+  background: #4285f4;
+  color: #fff;
+  border-radius: 8px;
   font-size: 0.75rem;
   display: flex;
   align-items: center;
   justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
+  z-index: 1;
 }
 
 .timeline-block__hover-text {
@@ -31,11 +36,10 @@
   background-color: #f7f7f7;
   border: 1px solid #ccc;
   border-radius: 6px;
-  min-width: 140px;
+  min-width: 120px;
   z-index: 1000;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 }
-
 .popover-arrow {
   position: absolute;
   top: 100%;
@@ -46,128 +50,35 @@
   border-left: 6px solid transparent;
   border-right: 6px solid transparent;
   border-top: 6px solid #f7f7f7;
-  z-index: 1000;
 }
-
 .popover-content {
   padding: 0.5rem;
-  color: #ffffff !important;
 }
-
 .popover-title {
   font-size: 0.85rem;
   font-weight: 600;
-  margin-bottom: 0.25rem;
-  color: #333;
 }
-
 .popover-time {
   font-size: 0.75rem;
-  color: #ddd !important;
+  color: #555;
 }
 
-.timeline-block--info {
-  background-color: #cecece !important;
-  color: #333 !important;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15) !important;
-}
-.timeline-block--info:hover {
-  background-color: #dadada !important;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2) !important;
+.timeline-block__stages {
+  display: flex;
+  width: 100%;
+  height: 100%;
 }
 
-.timeline-block--covered {
-  height: 2.4rem !important;
-  top: 0.2rem !important;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25) !important;
-}
-.timeline-block--ontime {
-  position: relative;
-  overflow: visible;
+.timeline-block__stage {
+  height: 100%;
+  background: #1e90ff;
+  border-radius: 4px;
 }
 
-.timeline-block--ontime::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  border-radius: inherit;
-
-  background-image: repeating-linear-gradient(
-    135deg,
-    rgba(0, 200, 83, 0.7) 0 4px,
-    transparent 4px 12px
-  );
-}
-.timeline-block--notdone {
-  position: relative;
-  overflow: visible;
-}
-.timeline-block--notdone::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  border-radius: inherit;
-
-  background-image: repeating-linear-gradient(
-    135deg,
-    rgba(255, 0, 0, 0.75) 0 4px,
-    transparent 4px 4px
-  );
+.timeline-block__stage--highlight {
+  background: #ff8533 !important;
 }
 
-.timeline-block--ontime::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-
-  background-image: repeating-linear-gradient(
-    135deg,
-    rgba(0, 200, 83, 0.7) 0 4px,
-    transparent 2px 4px
-  );
-}
-
-.timeline-block__hover-text,
-.timeline-block > span,
-.timeline-block > div:not([class^='timeline-block__popover']) {
-  position: relative;
-  z-index: 2;
-}
-@keyframes overtime-blink {
-  0%,
-  55% {
-    opacity: 0.15;
-  }
-  70% {
-    opacity: 0.8;
-  }
-  100% {
-    opacity: 0.15;
-  }
-}
-
-.timeline-block--overtime {
-  position: relative;
-  overflow: hidden;
-}
-
-.timeline-block--overtime::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: rgb(255 48 48 / 0.85);
-  animation: overtime-blink 1s linear infinite;
-  border-radius: inherit;
-  z-index: 1;
-  pointer-events: none;
-}
-
-.timeline-block__hover-text,
-.timeline-block > span,
-.timeline-block > div:not([class^='timeline-block__popover']) {
-  position: relative;
-  z-index: 2;
+.timeline-block__stage--pz-highlight {
+  background: #f44336 !important;
 }

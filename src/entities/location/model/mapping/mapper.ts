@@ -1,6 +1,5 @@
 /**
  * Мапперы и типы raw ⇄ domain для таблиц providers, branches, cities, nodes
- * params: нет
  */
 import type { FetchBranchesQuery } from '@entities/work/api/fetchBranches.generated';
 import type { FetchCitiesQuery } from '@entities/work/api/fetchCities.generated';

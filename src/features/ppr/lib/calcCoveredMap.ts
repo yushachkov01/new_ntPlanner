@@ -1,6 +1,8 @@
 /**
  * Импорт типа данных блоков расписания
  */
+import { parseTimeToMinutes } from '@/shared/ui/time/toTime';
+
 import type { BlockData } from '../model/types.ts';
 
 /**
@@ -16,17 +18,6 @@ export function calcCoveredMap(blocks: BlockData[]): Record<number, boolean> {
   const covered: Record<number, boolean> = {};
 
   /**
-   * Преобразует строку времени "HH:MM" в количество минут от начала дня
-   *
-   * @param t — строка в формате "HH:MM"
-   * @returns Число минут
-   */
-  const toMin = (t: string): number => {
-    const [h, m] = t.split(':').map(Number);
-    return h * 60 + m;
-  };
-
-  /**
    * Перебираем все пары блоков для проверки покрытий
    */
   for (let i = 0; i < blocks.length; i++) {
@@ -37,10 +28,10 @@ export function calcCoveredMap(blocks: BlockData[]): Record<number, boolean> {
       /**
        * Временные границы блоков в минутах
        */
-      const aStart = toMin(a.startTime);
-      const aEnd = toMin(a.endTime);
-      const bStart = toMin(b.startTime);
-      const bEnd = toMin(b.endTime);
+      const aStart = parseTimeToMinutes(a.startTime);
+      const aEnd = parseTimeToMinutes(a.endTime);
+      const bStart = parseTimeToMinutes(b.startTime);
+      const bEnd = parseTimeToMinutes(b.endTime);
 
       /**
        * Если A начинается раньше B и заканчивается позже B — B покрыт A

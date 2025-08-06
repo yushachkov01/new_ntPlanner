@@ -1,4 +1,4 @@
-import type { StageField } from '@entities/template/model/store/templateStore.ts';
+import type { StageField } from '@entities/template/model/store/templateStore';
 import type { User } from '@entities/users/model/mapping/mapping';
 
 /**
@@ -122,6 +122,8 @@ export interface TimelineBlockProps {
   onDoubleClickBlock: (id: number) => void;
   /** Флаг, что блок перекрыт другим */
   isCovered: boolean;
+  /** windowStartMin – смещение начала окна (в минутах от 00:00), используется для расчёта */
+  windowStartMin: number;
 }
 
 /**

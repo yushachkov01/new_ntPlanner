@@ -4,6 +4,7 @@ import './PprEditorPage.css';
 import LocationOverview from '@/widgets/layout/LocationOverview/ui/LocationOverview';
 import type { Template } from '@entities/template/model/store/templateStore.ts';
 import { userStore } from '@entities/user/model/store/UserStore';
+import { useUserStore } from '@entities/users/model/store/userStore';
 import { WorkTimeStore } from '@entities/workTimeStore/model/store/workTimeStore';
 import { addMinutes } from '@features/pprEdit/lib/time/addMinutes';
 import DynamicYamlForm from '@features/pprEdit/ui/DynamicYamlForm/DynamicYamlForm';
@@ -13,7 +14,10 @@ import YamlTemplateSelect from '@features/pprEdit/ui/yamlTemplate/YamlTemplateSe
 import type { StageCfg } from '@pages/PprPage';
 import PprPage from '@pages/PprPage';
 
+import hash from 'object-hash';
 import { Button } from 'antd';
+
+import type { Executor } from '@pages/PprPage/ui/PprPage';
 
 interface WindowInterval {
   start: string;
@@ -188,35 +192,65 @@ const PprEditorPage: React.FC = () => {
     })),
   ];
 
-  /** Генерация блоков для всех исполнителей */
-  const executorsWithBlocks = Object.values(
-    executorsByTemplate
-      .flatMap((list, templateIndex) => list.map((executor) => ({ executor, templateIndex })))
-      .reduce<Record<number, any>>((acc, { executor, templateIndex }) => {
-        if (!acc[executor.id]) acc[executor.id] = { ...executor, blocks: [] };
+  /**
+   * получаем всех пользователей из userStore
+   */
+  const allUsers = useUserStore((s) => s.users || []);
+  const execMap = new Map<string, Executor>();
+  /**
+   * Проходим по каждой группе исполнителей для каждого шаблона
+   * @param list - список исполнителей для данного tplIdx
+   * @param tplIdx - индекс шаблона
+   */
+  executorsByTemplate.forEach((list, tplIdx) => {
+    (list ?? []).forEach((exec) => {
+      const key = String(exec.id);
 
-        const windowStart =
-          templateIndex === 0 ? timelineWindow.start : highlightWindows[templateIndex]?.start;
-        const templateObj =
-          templateIndex === 0 ? mainTemplate : additionalTemplates[templateIndex - 1];
+      let row = execMap.get(key);
+      if (!row) {
+        const user = allUsers.find((u) => u.id === exec.id);
+        const rowIdNum = parseInt(hash(key).slice(0, 10), 16);
+        row = {
+          id: rowIdNum,
+          author: user?.name ?? exec.author,
+          role: user?.role?.name ?? exec.role,
+          blocks: [],
+        };
+        execMap.set(key, row);
+      }
 
-        if (windowStart && templateObj) {
-          buildStageChain(templateObj, windowStart).forEach(({ key, meta, start, end }, order) => {
-            acc[executor.id].blocks.push({
-              id: executor.id * 10000 + templateIndex * 100 + order,
-              startTime: start,
-              endTime: end,
-              label: key,
-              status: 'info',
-              stageKeys: [key],
-              stagesField: { [key]: meta },
-              tplIdx: templateIndex,
-            });
-          });
-        }
-        return acc;
-      }, {}),
-  );
+      const tplObj = tplIdx === 0 ? mainTemplate! : additionalTemplates[tplIdx - 1];
+      const windowStart =
+        tplIdx === 0
+          ? timelineWindow.start
+          : (highlightWindows[tplIdx]?.start ?? timelineWindow.start);
+      /**
+       * Строим цепочку этапов для шаблона
+       */
+      const chain = tplObj ? buildStageChain(tplObj, windowStart) : [];
+      /**
+       * Добавляем каждый этап цепочки в блоки строки
+       * @param stageKey - ключ этапа
+       * @param meta - метаданные этапа
+       * @param start - время начала этапа
+       * @param end - время конца этапа
+       * @param order - порядковый номер этапа
+       */
+      chain.forEach(({ key: stageKey, meta, start, end }, order) => {
+        row!.blocks.push({
+          id: row!.id * 10000 + tplIdx * 100 + order,
+          startTime: start,
+          endTime: end,
+          label: stageKey,
+          status: 'info',
+          stageKeys: [stageKey],
+          stagesField: { [stageKey]: meta },
+          tplIdx,
+        });
+      });
+    });
+  });
+  const executorsWithBlocks = Array.from(execMap.values());
 
   /** Пересчёт highlightWindows при изменении шаблонов или времени начала */
   useEffect(() => {

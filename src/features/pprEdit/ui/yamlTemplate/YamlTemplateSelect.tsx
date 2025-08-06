@@ -88,7 +88,9 @@ const YamlTemplateSelect: FC<Props> = ({
       templateList.map((templateItem, index) => ({
         value: `${prefix}${templateItem.templateName}#${index}`,
         label:
-          (templateItem.raw as any)?.headline || (templateItem.raw as any)?.name || templateItem.templateName,
+          (templateItem.raw as any)?.headline ||
+          (templateItem.raw as any)?.name ||
+          templateItem.templateName,
         template: templateItem,
       })),
     [templateList, prefix],

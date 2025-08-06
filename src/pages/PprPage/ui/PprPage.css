@@ -35,42 +35,45 @@ ppr-page {
 .avatar-name {
   margin-left: 0.75rem;
 }
-
-.template-frame {
+.drag-time-bar {
   position: absolute;
   top: 0;
   bottom: 0;
-  border: 3px solid var(--blue-4, #4c8bf5);
-  border-radius: 6px;
-  background: transparent;
+  background: rgba(0, 185, 0, 0.35);
   pointer-events: none;
-  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
 }
 
-.template-frame:hover {
-  background: rgba(0, 0, 0, 0.5);
-}
-
-.template-frame:hover::after {
-  content: attr(title);
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  background: rgba(0, 0, 0, 0.85);
-  color: #fff;
-  padding: 0.25rem 0.5rem;
-  border-radius: 4px;
-  white-space: nowrap;
+.drag-time-bar__label {
+  padding: 0 0.4rem;
   font-size: 0.75rem;
-  z-index: 20;
+  font-weight: 600;
+  color: #fff;
+  text-shadow: 0 0 2px rgba(0, 0, 0, 0.5);
+}
+
+.template-frame--highlight ~ .timeline-header .drag-time-bar,
+.template-frame--dragging ~ .timeline-header .drag-time-bar {
+  background: rgba(76, 139, 245, 0.55);
+}
+
+.drag-time-line {
+  position: absolute;
+  top: 60px;
+  bottom: 0;
+  width: 2px;
+  background: rgba(76, 139, 245, 0.9);
+  pointer-events: none;
+  z-index: 9999;
 }
 
 .timeline-block {
   position: absolute;
   top: 0.4rem;
   height: 2rem;
-  background-color: #4285f4;
+  background-color: blue;
   border-radius: 4px;
   color: #fff;
   font-size: 0.75rem;
@@ -78,7 +81,7 @@ ppr-page {
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 2px 6px blue;
   transition:
     transform 0.2s ease,
     box-shadow 0.2s ease;
@@ -86,7 +89,7 @@ ppr-page {
 }
 
 .timeline-block.info {
-  background: rgba(128, 128, 128, 0.45);
+  background: blue;
   box-shadow: none;
 }
 
@@ -236,6 +239,7 @@ ppr-page {
 .timeline-row__blocks {
   position: relative;
   display: grid;
+  width: 100%;
   grid-template-columns: repeat(24, 1fr);
 }
 

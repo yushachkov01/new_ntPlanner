@@ -1,0 +1,74 @@
+.template-frame {
+  position: absolute;
+  display: block;
+  width: 100%;
+  background: transparent;
+  border-radius: 6px;
+  cursor: grab;
+}
+
+.template-frame:active {
+  cursor: grabbing;
+}
+
+.template-frame__bg {
+  position: absolute;
+  inset: 0;
+  background: #a5bbe2;
+  border-radius: 6px;
+  z-index: 0;
+}
+
+.template-frame--dragging .template-frame__bg {
+  box-shadow: 0 0 6px rgba(0, 0, 0, 0.35);
+}
+
+.template-frame__badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background: #fff;
+  color: #333;
+  border-radius: 50%;
+  width: 1.25rem;
+  height: 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  cursor: pointer;
+  z-index: 10;
+}
+
+.template-frame__guide {
+  position: absolute;
+  top: -100%;
+  bottom: 0;
+  width: 2px;
+  background: rgba(76, 139, 245, 0.9);
+  pointer-events: none;
+  z-index: 4;
+}
+
+.guide-start {
+  left: 0%;
+}
+
+.guide-end {
+  left: 100%;
+}
+
+.guide-label {
+  position: absolute;
+  top: -1.6rem;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.75);
+  color: #fff;
+  padding: 2px 4px;
+  font-size: 0.75rem;
+  border-radius: 3px;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 6;
+}
