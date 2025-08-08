@@ -7,17 +7,18 @@ import {
   useSensors,
   closestCenter,
 } from '@dnd-kit/core';
-import type { FC } from 'react';
 import { useState, useMemo, useCallback, useRef, useEffect, useLayoutEffect } from 'react';
+import type { FC } from 'react';
 
 import type { StageField } from '@/entities/template/model/store/templateStore';
+import './PprPage.css';
 import { parseTimeToMinutes, toTime } from '@/shared/ui/time/toTime';
+import useTimelineStore from '@entities/timeline/model/store/timelineStore';
 import type { User } from '@entities/users/model/mapping/mapping';
 import { useUserStore } from '@entities/users/model/store/userStore';
 import { calcCoveredMap } from '@features/ppr/lib/calcCoveredMap';
 import PprRow from '@features/ppr/ui/PprRow/PprRow';
 import TaskDetail from '@features/ppr/ui/TaskDetail/TaskDetail';
-import './PprPage.css';
 
 /**
  * Расширенный тип задачи (блока) для отображения на таймлайне
@@ -81,9 +82,20 @@ const PprPage: FC<Props> = ({
   onBlockClick,
   onTimerChange,
 }) => {
-  /** Локальный стейт строк (копия блоков исполнителей) */
-  const [rowsState, setRowsState] = useState<Executor[]>(executors);
-  useEffect(() => setRowsState(executors), [executors]);
+  const rowsState = useTimelineStore((s) => s.rows);
+  const _setRows = useTimelineStore((s) => s.setRows);
+  const _updateRows = useTimelineStore((s) => s.updateRows);
+  const setRowsState = useCallback(
+    (value: any) => {
+      if (typeof value === 'function') {
+        _updateRows(value);
+      } else {
+        _setRows(value);
+      }
+    },
+    [_setRows, _updateRows],
+  );
+  useEffect(() => setRowsState(executors), [executors, setRowsState]);
 
   /** Расширенный вид пользователей и “Все задачи” */
   const [usersExpanded, setUsersExpanded] = useState(false);
@@ -165,7 +177,7 @@ const PprPage: FC<Props> = ({
         return nextRows;
       });
     },
-    [windowSpanMin],
+    [windowSpanMin, setRowsState],
   );
 
   /** Список всех пользователей из стора для деталей задач */
@@ -202,6 +214,72 @@ const PprPage: FC<Props> = ({
   ];
 
   const activeBlock = allBlocks.find((b) => b.id === activeBlockId) ?? null;
+
+  /**
+   * добавление блока по событию из формы
+   */
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail || {};
+      const newLabel: string | undefined = detail.label;
+
+      setRowsState((prev) => {
+        if (prev.length === 0) return prev;
+
+        const withBlocks = prev.find((r) => (r.blocks?.length ?? 0) > 0) ?? prev[0];
+        const destRowId = withBlocks.id;
+
+        const refRow = prev.find((r) => r.id === destRowId) ?? prev[0];
+        const refBlock =
+          [...(refRow.blocks ?? [])].sort((a, b) => a.id - b.id).at(-1) ??
+          prev
+            .flatMap((r) => r.blocks ?? [])
+            .sort((a, b) => a.id - b.id)
+            .at(-1);
+
+        if (!refBlock) return prev;
+
+        const refStart = parseTimeToMinutes(refBlock.startTime);
+        const refEnd =
+          parseTimeToMinutes(refBlock.endTime) <= refStart
+            ? parseTimeToMinutes(refBlock.endTime) + 1440
+            : parseTimeToMinutes(refBlock.endTime);
+        const duration = Math.max(1, refEnd - refStart);
+
+        // Новый id
+        const maxId = Math.max(0, ...prev.flatMap((r) => r.blocks ?? []).map((b) => b.id));
+        const nextId = maxId + 1;
+
+        const newStartAbs = refEnd;
+        const newEndAbs = refEnd + duration;
+
+        const newBlock: BlockExt = {
+          id: nextId,
+          label: newLabel ?? refBlock.label,
+          startTime: toTime(newStartAbs),
+          endTime: toTime(newEndAbs),
+          status: refBlock.status,
+          subSteps: refBlock.subSteps ? [...refBlock.subSteps] : undefined,
+          tplIdx: refBlock.tplIdx,
+          stageKeys: [...refBlock.stageKeys],
+          stagesField: { ...refBlock.stagesField },
+        };
+
+        /** Копия стора и пуш в нужную строку */
+        const copy = prev.map((r) => ({
+          ...r,
+          blocks: [...(r.blocks ?? [])],
+        }));
+        const dest = copy.find((r) => r.id === destRowId) ?? copy[0];
+        dest.blocks!.push(newBlock);
+
+        return copy;
+      });
+    };
+
+    window.addEventListener('ppr:add-entry', handler as EventListener);
+    return () => window.removeEventListener('ppr:add-entry', handler as EventListener);
+  }, []);
 
   return (
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
@@ -277,7 +355,7 @@ const PprPage: FC<Props> = ({
             label={activeBlock.label}
             startTime={activeBlock.startTime}
             endTime={activeBlock.endTime}
-            performer={`РТК‑С, ${findOwnerName(activeBlock.id)}`}
+            performer={`РТК-С, ${findOwnerName(activeBlock.id)}`}
             status={activeBlock.status}
             subSteps={activeBlock.subSteps}
             allExecutors={allExecutorsList}

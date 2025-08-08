@@ -43,8 +43,7 @@ const AllTasksRow: FC<Props> = ({
         <div
           className="avatar-combined"
           onClick={() => {
-            setExpandedUsers(!isExpandedUsers);
-            setShowingAll(false);
+            setExpandedUsers((prev) => !prev);
             setOpenBlockId(null);
           }}
         >

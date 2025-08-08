@@ -82,6 +82,16 @@ export default function DynamicYamlForm({ schema }: Props) {
       nextLocal = [...localData, vals];
       setLocalData(nextLocal);
       setTemplateValues(key, [...prevGlobal, vals]);
+
+      /**
+       * сообщаем таймлайну, что добавлена новая запись.
+       * PprPage слушает событие и создаёт новый блок,
+       */
+      window.dispatchEvent(
+        new CustomEvent('ppr:add-entry', {
+          detail: { label: schema.headline || 'Новая запись' },
+        }),
+      );
     } else {
       nextLocal = localData.map((row, i) => (i === editingIndex ? vals : row));
       setLocalData(nextLocal);
