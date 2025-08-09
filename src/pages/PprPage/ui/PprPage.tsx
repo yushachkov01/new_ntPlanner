@@ -1,55 +1,15 @@
-import type { DragEndEvent } from '@dnd-kit/core';
-import {
-  DndContext,
-  PointerSensor,
-  TouchSensor,
-  useSensor,
-  useSensors,
-  closestCenter,
-} from '@dnd-kit/core';
-import { useState, useMemo, useCallback, useRef, useEffect, useLayoutEffect } from 'react';
+/**
+ * PprPage — контейнер таймлайна ППР.
+ * Отвечает только за разметку и делегирует всю бизнес-логику во внешний хук usePprTimeline.
+ */
+import { DndContext, closestCenter } from '@dnd-kit/core';
 import type { FC } from 'react';
 
-import type { StageField } from '@/entities/template/model/store/templateStore';
 import './PprPage.css';
-import { parseTimeToMinutes, toTime } from '@/shared/ui/time/toTime';
-import useTimelineStore from '@entities/timeline/model/store/timelineStore';
+import { usePprTimeline } from '@/features/ppr/model/hooks/usePprTimeline';
 import type { User } from '@entities/users/model/mapping/mapping';
-import { useUserStore } from '@entities/users/model/store/userStore';
-import { calcCoveredMap } from '@features/ppr/lib/calcCoveredMap';
 import PprRow from '@features/ppr/ui/PprRow/PprRow';
 import TaskDetail from '@features/ppr/ui/TaskDetail/TaskDetail';
-
-/**
- * Расширенный тип задачи (блока) для отображения на таймлайне
- * @property id - уникальный идентификатор блока
- * @property label - метка/название задачи
- * @property startTime - время начала задачи "HH:MM"
- * @property endTime - время окончания задачи "HH:MM"
- * @property status - статус задачи (необязательно)
- * @property subSteps - подзадачи (необязательно)
- * @property tplIdx - индекс шаблона, используемый при кликах
- * @property stageKeys - ключи этапов задачи
- * @property stagesField - данные по этапам для задачи
- */
-export interface BlockExt {
-  id: number;
-  label: string;
-  startTime: string;
-  endTime: string;
-  status?: string;
-  subSteps?: string[];
-  tplIdx: number;
-  stageKeys: string[];
-  stagesField: Record<string, StageField>;
-}
-
-export interface Executor {
-  id: number;
-  author: string;
-  role: string;
-  blocks?: BlockExt[];
-}
 
 /**
  * Свойства компонента PprPage
@@ -82,204 +42,63 @@ const PprPage: FC<Props> = ({
   onBlockClick,
   onTimerChange,
 }) => {
-  const rowsState = useTimelineStore((s) => s.rows);
-  const _setRows = useTimelineStore((s) => s.setRows);
-  const _updateRows = useTimelineStore((s) => s.updateRows);
-  const setRowsState = useCallback(
-    (value: any) => {
-      if (typeof value === 'function') {
-        _updateRows(value);
-      } else {
-        _setRows(value);
-      }
+  /** значения и хелперы таймлайна из хука */
+  const {
+    /** снимок всех строк таймлайна из стора */
+    data: { rowsState, rowsToRender, allBlocks },
+
+    /** параметры разметки и геометрии таймлайна */
+    layout: {
+      /** подписи часов в шапке таймлайна */
+      hourLabels,
+      /** длительность видимого окна в минутах */
+      windowSpanMin,
+      /** старт окна в минутах с 00:00 (с учётом перехода через полночь) */
+      windowStartMin,
+      /** карта: какие блоки полностью покрыты другими */
+      coverageMap,
+      /** текущая ширина контейнера таймлайна */
+      timelineWidthPx,
+      /** ref на DOM-контейнер таймлайна (для вычисления ширины и DnD) */
+      timelineContainerRef,
     },
-    [_setRows, _updateRows],
-  );
-  useEffect(() => setRowsState(executors), [executors, setRowsState]);
 
-  /** Расширенный вид пользователей и “Все задачи” */
-  const [usersExpanded, setUsersExpanded] = useState(false);
-  const [showingAllTasks, setShowingAllTasks] = useState(false);
-  const [expandedExecutorId, setExpandedExecutorId] = useState<number | null>(null);
-
-  /** ID открытого блока (для popover / detail) */
-  const [activeBlockId, setActiveBlockId] = useState<number | null>(null);
-
-  /** рассчитываем окно времени в минутах */
-  const windowStartMin = parseTimeToMinutes(gridStart);
-  const rawEndMin = parseTimeToMinutes(gridEnd);
-  const windowEndMin = rawEndMin <= windowStartMin ? rawEndMin + 1440 : rawEndMin;
-  const windowSpanMin = windowEndMin - windowStartMin;
-
-  /**
-   * Массив меток часов, по которым строится сетка на таймлайне
-   */
-  const hourLabels = Array.from({ length: Math.ceil(windowSpanMin / 60) + 1 }, (_, index) =>
-    Math.floor(((windowStartMin + index * 60) % 1440) / 60),
-  );
-
-  /** Список всех блоков для расчёта перекрытий */
-  const allBlocks = rowsState.flatMap((row) => row.blocks ?? []);
-  const coverageMap = useMemo(() => calcCoveredMap(allBlocks), [allBlocks]);
-
-  /** DRAG & DROP: сенсоры для pointer & touch */
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { delay: 200, tolerance: 5 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } }),
-  );
-
-  /** Ref контейнера таймлайна для измерения ширины */
-  const timelineContainerRef = useRef<HTMLDivElement>(null);
-  const [timelineWidthPx, setTimelineWidthPx] = useState(0);
-  useLayoutEffect(() => {
-    if (timelineContainerRef.current) {
-      setTimelineWidthPx(timelineContainerRef.current.getBoundingClientRect().width);
-    }
-  }, []);
-
-  /**
-   * Обработчик завершения перетаскивания блока:
-   * пересчитывает время задач и перемещает bundle блоков в строке
-   * @param event - событие окончания drag
-   */
-  const handleDragEnd = useCallback(
-    (event: DragEndEvent) => {
-      const activeIdStr = event.active.id.toString();
-      if (!activeIdStr.startsWith('template-')) return;
-
-      const uniqueId = Number(activeIdStr.replace('template-', ''));
-      const sourceRowId = Math.floor(uniqueId / 1000);
-      const templateIndex = uniqueId % 1000;
-      const targetRowId = typeof event.over?.id === 'number' ? event.over.id : sourceRowId;
-
-      const containerWidth = timelineContainerRef.current?.getBoundingClientRect().width ?? 1;
-      const deltaMinutes = (event.delta.x / containerWidth) * windowSpanMin;
-
-      setRowsState((prevRows) => {
-        const nextRows = prevRows.map((r) => ({
-          ...r,
-          blocks: [...(r.blocks ?? [])],
-        }));
-        const sourceRow = nextRows.find((r) => r.id === sourceRowId);
-        if (!sourceRow) return prevRows;
-
-        const movingBundle = sourceRow.blocks!.filter((b) => b.tplIdx === templateIndex);
-        sourceRow.blocks = sourceRow.blocks!.filter((b) => b.tplIdx !== templateIndex);
-
-        movingBundle.forEach((block) => {
-          block.startTime = toTime(parseTimeToMinutes(block.startTime) + deltaMinutes);
-          block.endTime = toTime(parseTimeToMinutes(block.endTime) + deltaMinutes);
-        });
-
-        const destRow = nextRows.find((r) => r.id === targetRowId) ?? sourceRow;
-        destRow.blocks!.push(...movingBundle);
-
-        return nextRows;
-      });
+    /** настройки и обработчики drag-and-drop */
+    dnd: {
+      /** сенсоры dnd-kit (мышь/тач) с нужными ограничениями */
+      sensors,
+      /** обработчик завершения перетаскивания (укладка без перекрытий) */
+      handleDragEnd,
     },
-    [windowSpanMin, setRowsState],
-  );
 
-  /** Список всех пользователей из стора для деталей задач */
-  const storedUsers: User[] = useUserStore((s) => s.users);
-  const allExecutorsList = useMemo(() => [...storedUsers], [storedUsers]);
+    /** состояние UI и его сеттеры */
+    ui: {
+      /** активный блок, для которого открыты детали */
+      activeBlock,
+      /** установить/сбросить активный блок по id */
+      setActiveBlockId,
+      /** режим показа карточек для всех задач сразу */
+      showingAllTasks,
+      /** переключить режим показа всех задач */
+      setShowingAllTasks,
+      /** флаг: раскрыт ли список всех исполнителей */
+      usersExpanded,
+      /** переключить раскрытие списка исполнителей */
+      setUsersExpanded,
+      /** id исполнителя, чью строку показываем в свернутом режиме */
+      expandedExecutorId,
+      /** установить/сбросить выбранного исполнителя для показа */
+      setExpandedExecutorId,
+    },
 
-  /**
-   * Находит автора блока по его ID
-   * @param blockId - ID блока задачи
-   * @returns имя автора или "Неизвестен"
-   */
-  const findOwnerName = (blockId: number): string =>
-    rowsState.find((r) => r.blocks?.some((b) => b.id === blockId))?.author ?? 'Неизвестен';
-
-  /**
-   * Формирует маппинг исполнителей по этапам блока для TaskDetail
-   * @param block - расширенный блок задачи
-   */
-  const buildExecutorsByStage = (block: BlockExt) => {
-    const result: Record<string, { id: number; author: string; role: string }[]> = {};
-    block.stageKeys.forEach((stageKey) => {
-      result[stageKey] = [{ id: block.id, author: findOwnerName(block.id), role: '' }];
-    });
-    return result;
-  };
-
-  /**
-   * Определяет список строк для рендеринга:
-   * сначала «Все Задачи», затем по исполнителям
-   */
-  const rowsToRender: Executor[] = [
-    { id: 0, author: 'Все Задачи', role: '', blocks: allBlocks },
-    ...(usersExpanded ? rowsState : rowsState.filter((r) => r.id === expandedExecutorId)),
-  ];
-
-  const activeBlock = allBlocks.find((b) => b.id === activeBlockId) ?? null;
-
-  /**
-   * добавление блока по событию из формы
-   */
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail || {};
-      const newLabel: string | undefined = detail.label;
-
-      setRowsState((prev) => {
-        if (prev.length === 0) return prev;
-
-        const withBlocks = prev.find((r) => (r.blocks?.length ?? 0) > 0) ?? prev[0];
-        const destRowId = withBlocks.id;
-
-        const refRow = prev.find((r) => r.id === destRowId) ?? prev[0];
-        const refBlock =
-          [...(refRow.blocks ?? [])].sort((a, b) => a.id - b.id).at(-1) ??
-          prev
-            .flatMap((r) => r.blocks ?? [])
-            .sort((a, b) => a.id - b.id)
-            .at(-1);
-
-        if (!refBlock) return prev;
-
-        const refStart = parseTimeToMinutes(refBlock.startTime);
-        const refEnd =
-          parseTimeToMinutes(refBlock.endTime) <= refStart
-            ? parseTimeToMinutes(refBlock.endTime) + 1440
-            : parseTimeToMinutes(refBlock.endTime);
-        const duration = Math.max(1, refEnd - refStart);
-
-        // Новый id
-        const maxId = Math.max(0, ...prev.flatMap((r) => r.blocks ?? []).map((b) => b.id));
-        const nextId = maxId + 1;
-
-        const newStartAbs = refEnd;
-        const newEndAbs = refEnd + duration;
-
-        const newBlock: BlockExt = {
-          id: nextId,
-          label: newLabel ?? refBlock.label,
-          startTime: toTime(newStartAbs),
-          endTime: toTime(newEndAbs),
-          status: refBlock.status,
-          subSteps: refBlock.subSteps ? [...refBlock.subSteps] : undefined,
-          tplIdx: refBlock.tplIdx,
-          stageKeys: [...refBlock.stageKeys],
-          stagesField: { ...refBlock.stagesField },
-        };
-
-        /** Копия стора и пуш в нужную строку */
-        const copy = prev.map((r) => ({
-          ...r,
-          blocks: [...(r.blocks ?? [])],
-        }));
-        const dest = copy.find((r) => r.id === destRowId) ?? copy[0];
-        dest.blocks!.push(newBlock);
-
-        return copy;
-      });
-    };
-
-    window.addEventListener('ppr:add-entry', handler as EventListener);
-    return () => window.removeEventListener('ppr:add-entry', handler as EventListener);
-  }, []);
+    /** утилиты и данные, помогающие рендеру */
+    helpers: {
+      /** получить имя владельца блока по id блока */
+      findOwnerName,
+      /** список всех пользователей из стора (для селектов/деталей) */
+      allExecutorsList,
+    },
+  } = usePprTimeline({ gridStart, gridEnd, executors, onTimerChange });
 
   return (
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
@@ -289,14 +108,12 @@ const PprPage: FC<Props> = ({
         </h2>
         <div
           className="timeline-header"
-          style={{
-            gridTemplateColumns: `4rem 4rem repeat(${hourLabels.length},1fr)`,
-          }}
+          style={{ gridTemplateColumns: `4rem 4rem repeat(${hourLabels.length},1fr)` }}
         >
           <div />
           <div />
-          {hourLabels.map((hourValue) => (
-            <div key={hourValue}>{String(hourValue).padStart(2, '0')}:00</div>
+          {hourLabels.map((hour) => (
+            <div key={hour}>{String(hour).padStart(2, '0')}:00</div>
           ))}
         </div>
 
@@ -310,7 +127,7 @@ const PprPage: FC<Props> = ({
               spanMin={windowSpanMin}
               startMin={windowStartMin}
               coverageMap={coverageMap}
-              openBlockId={activeBlockId}
+              openBlockId={activeBlock?.id ?? null}
               setOpenBlockId={setActiveBlockId}
               onBlockClick={onBlockClick}
               onTimerChange={onTimerChange}
@@ -336,10 +153,12 @@ const PprPage: FC<Props> = ({
                 status={block.status}
                 subSteps={block.subSteps}
                 allExecutors={allExecutorsList}
-                executorsByStage={buildExecutorsByStage(block)}
+                executorsByStage={{}}
                 onExecutorAdd={() => {}}
                 onExecutorRemove={() => {}}
-                onTimerChange={(stageKey, val) => onTimerChange(block.tplIdx, stageKey, val)}
+                onTimerChange={(stageKey, newTimer) =>
+                  onTimerChange(block.tplIdx, stageKey, newTimer)
+                }
                 stageKeys={block.stageKeys}
                 stagesField={block.stagesField}
                 onClose={() => setShowingAllTasks(false)}
@@ -359,10 +178,10 @@ const PprPage: FC<Props> = ({
             status={activeBlock.status}
             subSteps={activeBlock.subSteps}
             allExecutors={allExecutorsList}
-            executorsByStage={buildExecutorsByStage(activeBlock)}
-            onExecutorAdd={() => {}}
-            onExecutorRemove={() => {}}
-            onTimerChange={(stageKey, val) => onTimerChange(activeBlock.tplIdx, stageKey, val)}
+            executorsByStage={{}}
+            onTimerChange={(stageKey, newTimer) =>
+              onTimerChange(activeBlock.tplIdx, stageKey, newTimer)
+            }
             stageKeys={activeBlock.stageKeys}
             stagesField={activeBlock.stagesField}
             onClose={() => setActiveBlockId(null)}

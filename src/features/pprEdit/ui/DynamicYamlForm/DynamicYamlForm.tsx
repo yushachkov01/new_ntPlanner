@@ -1,122 +1,276 @@
 import { Form, Typography, Button } from 'antd';
-import React, { useEffect, useState } from 'react';
-
-import { toArray } from './helpers/toArray';
+import React, { useEffect, useMemo, useState } from 'react';
 
 import './DynamicYamlForm.css';
+import { templateStore } from '@/entities/template/model/store/templateStore';
 import type { FieldCfg } from '@/features/pprEdit/model/types';
+import useTimelineStore from '@entities/timeline/model/store/timelineStore';
+import type { User } from '@entities/users/model/mapping/mapping';
 import { FieldRenderer } from '@features/pprEdit/ui/DynamicYamlForm/FieldRenderer/FieldRenderer';
 
+import { toArray } from './helpers/toArray';
 import { FieldsTable } from '../FieldsTable/FieldsTable';
-
-import { templateStore } from '@/entities/template/model/store/templateStore';
 
 const { Title } = Typography;
 
 interface Props {
-  /**
-   * Схема формы, полученная из YAML:
-   *   headline:  заголовок
-   *   settings: объект с настройками полей
-   */
-  schema: {
-    headline?: string;
-    settings: Record<string, any>;
-  };
-  /**
-   * Колбэк при изменении рабочего интервала
-   */
-  onWorkTimeChange?: (interval: { start: string; end: string }) => void;
-  /**
-   * Текущее рабочее окно
-   */
-  workWindow?: { start: string; end: string };
-  /**
-   * Начальный интервал
-   */
-  initialInterval?: string;
+  schema: any;
+  executors?: Array<Pick<User, 'id'> & { author?: string; role?: string }>;
+  templateKey?: string;
 }
+
+type RowWithSource = Record<string, any> & { __sourceKey?: string };
 
 /**
  * Динамическая форма, рендерящая поля по конфигурации YAML.
+ * schema: объект YAML-схемы
+ * executors: исполнители, для которых будут создаваться блоки
+ * templateKey: ключ шаблона
  */
-export default function DynamicYamlForm({ schema }: Props) {
+export default function DynamicYamlForm({ schema, executors = [], templateKey }: Props) {
   /** Управление формой Ant Design */
   const [form] = Form.useForm();
 
-  /** Состояние сгруппированных полей */
-  const [groupFields, setGroupFields] = useState<Record<string, FieldCfg[]>>({});
   /** Состояние корневых полей */
   const [rootFields, setRootFields] = useState<FieldCfg[]>([]);
-  const [localData, setLocalData] = useState<Record<string, any>[]>([]);
-  /** Индекс редактируемой строки, или null если добавление */
+  const [localData, setLocalData] = useState<RowWithSource[]>([]);
+
+  /**
+   * индекс редактируемой записи в таблице
+   * params
+   */
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
 
-  const setTemplateValues = templateStore((s) => s.setTemplateValues);
-  const getTemplateValues = templateStore((s) => s.getTemplateValues);
+  /**
+   * сеттер templateStore по ключу схемы
+   */
+  const setTemplateValues = templateStore((state) => state.setTemplateValues);
 
   /**
-   * Обновляем поля
-   *
-   * @param schema.headline  — заголовок шаблона
-   * @param schema.settings  — настройки полей шаблона
+   * геттер templateStore по ключу схемы
+   * params
+   */
+  const getTemplateValues = templateStore((state) => state.getTemplateValues);
+
+  /**
+   * экшен стора таймлайна
+   */
+  const addFromYaml = useTimelineStore((state) => state.addFromYaml);
+
+  /**
+   * экшен стора таймлайна: удалить блоки по sourceKey
+   */
+  const removeBySource = useTimelineStore((state) => state.removeBySource);
+
+  /**
+   * реакция на смену схемы - перерисовываем поля и очищаем значения
    */
   useEffect(() => {
+    /**
+     * нормализация полей формы из schema.settings
+     * params
+     */
     setRootFields(toArray({ fields: schema.settings }));
+
+    /**
+     * сброс значений формы
+     */
     form.resetFields();
+
+    /**
+     * очистка локальной таблицы
+     */
     setLocalData([]);
+
+    /**
+     * выход из режима редактирования
+     */
     setEditingIndex(null);
-  }, [schema.headline, schema.settings, form]);
+  }, [schema.headline, schema.settings, form, templateKey]);
 
   /**
-   * Обработчик сабмита формы:
-   * добавляет новую запись или сохраняет изменения существующей.
-   * @param vals — значения полей формы
+   * вычисляет упорядоченную цепочку стадий из YAML
+   * schema: исходная YAML-схема
+   * returns
+   * { stageKeys, stagesField }: массив ключей стадий и словарь метаданных
+   */
+  const stagesFromYaml = useMemo(() => {
+    /**
+     * копия входной схемы
+     */
+    const rawSchema = schema ?? {};
+
+    /**
+     * стартовый ключ стадии
+     */
+    const startKey: string | undefined =
+      Array.isArray(rawSchema.current_stages) && rawSchema.current_stages.length
+        ? rawSchema.current_stages[0]
+        : undefined;
+
+    /**
+     * словарь метаданных стадий
+     */
+    const stagesField: Record<string, any> = rawSchema.stages_field ?? {};
+
+    /**
+     * результирующий список ключей стадий по порядку
+     */
+    const stageKeys: string[] = [];
+
+    /**
+     * текущий курсор-ключ при обходе цепочки стадий
+     */
+    let cursorKey = startKey;
+    let guard = 0;
+
+    while (cursorKey && cursorKey !== 'exit' && guard < 200) {
+      if (!stagesField[cursorKey]) break;
+      stageKeys.push(cursorKey);
+      cursorKey = stagesField[cursorKey]?.if_success;
+      guard++;
+    }
+
+    return { stageKeys, stagesField: stagesField as Record<string, any> };
+  }, [schema]);
+
+  /**
+   * сабмит формы — добавление или редактирование записи + синхронизация с таймлайном
+   * params:
+   * vals: значения полей формы
    */
   const onFinish = (vals: Record<string, any>) => {
-    const key = schema.headline;
-    const prevGlobal = getTemplateValues(key);
-    let nextLocal: Record<string, any>[];
+    /**
+     * ключ раздела в templateStore
+     */
+    const templateSectionKey = schema.headline;
+
+    /**
+     * предыдущее глобальное состояние значений по этому ключу
+     */
+    const prevGlobalValues = getTemplateValues(templateSectionKey);
+
+    /**
+     * список id исполнителей текущего шаблона (string|number как пришло)
+     */
+    const executorIds = (executors ?? []).map((executor: any) => executor.id);
+
+    /**
+     * разобранная из YAML цепочка стадий и словарь метаданных
+     */
+    const { stageKeys, stagesField } = stagesFromYaml;
 
     if (editingIndex === null) {
-      nextLocal = [...localData, vals];
-      setLocalData(nextLocal);
-      setTemplateValues(key, [...prevGlobal, vals]);
+      /**ДОБАВЛЕНИЕ
+       * уникальный ключ источника для связи «строка таблицы -> блоки таймлайна»
+       */
+      const sourceKey = `${
+        templateKey ?? templateSectionKey
+      }::${Date.now()}_${Math.random().toString(36).slice(2)}`;
 
       /**
-       * сообщаем таймлайну, что добавлена новая запись.
-       * PprPage слушает событие и создаёт новый блок,
+       * новая строка таблицы с прикреплённым sourceKey
        */
-      window.dispatchEvent(
-        new CustomEvent('ppr:add-entry', {
-          detail: { label: schema.headline || 'Новая запись' },
-        }),
-      );
+      const nextRow: RowWithSource = { ...vals, __sourceKey: sourceKey };
+
+      /**
+       * новое значение таблицы
+       */
+      const nextLocalData = [...localData, nextRow];
+
+      setLocalData(nextLocalData);
+      setTemplateValues(templateSectionKey, [...prevGlobalValues, nextRow]);
+
+      if (stageKeys.length) {
+        addFromYaml({
+          label: schema.headline || schema.templateName || 'Новая запись',
+          stageKeys,
+          stagesField,
+          execIds: executorIds,
+          sourceKey,
+        });
+      }
     } else {
-      nextLocal = localData.map((row, i) => (i === editingIndex ? vals : row));
-      setLocalData(nextLocal);
+      /**
+       * РЕДАКТИРОВАНИЕ
+       * исходный sourceKey редактируемой строки
+       */
+      const sourceKey = localData[editingIndex]?.__sourceKey;
+
+      /**
+       * обновлённая строка с сохранением sourceKey
+       */
+      const patchedRow: RowWithSource = { ...vals, __sourceKey: sourceKey };
+
+      /**
+       * новый массив локальных данных с заменой строки по индексу
+       */
+      const nextLocalData = localData.map((rowItem, index) =>
+        index === editingIndex ? patchedRow : rowItem,
+      );
+
+      setLocalData(nextLocalData);
       setTemplateValues(
-        key,
-        prevGlobal.map((row, i) => (i === editingIndex ? vals : row)),
+        templateSectionKey,
+        prevGlobalValues.map((rowItem: any, index: number) =>
+          index === editingIndex ? patchedRow : rowItem,
+        ),
       );
     }
 
+    /**
+     * очистка формы и выход из режима редактирования
+     */
     form.resetFields();
     setEditingIndex(null);
   };
 
-  /** Удаляем одну строку
-   *  @param index — индекс строки для удаления
+  /**
+   * удаляет запись из таблицы и соответствующие блоки с таймлайна по её sourceKey
+   * params
+   * - index: индекс удаляемой записи
    */
   const handleDelete = (index: number) => {
-    const key = schema.headline;
-    const prevGlobal = getTemplateValues(key);
-    const nextLocal = localData.filter((_, i) => i !== index);
-    setLocalData(nextLocal);
+    /**
+     * ключ раздела в templateStore — headline схемы
+     * params
+     */
+    const templateSectionKey = schema.headline;
+
+    /**
+     * предыдущее глобальное состояние значений по этому ключу
+     */
+    const prevGlobalValues = getTemplateValues(templateSectionKey);
+
+    /**
+     * удаляемая строка
+     */
+    const rowToRemove = localData[index];
+
+    /**
+     * её sourceKey (если есть)
+     */
+    const rowSourceKey = rowToRemove?.__sourceKey;
+
+    /**
+     * локальные данные без удаляемой строки
+     */
+    const nextLocalData = localData.filter((_, i) => i !== index);
+
+    setLocalData(nextLocalData);
     setTemplateValues(
-      key,
-      prevGlobal.filter((_, i) => i !== index),
+      templateSectionKey,
+      prevGlobalValues.filter((_: any, i: number) => i !== index),
     );
+
+    if (rowSourceKey) {
+      /**
+       * id исполнителей, у которых нужно удалить связанные блоки
+       */
+      const executorIds = (executors ?? []).map((executor: any) => executor.id);
+      removeBySource({ execIds: executorIds, sourceKey: rowSourceKey });
+    }
+
     if (editingIndex === index) {
       form.resetFields();
       setEditingIndex(null);
@@ -125,11 +279,25 @@ export default function DynamicYamlForm({ schema }: Props) {
 
   /**
    * Загружает выбранную запись в форму для редактирования.
-   * @param index — индекс строки для редактирования
+   * params
+   * - index: индекс строки для редактирования
    */
   const handleEdit = (index: number) => {
+    /**
+     * установка индекса редактируемой записи
+     */
     setEditingIndex(index);
-    form.setFieldsValue(localData[index]);
+
+    /**
+     * копия строки без служебного поля __sourceKey
+     */
+    const formRow = { ...localData[index] };
+    delete (formRow as any).__sourceKey;
+
+    /**
+     * проставление значений в форму
+     */
+    form.setFieldsValue(formRow);
   };
 
   return (

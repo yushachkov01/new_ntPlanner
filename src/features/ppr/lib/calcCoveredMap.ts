@@ -1,58 +1,106 @@
-/**
- * Импорт типа данных блоков расписания
- */
+import type { BlockExt } from '@/features/ppr/model/types';
 import { parseTimeToMinutes } from '@/shared/ui/time/toTime';
-
-import type { BlockData } from '../model/types.ts';
 
 /**
  * Рассчитывает, какие блоки полностью покрыты другими блоками.
- *
- * @param blocks — массив блоков с полями id, startTime и endTime
- * @returns Объект, где ключи — id покрытых блоков, значение — true
+ * blocks: список блоков таймлайна
  */
-export function calcCoveredMap(blocks: BlockData[]): Record<number, boolean> {
-  /**
-   * Результирующий словарь покрытия
-   */
-  const covered: Record<number, boolean> = {};
+export function calcCoveredMap(blocks: BlockExt[]): Record<number, boolean> {
+  const coveredMap: Record<number, boolean> = {};
 
   /**
-   * Перебираем все пары блоков для проверки покрытий
+   * Нормализует интервал в абсолютные минуты (учёт перехода через 00:00).
+   * params
+   * - startMin: минуты старта интервала
+   * - endMin: минуты конца интервала
+   * returns
+   * - { startAbsMin, endAbsMin }: конец всегда >= начала
    */
-  for (let i = 0; i < blocks.length; i++) {
-    for (let j = i + 1; j < blocks.length; j++) {
-      const a = blocks[i];
-      const b = blocks[j];
+  const normalizeInterval = (startMin: number, endMin: number) => {
+    /** Абсолютный старт интервала в минутах от 00:00 текущих суток */
+    const startAbsMin = startMin;
+    /** Абсолютный конец интервала (>= startAbsMin), с учётом перетекания через полночь */
+    const endAbsMin = endMin <= startMin ? endMin + 1440 : endMin;
+    return { startAbsMin, endAbsMin };
+  };
+
+  /**
+   * Приводит интервал к общей базе времени, чтобы сравнивать пары,
+   * где один из интервалов может «лежать до 00:00».
+   * returns
+   * - { startAbsMin, endAbsMin }: интервал, развёрнутый на одной оси времени
+   */
+  const unwrapToBase = (startMin: number, endMin: number, baseStart: number) => {
+    /** Нормализованный интервал с учётом возможного перехода через полночь */
+    let { startAbsMin, endAbsMin } = normalizeInterval(startMin, endMin);
+
+    /**
+     * Если интервал «до базы» (оба конца <= baseStart), переносим его на сутки вперёд,
+     * чтобы baseStart попадал внутрь общей оси сравнения.
+     */
+    const isCompletelyBeforeBase = startAbsMin < baseStart && endAbsMin <= baseStart;
+    if (isCompletelyBeforeBase) {
+      startAbsMin += 1440;
+      endAbsMin += 1440;
+    }
+    return { startAbsMin, endAbsMin };
+  };
+
+  /**
+   * Двойной цикл по всем парам блоков (i < j), чтобы проверить покрытие.
+   */
+  for (let firstIndex = 0; firstIndex < blocks.length; firstIndex++) {
+    /** Блок слева в паре */
+    const firstBlock = blocks[firstIndex];
+
+    for (let secondIndex = firstIndex + 1; secondIndex < blocks.length; secondIndex++) {
+      /** Блок справа в паре */
+      const secondBlock = blocks[secondIndex];
+
+      /** Минуты старта первого блока */
+      const firstStartMin = parseTimeToMinutes(firstBlock.startTime);
+      /** Минуты конца первого блока ) */
+      const firstEndMin = parseTimeToMinutes(firstBlock.endTime);
+
+      /** Минуты старта второго блока */
+      const secondStartMin = parseTimeToMinutes(secondBlock.startTime);
+      /** Минуты конца второго блока */
+      const secondEndMin = parseTimeToMinutes(secondBlock.endTime);
 
       /**
-       * Временные границы блоков в минутах
+       * Общая база для пары — минимальный старт двух блоков.
+       * Нужна, чтобы одинаково «развернуть» интервалы по отношению к этой базе.
        */
-      const aStart = parseTimeToMinutes(a.startTime);
-      const aEnd = parseTimeToMinutes(a.endTime);
-      const bStart = parseTimeToMinutes(b.startTime);
-      const bEnd = parseTimeToMinutes(b.endTime);
+      const baseStart = Math.min(firstStartMin, secondStartMin);
+
+      /** Интервал первого блока на общей оси времени */
+      const firstInterval = unwrapToBase(firstStartMin, firstEndMin, baseStart);
+      /** Интервал второго блока на общей оси времени */
+      const secondInterval = unwrapToBase(secondStartMin, secondEndMin, baseStart);
 
       /**
-       * Если A начинается раньше B и заканчивается позже B — B покрыт A
+       * Сравнение интервалов
        */
-      if (aStart < bStart && aEnd > bEnd) {
-        covered[b.id] = true;
-      } else if (bStart < aStart && bEnd > aEnd) {
-        /**
-         * Если B начинается раньше A и заканчивается позже A — A покрыт B
-         */
-        covered[a.id] = true;
-      } else if (aStart === bStart && aEnd >= bEnd) {
-        /**
-         * Если начало совпадает, но A длится дольше или столько же, сколько B — B покрыт A
-         */
-        covered[b.id] = true;
-      } else if (bStart === aStart && bEnd >= aEnd) {
-        /**
-         * Если начало совпадает, но B длится дольше или столько же, сколько A — A покрыт B
-         */
-        covered[a.id] = true;
+      const firstCoversSecond =
+        firstInterval.startAbsMin <= secondInterval.startAbsMin &&
+        firstInterval.endAbsMin >= secondInterval.endAbsMin &&
+        (firstInterval.startAbsMin < secondInterval.startAbsMin ||
+          firstInterval.endAbsMin > secondInterval.endAbsMin);
+
+      /**
+       *  второй блок полностью покрывает первый
+       */
+      const secondCoversFirst =
+        secondInterval.startAbsMin <= firstInterval.startAbsMin &&
+        secondInterval.endAbsMin >= firstInterval.endAbsMin &&
+        (secondInterval.startAbsMin < firstInterval.startAbsMin ||
+          secondInterval.endAbsMin > firstInterval.endAbsMin);
+
+      /** Фиксируем покрытие, помечаем целиком покрытый блок */
+      if (firstCoversSecond) {
+        coveredMap[secondBlock.id] = true;
+      } else if (secondCoversFirst) {
+        coveredMap[firstBlock.id] = true;
       }
     }
   }
@@ -60,5 +108,5 @@ export function calcCoveredMap(blocks: BlockData[]): Record<number, boolean> {
   /**
    * Возвращаем карту покрытий
    */
-  return covered;
+  return coveredMap;
 }

@@ -167,3 +167,34 @@ export interface UploadedConfig {
   /** URL для скачивания */
   url: string;
 }
+
+/**
+ * Расширенный блок таймлайна (элемент задачи)
+ * params
+ * - id: уникальный id блока
+ * - label: заголовок/подпись
+ * - startTime/endTime: время в формате HH:mm
+ * - status/subSteps: пользовательские поля
+ * - tplIdx: идентификатор «бандла» внутри строки
+ * - stageKeys/stagesField: последовательность стадий
+ * - sourceKey: идентификатор записи в таблице
+ */
+export interface BlockExt {
+  id: number;
+  label: string;
+  startTime: string;
+  endTime: string;
+  status?: string;
+  subSteps?: string[];
+  tplIdx: number;
+  stageKeys: string[];
+  stagesField: Record<string, StageField>;
+  sourceKey?: string;
+}
+
+export interface Executor {
+  id: number;
+  author: string;
+  role: string;
+  blocks?: BlockExt[];
+}

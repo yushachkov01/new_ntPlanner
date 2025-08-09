@@ -1,109 +1,62 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 
 import './PprEditorPage.css';
 import LocationOverview from '@/widgets/layout/LocationOverview/ui/LocationOverview';
 import type { Template } from '@entities/template/model/store/templateStore.ts';
+import useTimelineStore from '@entities/timeline/model/store/timelineStore';
 import { userStore } from '@entities/user/model/store/UserStore';
 import { useUserStore } from '@entities/users/model/store/userStore';
 import { WorkTimeStore } from '@entities/workTimeStore/model/store/workTimeStore';
-import { addMinutes } from '@features/pprEdit/lib/time/addMinutes';
 import DynamicYamlForm from '@features/pprEdit/ui/DynamicYamlForm/DynamicYamlForm';
 import { PlannedTaskDropdown } from '@features/pprEdit/ui/PlannedTaskDropdown/PlannedTaskDropdown';
 import PprEditorTabs from '@features/pprEdit/ui/PprEditorTabs/PprEditorTabs';
 import YamlTemplateSelect from '@features/pprEdit/ui/yamlTemplate/YamlTemplateSelect';
-import type { StageCfg } from '@pages/PprPage';
 import PprPage from '@pages/PprPage';
 
-import hash from 'object-hash';
 import { Button } from 'antd';
 
-import type { Executor } from '@pages/PprPage/ui/PprPage';
+/** нормализуем структуру исполнителя */
+const normalizeExec = (u: any) => ({
+  /** id может быть числом ИЛИ строкой (UUID)  */
+  id: u?.id ?? u?.user_id ?? u?.value ?? u?.key,
+  author:
+    u?.author ??
+    u?.fio ??
+    u?.name ??
+    `${u?.last_name ?? ''} ${u?.first_name ?? ''}`.trim() ??
+    `User ${u?.id ?? ''}`,
+  role: u?.role?.name ?? u?.role ?? '',
+});
 
-interface WindowInterval {
-  start: string;
-  end: string;
-}
-
-/**
- * Строит цепочку этапов шаблона, начиная с указанного времени
- * @param template — объект шаблона с полями current_stages и stages_field
- * @param startTime — время начала цепочки в формате "HH:MM"
- * @returns массив записей { key, meta, start, end }
- */
-function buildStageChain(
-  template: Template,
-  startTime: string,
-): Array<{
-  key: string;
-  meta: Template['stages_field'][string];
-  start: string;
-  end: string;
-}> {
-  const stageChain: Array<{
-    key: string;
-    meta: Template['stages_field'][string];
-    start: string;
-    end: string;
-  }> = [];
-  let cursor = startTime;
-  let currentKey = template.current_stages?.[0];
-
-  for (let stepIndex = 0; stepIndex < 100 && currentKey && currentKey !== 'exit'; stepIndex++) {
-    const stageMeta = template.stages_field[currentKey];
-    if (!stageMeta) break;
-    const nextEnd = addMinutes(cursor, stageMeta.timer_default ?? 0);
-    stageChain.push({ key: currentKey, meta: stageMeta, start: cursor, end: nextEnd });
-    cursor = nextEnd;
-    currentKey = stageMeta.if_success;
-  }
-  return stageChain;
-}
-
-/**
- * Страница редактора PPR:
- * выбор задачи, настройка шаблонов и исполнителей,
- * отображение формы и таймлайна.
- */
 const PprEditorPage: React.FC = () => {
-  /** ID выбранной задачи */
+  /** UI-состояния */
   const [selectedTaskId, setSelectedTaskId] = useState<string>();
-  /** Основной шаблон */
   const [mainTemplate, setMainTemplate] = useState<Template>();
-  /** Список дополнительных шаблонов */
   const [additionalTemplates, setAdditionalTemplates] = useState<Template[]>([]);
-  /** Текущий пользователь из стора */
-  const currentUser = userStore((state) => state.user)!;
-  /** Исполнители для каждого шаблона */
-  const [executorsByTemplate, setExecutorsByTemplate] = useState(
-    currentUser ? [[currentUser]] : [[]],
+  const currentUser = userStore((s) => s.user)!;
+  /** Исполнители по шаблонам */
+  const [executorsByTemplate, setExecutorsByTemplate] = useState<any[][]>(
+    currentUser ? [[normalizeExec(currentUser)]] : [[]],
   );
-  const [tabExecutors, setTabExecutors] = useState(executorsByTemplate[0] ?? []);
-
-  /** Ключи шаблонов для передачи в PprPage */
-  const templateKeys = [
-    mainTemplate?.key ?? '<default>',
-    ...additionalTemplates.map((template) => template.key),
-  ];
+  const [tabExecutors, setTabExecutors] = useState<any[]>(
+    (executorsByTemplate[0] ?? []).map(normalizeExec),
+  );
 
   /** Методы стора рабочего времени */
-  const {
-    timelineWindow,
-    highlightWindows,
-    setTimelineWindow,
-    updateHighlightWindow,
-    appendHighlightWindow,
-    setHighlightWindows,
-  } = WorkTimeStore();
+  const { timelineWindow, setTimelineWindow } = WorkTimeStore();
 
-  /** Когда появился основной шаблон, но ещё нет исполнителей — добавляем текущего */
+  /** используем «точечное» удаление блоков по префиксу sourceKey (templateKey) */
+  const removeBySourcePrefix = useTimelineStore((s) => s.removeBySourcePrefix);
+
+  /** Если есть основной шаблон, а исполнителей нет — добавляем текущего */
   useEffect(() => {
-    if (mainTemplate && executorsByTemplate[0].length === 0) {
+    if (mainTemplate && executorsByTemplate[0].length === 0 && currentUser) {
       setExecutorsByTemplate((prevList) => {
         const nextList = [...prevList];
-        nextList[0] = [currentUser];
+        nextList[0] = [normalizeExec(currentUser)];
         return nextList;
       });
-      setTabExecutors([currentUser]);
+      setTabExecutors([normalizeExec(currentUser)]);
     }
   }, [mainTemplate, currentUser, executorsByTemplate]);
 
@@ -118,8 +71,10 @@ const PprEditorPage: React.FC = () => {
       if (!Array.isArray(nextList[templateIndex])) {
         nextList[templateIndex] = [];
       }
-      if (!nextList[templateIndex].some((item: any) => item.id === executor.id)) {
-        nextList[templateIndex].push(executor);
+      const ex = normalizeExec(executor);
+      const key = String(ex.id);
+      if (!nextList[templateIndex].some((item: any) => String(item.id) === key)) {
+        nextList[templateIndex].push(ex);
       }
       return nextList;
     });
@@ -129,11 +84,11 @@ const PprEditorPage: React.FC = () => {
    * @param templateIndex — индекс шаблона
    * @param executorId — id исполнителя
    */
-  const removeExecutor = (templateIndex: number, executorId: number) =>
+  const removeExecutor = (templateIndex: number, executorId: number | string) =>
     setExecutorsByTemplate((prevList) => {
       const nextList = [...prevList];
-      nextList[templateIndex] = nextList[templateIndex].filter(
-        (item: any) => item.id !== executorId,
+      nextList[templateIndex] = (nextList[templateIndex] ?? []).filter(
+        (item: any) => String(item.id) !== String(executorId),
       );
       return nextList;
     });
@@ -146,139 +101,36 @@ const PprEditorPage: React.FC = () => {
    */
   const addTemplate = () => {
     setAdditionalTemplates((prev) => [...prev, {} as Template]);
-    appendHighlightWindow();
-    setExecutorsByTemplate((prevList) => [...prevList, currentUser ? [currentUser] : []]);
+    setExecutorsByTemplate((prevList) => [
+      ...prevList,
+      currentUser ? [normalizeExec(currentUser)] : [],
+    ]);
   };
 
-  /**
-   * Меняет шаблон в массиве additionalTemplates по индексу
-   * @param index — индекс шаблона
-   * @param newTemplate — новый объект шаблона
-   */
-  const changeTemplate = (index: number, newTemplate: Template) =>
+  /** Сменить шаблон (точечно удаляем блоки ) */
+  const changeTemplate = (index: number, newTemplate: Template) => {
+    const prevKey = (additionalTemplates[index] as any)?.key;
+    const execIds = (executorsByTemplate[index + 1] ?? []).map((e) => e.id);
+    if (prevKey) {
+      /** удаляем только блоки, созданные «старым» шаблоном этой вкладки */
+      removeBySourcePrefix({ execIds, prefix: String(prevKey) });
+    }
     setAdditionalTemplates((prev) => prev.map((item, idx) => (idx === index ? newTemplate : item)));
-
-  /**
-   * Обрабатывает изменение таймера этапа:
-   * сохраняет в основном или дополнительном шаблоне.
-   * @param tplIdx — индекс шаблона
-   * @param stageKey — ключ этапа
-   * @param newTimer — новое значение таймера
-   */
-  const handleTimerChange = (tplIdx: number, stageKey: string, newTimer: number) => {
-    if (tplIdx === 0 && mainTemplate) {
-      mainTemplate.stages_field[stageKey].timer_default = newTimer;
-      setMainTemplate({ ...mainTemplate });
-    } else {
-      const target = additionalTemplates[tplIdx - 1];
-      target.stages_field[stageKey].timer_default = newTimer;
-      setAdditionalTemplates([
-        ...additionalTemplates.slice(0, tplIdx - 1),
-        { ...target },
-        ...additionalTemplates.slice(tplIdx),
-      ]);
-    }
   };
 
-  /** Конфигурации этапов для передачи в PprPage */
-  const stageCfgs: StageCfg[] = [
-    {
-      currentStages: mainTemplate?.current_stages || [],
-      stagesField: mainTemplate?.stages_field || {},
-    },
-    ...additionalTemplates.map((template) => ({
-      currentStages: template.current_stages || [],
-      stagesField: template.stages_field || {},
-    })),
-  ];
+  /** Все пользователи из userStore */
+  useUserStore((s) => s.users || []);
 
-  /**
-   * получаем всех пользователей из userStore
-   */
-  const allUsers = useUserStore((s) => s.users || []);
-  const execMap = new Map<string, Executor>();
-  /**
-   * Проходим по каждой группе исполнителей для каждого шаблона
-   * @param list - список исполнителей для данного tplIdx
-   * @param tplIdx - индекс шаблона
-   */
-  executorsByTemplate.forEach((list, tplIdx) => {
-    (list ?? []).forEach((exec) => {
-      const key = String(exec.id);
-
-      let row = execMap.get(key);
-      if (!row) {
-        const user = allUsers.find((u) => u.id === exec.id);
-        const rowIdNum = parseInt(hash(key).slice(0, 10), 16);
-        row = {
-          id: rowIdNum,
-          author: user?.name ?? exec.author,
-          role: user?.role?.name ?? exec.role,
-          blocks: [],
-        };
-        execMap.set(key, row);
-      }
-
-      const tplObj = tplIdx === 0 ? mainTemplate! : additionalTemplates[tplIdx - 1];
-      const windowStart =
-        tplIdx === 0
-          ? timelineWindow.start
-          : (highlightWindows[tplIdx]?.start ?? timelineWindow.start);
-      /**
-       * Строим цепочку этапов для шаблона
-       */
-      const chain = tplObj ? buildStageChain(tplObj, windowStart) : [];
-      /**
-       * Добавляем каждый этап цепочки в блоки строки
-       * @param stageKey - ключ этапа
-       * @param meta - метаданные этапа
-       * @param start - время начала этапа
-       * @param end - время конца этапа
-       * @param order - порядковый номер этапа
-       */
-      chain.forEach(({ key: stageKey, meta, start, end }, order) => {
-        row!.blocks.push({
-          id: row!.id * 10000 + tplIdx * 100 + order,
-          startTime: start,
-          endTime: end,
-          label: stageKey,
-          status: 'info',
-          stageKeys: [stageKey],
-          stagesField: { [stageKey]: meta },
-          tplIdx,
-        });
-      });
-    });
-  });
-  const executorsWithBlocks = Array.from(execMap.values());
-
-  /** Пересчёт highlightWindows при изменении шаблонов или времени начала */
-  useEffect(() => {
-    const windows: (WindowInterval | null)[] = [];
-
-    if (mainTemplate) {
-      const mainChain = buildStageChain(mainTemplate, timelineWindow.start);
-      if (mainChain.length) {
-        windows.push({
-          start: mainChain[0].start,
-          end: mainChain[mainChain.length - 1].end,
-        });
-      }
-    }
-
-    additionalTemplates.forEach((template, idx) => {
-      const prevEnd = windows[idx]?.end || timelineWindow.start;
-      const chain = buildStageChain(template, prevEnd);
-      if (chain.length) {
-        windows.push({
-          start: chain[0].start,
-          end: chain[chain.length - 1].end,
-        });
-      }
-    });
-
-    setHighlightWindows(windows);
-  }, [mainTemplate, additionalTemplates, timelineWindow.start, setHighlightWindows]);
+  /** Итоговый список исполнителей для таймлайна */
+  const pprExecutors = useMemo(
+    () =>
+      Array.from(
+        new Map(
+          (executorsByTemplate.flat() as any[]).map(normalizeExec).map((e) => [String(e.id), e]),
+        ).values(),
+      ),
+    [executorsByTemplate],
+  );
 
   return (
     <section className="ppr-editor-card">
@@ -296,9 +148,16 @@ const PprEditorPage: React.FC = () => {
           {selectedTaskId && (
             <YamlTemplateSelect
               bucket="yamls"
-              value={mainTemplate?.key}
-              onChange={setMainTemplate}
-              executors={executorsByTemplate[0]}
+              value={(mainTemplate as any)?.key}
+              onChange={(tpl) => {
+                const prevMainKey = (mainTemplate as any)?.key;
+                const execIds = (executorsByTemplate[0] ?? []).map((e) => e.id);
+                if (prevMainKey) {
+                  removeBySourcePrefix({ execIds, prefix: String(prevMainKey) });
+                }
+                setMainTemplate(tpl);
+              }}
+              executors={(executorsByTemplate[0] ?? []).map(normalizeExec)}
               addExecutor={(executor) => addExecutor(0, executor)}
               removeExecutor={(executorId) => removeExecutor(0, executorId)}
             />
@@ -313,10 +172,14 @@ const PprEditorPage: React.FC = () => {
                 executors={tabExecutors}
                 addExecutor={(exe) =>
                   setTabExecutors((prev) =>
-                    prev.some((e) => e.id === exe.id) ? prev : [...prev, exe],
+                    prev.some((e) => String(e.id) === String(exe.id))
+                      ? prev
+                      : [...prev, normalizeExec(exe)],
                   )
                 }
-                removeExecutor={(id) => setTabExecutors((prev) => prev.filter((e) => e.id !== id))}
+                removeExecutor={(id) =>
+                  setTabExecutors((prev) => prev.filter((e) => String(e.id) !== String(id)))
+                }
               />
             </div>
           </div>
@@ -325,8 +188,8 @@ const PprEditorPage: React.FC = () => {
       {mainTemplate?.raw && (
         <DynamicYamlForm
           schema={mainTemplate.raw}
-          workWindow={timelineWindow}
-          onWorkTimeChange={(interval) => updateHighlightWindow(0, interval)}
+          templateKey={(mainTemplate as any)?.key}
+          executors={(executorsByTemplate[0] ?? []).map(normalizeExec)}
         />
       )}
 
@@ -334,17 +197,17 @@ const PprEditorPage: React.FC = () => {
         <React.Fragment key={idx}>
           <YamlTemplateSelect
             bucket="yamls"
-            value={template.key}
+            value={(template as any).key}
             onChange={(newTpl) => changeTemplate(idx, newTpl)}
-            executors={executorsByTemplate[idx + 1]}
+            executors={(executorsByTemplate[idx + 1] ?? []).map(normalizeExec)}
             addExecutor={(executor) => addExecutor(idx + 1, executor)}
             removeExecutor={(executorId) => removeExecutor(idx + 1, executorId)}
           />
           {template.raw && (
             <DynamicYamlForm
               schema={template.raw}
-              workWindow={timelineWindow}
-              onWorkTimeChange={(interval) => updateHighlightWindow(idx + 1, interval)}
+              templateKey={(template as any)?.key}
+              executors={(executorsByTemplate[idx + 1] ?? []).map(normalizeExec)}
             />
           )}
         </React.Fragment>
@@ -359,14 +222,9 @@ const PprEditorPage: React.FC = () => {
             <PprPage
               gridStart={timelineWindow.start}
               gridEnd={timelineWindow.end}
-              highlightWindows={highlightWindows.filter(
-                (interval): interval is WindowInterval => !!interval,
-              )}
-              executors={[...new Map(executorsWithBlocks.map((item) => [item.id, item])).values()]}
-              templateKeys={templateKeys}
-              stageCfgs={stageCfgs}
+              executors={pprExecutors as any}
               onBlockClick={() => {}}
-              onTimerChange={handleTimerChange}
+              onTimerChange={() => {}}
             />
           </div>
         </>
