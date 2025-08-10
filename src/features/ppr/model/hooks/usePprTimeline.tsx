@@ -18,17 +18,26 @@ import { useTimelineDnD } from './useTimelineDnD';
  * - gridEnd: строка HH:mm
  * - executors: входные исполнители
  * - onTimerChange: пробрасывается в детали/строки
+ * - onMoveBetweenExecutors: уведомление редактора о переносе между исполнителями
  */
 export function usePprTimeline({
   gridStart,
   gridEnd,
   executors,
   onTimerChange,
+  onMoveBetweenExecutors,
 }: {
   gridStart: string;
   gridEnd: string;
   executors: User[] | any[];
   onTimerChange: (tplIdx: number, stageKey: string, newTimer: number) => void;
+  onMoveBetweenExecutors?: (p: {
+    templateKey?: string;
+    sourceKey?: string;
+    sourceRowId: number;
+    targetRowId: number;
+    sourceEmptyAfter: boolean;
+  }) => void;
 }) {
   /** Стор таймлайна */
   const rowsStateRaw = useTimelineStore((s) => s.rows);
@@ -97,6 +106,7 @@ export function usePprTimeline({
     windowSpanMin,
     windowStartMin,
     setRowsState,
+    onRowsChanged: onMoveBetweenExecutors,
   });
 
   /** Последовательная раскладка бандлов внутри строки */

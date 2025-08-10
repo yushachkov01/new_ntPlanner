@@ -15,6 +15,7 @@ import type { Executor } from '../types';
  * - windowSpanMin: длительность окна (мин)
  * - windowStartMin: старт окна (мин)
  * - setRowsState: setState(rows) стора
+ * - onRowsChanged: (опц.) уведомление UI об изменениях (перенос между исполнителями)
  */
 type SetRowsState = (fn: (prev: Executor[]) => Executor[]) => void;
 
@@ -23,11 +24,19 @@ export const useTimelineDnD = ({
   windowSpanMin,
   windowStartMin,
   setRowsState,
+  onRowsChanged,
 }: {
   timelineContainerRef: React.RefObject<HTMLDivElement>;
   windowSpanMin: number;
   windowStartMin: number;
   setRowsState: SetRowsState;
+  onRowsChanged?: (p: {
+    templateKey?: string;
+    sourceKey?: string;
+    sourceRowId: number;
+    targetRowId: number;
+    sourceEmptyAfter: boolean;
+  }) => void;
 }) => {
   /** Сенсоры dnd-kit */
   const sensors = useSensors(
@@ -39,6 +48,7 @@ export const useTimelineDnD = ({
    * Обработчик окончания DnD:
    * - переносит весь «бандл» (tplIdx) в целевую строку
    * - расставляет блоки без наложений, учитывая горизонтальный сдвиг
+   * - вызывает onRowsChanged, чтобы редактор обновил список исполнителей шаблона
    */
   const handleDragEnd: DndContextProps['onDragEnd'] = useCallback(
     (event: DragEndEvent) => {
@@ -86,6 +96,7 @@ export const useTimelineDnD = ({
         const totalDuration = bundlePieces.reduce((sum, piece) => sum + piece.duration, 0);
         const desiredStartAbs = minStartBefore + deltaMinutes;
 
+        /** Куда кладём */
         const destinationRow = nextRows.find((row) => row.id === targetRowId) ?? sourceRow;
 
         const busyIntervals = (destinationRow.blocks ?? []).map((destinationBlock) => {
@@ -116,10 +127,26 @@ export const useTimelineDnD = ({
         }
 
         destinationRow.blocks!.push(...movingBundle);
+
+        /**  Уведомляем UI о переносе между ИСПОЛНИТЕЛЯМИ */
+        if (onRowsChanged && targetRowId !== sourceRowId) {
+          const sourceKey = (movingBundle[0] as any)?.sourceKey as string | undefined;
+          const templateKey = sourceKey ? sourceKey.split('::')[0] : undefined;
+          const sourceEmptyAfter = (sourceRow.blocks?.length ?? 0) === 0;
+
+          onRowsChanged({
+            templateKey,
+            sourceKey,
+            sourceRowId,
+            targetRowId,
+            sourceEmptyAfter,
+          });
+        }
+
         return nextRows;
       });
     },
-    [timelineContainerRef, windowSpanMin, windowStartMin, setRowsState],
+    [timelineContainerRef, windowSpanMin, windowStartMin, setRowsState, onRowsChanged],
   );
 
   return { sensors, handleDragEnd };

@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import './PprEditorPage.css';
 import LocationOverview from '@/widgets/layout/LocationOverview/ui/LocationOverview';
 import type { Template } from '@entities/template/model/store/templateStore.ts';
-import useTimelineStore from '@entities/timeline/model/store/timelineStore';
+import useTimelineStore, { toRowId } from '@entities/timeline/model/store/timelineStore';
 import { userStore } from '@entities/user/model/store/UserStore';
 import { useUserStore } from '@entities/users/model/store/userStore';
 import { WorkTimeStore } from '@entities/workTimeStore/model/store/workTimeStore';
@@ -34,6 +34,7 @@ const PprEditorPage: React.FC = () => {
   const [mainTemplate, setMainTemplate] = useState<Template>();
   const [additionalTemplates, setAdditionalTemplates] = useState<Template[]>([]);
   const currentUser = userStore((s) => s.user)!;
+
   /** Исполнители по шаблонам */
   const [executorsByTemplate, setExecutorsByTemplate] = useState<any[][]>(
     currentUser ? [[normalizeExec(currentUser)]] : [[]],
@@ -47,6 +48,9 @@ const PprEditorPage: React.FC = () => {
 
   /** используем «точечное» удаление блоков по префиксу sourceKey (templateKey) */
   const removeBySourcePrefix = useTimelineStore((s) => s.removeBySourcePrefix);
+
+  /** Все пользователи чтобы по rowId восстановить исполнителя */
+  const allUsers = useUserStore((s) => s.users || []);
 
   /** Если есть основной шаблон, а исполнителей нет — добавляем текущего */
   useEffect(() => {
@@ -94,17 +98,117 @@ const PprEditorPage: React.FC = () => {
     });
 
   /**
+   * По rowId (числовой id строки таймлайна) находим пользователя и возвращаем исполнителя.
+   */
+  const resolveExecutorByRowId = (rowId: number) => {
+    const found = allUsers.find(
+      (u) => toRowId(u?.id ?? u?.user_id ?? u?.value ?? u?.key) === rowId,
+    );
+    return found ? normalizeExec(found) : null;
+  };
+
+  /**
+   * Определяем, к какому слоту шаблонов относится templateKey.
+   * Возвращает индекс в executorsByTemplate: 0 — основной, 1 — дополнительные; -1 если не найден.
+   */
+  const resolveTemplateSlotIndex = (templateKey?: string): number => {
+    if (!templateKey) return -1;
+    if ((mainTemplate as any)?.key === templateKey) return 0;
+    const addIdx = additionalTemplates.findIndex((t) => (t as any)?.key === templateKey);
+    return addIdx >= 0 ? addIdx + 1 : -1;
+  };
+
+  /**
+   * Колбэк от таймлайна: перенос бандла между исполнителями.
+   * Добавляем целевого исполнителя в слот шаблона,
+   * и, если исходная строка опустела — удаляем исходного исполнителя.
+   */
+  const handleMoveBetweenExecutors = ({
+    templateKey,
+    sourceKey,
+    sourceRowId,
+    targetRowId,
+    sourceEmptyAfter,
+  }: {
+    templateKey?: string;
+    sourceKey?: string;
+    sourceRowId: number;
+    targetRowId: number;
+    sourceEmptyAfter: boolean;
+  }) => {
+    /** если перенос в ту же строку — ничего не делаем */
+    if (sourceRowId === targetRowId) return;
+
+    /** ключ шаблона */
+    const keyFromSource = sourceKey ? String(sourceKey).split('::')[0] : undefined;
+    const effectiveKey = templateKey ?? keyFromSource;
+
+    /**  первичная попытка — по ключу шаблона */
+    let slotIndex = resolveTemplateSlotIndex(effectiveKey);
+
+    const addExec = resolveExecutorByRowId(targetRowId);
+    const removeExec = resolveExecutorByRowId(sourceRowId);
+    const removeIdStr = removeExec ? String(removeExec.id) : null;
+
+    setExecutorsByTemplate((prev) => {
+      const next = prev.map((slot) => [...(slot ?? [])]);
+
+      /** Слоты, где присутствует исходный исполнитель */
+      const slotsWithSource: number[] = [];
+      if (removeIdStr) {
+        for (let i = 0; i < next.length; i++) {
+          if ((next[i] ?? []).some((e) => String(e.id) === removeIdStr)) {
+            slotsWithSource.push(i);
+          }
+        }
+      }
+
+      /**  если ключа нет — считаем, что перенос сделали из тех слотов, где был исходный */
+      if (slotIndex < 0 && slotsWithSource.length) {
+        if (addExec) {
+          const addIdStr = String(addExec.id);
+          for (const i of slotsWithSource) {
+            const list = next[i] ?? [];
+            if (!list.some((e) => String(e.id) === addIdStr)) {
+              list.push(addExec);
+            }
+            next[i] = list;
+          }
+        }
+      } else {
+        if (slotIndex < 0) slotIndex = 0;
+        if (addExec) {
+          const addIdStr = String(addExec.id);
+          const list = next[slotIndex] ?? [];
+          if (!list.some((e) => String(e.id) === addIdStr)) {
+            list.push(addExec);
+          }
+          next[slotIndex] = list;
+        }
+      }
+
+      /** если исходная строка пустая — удаляем исходного из ВСЕХ слотов, где он встречается */
+      if (sourceEmptyAfter && removeIdStr) {
+        for (let i = 0; i < next.length; i++) {
+          const list = next[i] ?? [];
+          next[i] = list.filter((e) => String(e.id) !== removeIdStr);
+        }
+      }
+
+      return next;
+    });
+  };
+
+  /**
    * Добавляет новый пустой шаблон:
    *   расширяет массив шаблонов,
    *   добавляет окно подсветки,
    *   создаёт пустой слот исполнителей.
    */
   const addTemplate = () => {
+    const me = normalizeExec(currentUser);
     setAdditionalTemplates((prev) => [...prev, {} as Template]);
-    setExecutorsByTemplate((prevList) => [
-      ...prevList,
-      currentUser ? [normalizeExec(currentUser)] : [],
-    ]);
+    setExecutorsByTemplate((prevList) => [...prevList, currentUser ? [me] : []]);
   };
 
   /** Сменить шаблон (точечно удаляем блоки ) */
@@ -117,9 +221,6 @@ const PprEditorPage: React.FC = () => {
     }
     setAdditionalTemplates((prev) => prev.map((item, idx) => (idx === index ? newTemplate : item)));
   };
-
-  /** Все пользователи из userStore */
-  useUserStore((s) => s.users || []);
 
   /** Итоговый список исполнителей для таймлайна */
   const pprExecutors = useMemo(
@@ -218,6 +319,7 @@ const PprEditorPage: React.FC = () => {
           <Button type="dashed" onClick={addTemplate}>
             Добавить шаблон
           </Button>
+
           <div className="ppr-editor-card__timeline">
             <PprPage
               gridStart={timelineWindow.start}
@@ -225,6 +327,7 @@ const PprEditorPage: React.FC = () => {
               executors={pprExecutors as any}
               onBlockClick={() => {}}
               onTimerChange={() => {}}
+              onMoveBetweenExecutors={handleMoveBetweenExecutors}
             />
           </div>
         </>

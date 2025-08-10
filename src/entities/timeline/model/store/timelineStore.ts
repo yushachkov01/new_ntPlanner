@@ -225,6 +225,9 @@ interface TimelineState {
    * Используем при смене шаблона.
    */
   resetExecutors: (p?: ResetParams) => void;
+
+  /**- transferRowBlocks — перенести ВСЕ блоки со строки fromExecId на строку toExecId */
+  transferRowBlocks?: (p: { fromExecId: number | string; toExecId: number | string }) => void;
 }
 
 /**
@@ -408,6 +411,76 @@ const useTimelineStore = create<TimelineState>((set, get) => ({
       }));
 
       return { rows: clearedRows };
+    });
+  },
+
+  /**- transferRowBlocks — перенести ВСЕ блоки со строки fromExecId на строку toExecId */
+  transferRowBlocks: ({ fromExecId, toExecId }) => {
+    set((state) => {
+      /**  поверхностная копия строк и их блоков */
+      const nextRows = (Array.isArray(state.rows) ? state.rows : []).map((r) => ({
+        ...r,
+        blocks: [...(r.blocks ?? [])],
+      }));
+
+      const fromId = toRowId(fromExecId);
+      const toId = toRowId(toExecId);
+
+      const fromRow = nextRows.find((r) => r.id === fromId);
+      let toRow = nextRows.find((r) => r.id === toId);
+
+      /** Если строки приёмника нет — создаём пустую (автор подтянется через useMergeExecutors) */
+      if (!toRow) {
+        toRow = { id: toId, author: '—', role: '', blocks: [] };
+        nextRows.push(toRow);
+      }
+
+      /** Если переносить нечего — просто выходим */
+      if (!fromRow || !fromRow.blocks?.length) {
+        return { rows: nextRows };
+      }
+      const destMaxTpl = toRow.blocks?.length ? Math.max(...toRow.blocks.map((b) => b.tplIdx)) : -1;
+
+      /**
+       * Построим упорядоченный список «бандлов» источника:
+       * берём уникальные tplIdx и сортируем по минимальному старту блока в этом бандле,
+       * чтобы сохранить относительный порядок групп.
+       */
+      const srcBundles: Array<{ tpl: number; s: number }> = [];
+      const seen = new Set<number>();
+      for (const b of fromRow.blocks) {
+        if (seen.has(b.tplIdx)) continue;
+        seen.add(b.tplIdx);
+        const minStart = Math.min(
+          ...fromRow.blocks
+            .filter((x) => x.tplIdx === b.tplIdx)
+            .map((x) => parseTimeToMinutes(x.startTime)),
+        );
+        srcBundles.push({ tpl: b.tplIdx, s: minStart });
+      }
+      srcBundles.sort((a, b) => a.s - b.s);
+
+      /** Отображение «старый tplIdx → новый tplIdx» с учётом сдвига базы */
+      const idxMap = new Map<number, number>();
+      srcBundles.forEach((bundle, i) => {
+        idxMap.set(bundle.tpl, destMaxTpl + 1 + i);
+      });
+
+      /**
+       * Переносим блоки: время НЕ меняем, только переиндексируем tplIdx по карте,
+       * чтобы целые бандлы остались бандами и не «разбились».
+       */
+      const moved = fromRow.blocks.map((b) => ({
+        ...b,
+        tplIdx: idxMap.get(b.tplIdx)!,
+      }));
+
+      toRow.blocks = [...(toRow.blocks ?? []), ...moved];
+
+      /** Исходную строку очищаем */
+      fromRow.blocks = [];
+
+      return { rows: nextRows };
     });
   },
 }));

@@ -18,6 +18,7 @@ import TaskDetail from '@features/ppr/ui/TaskDetail/TaskDetail';
  * @property executors - список исполнителей
  * @property onBlockClick - функция, вызываемая при клике на блок
  * @property onTimerChange - функция, вызываемая при изменении таймера задачи
+ * @property onMoveBetweenExecutors - уведомление редактора о переносе между исполнителями
  */
 interface Props {
   gridStart?: string;
@@ -25,6 +26,13 @@ interface Props {
   executors: User[];
   onBlockClick: (tplIdx: number) => void;
   onTimerChange: (tplIdx: number, stageKey: string, newTimer: number) => void;
+  onMoveBetweenExecutors?: (p: {
+    templateKey?: string;
+    sourceKey?: string;
+    sourceRowId: number;
+    targetRowId: number;
+    sourceEmptyAfter: boolean;
+  }) => void;
 }
 
 /**
@@ -41,6 +49,7 @@ const PprPage: FC<Props> = ({
   executors,
   onBlockClick,
   onTimerChange,
+  onMoveBetweenExecutors,
 }) => {
   /** значения и хелперы таймлайна из хука */
   const {
@@ -98,7 +107,7 @@ const PprPage: FC<Props> = ({
       /** список всех пользователей из стора (для селектов/деталей) */
       allExecutorsList,
     },
-  } = usePprTimeline({ gridStart, gridEnd, executors, onTimerChange });
+  } = usePprTimeline({ gridStart, gridEnd, executors, onTimerChange, onMoveBetweenExecutors });
 
   return (
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
@@ -106,6 +115,7 @@ const PprPage: FC<Props> = ({
         <h2 className="ppr-page__title">
           Таймлайн ({gridStart}–{gridEnd})
         </h2>
+
         <div
           className="timeline-header"
           style={{ gridTemplateColumns: `4rem 4rem repeat(${hourLabels.length},1fr)` }}

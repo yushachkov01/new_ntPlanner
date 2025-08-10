@@ -1,13 +1,17 @@
-import { Select, Spin, Typography, Button } from 'antd';
-import { useEffect, useState, useMemo } from 'react';
+import { Button, Select, Spin, Typography, message } from 'antd';
+import React, { useEffect, useMemo, useState } from 'react';
 import type { FC } from 'react';
 
 import type { Template } from '@/entities/template/model/store/templateStore';
 import { templateStore } from '@/entities/template/model/store/templateStore';
+import { userStore } from '@/entities/user/model/store/UserStore';
 import { useUserStore } from '@/entities/users/model/store/userStore';
 import AddExecutorModal from '@/features/pprEdit/ui/AddExecutorModal/AddExecutorModal';
 import './YamlTemplateSelect.css';
+import useTimelineStore from '@entities/timeline/model/store/timelineStore';
 import type { User } from '@entities/users/model/mapping/mapping';
+
+/** перенос блоков при удалении последнего исполнителя */
 
 interface Props {
   /** Имя «бакета» для запроса списка YAML‑шаблонов */
@@ -24,11 +28,25 @@ interface Props {
   addExecutor?: (executor: User) => void;
   /** Функция удаления исполнителя по ID */
   removeExecutor?: (executorId: number) => void;
+  minOneExecutorRequired?: boolean;
+  hasRows?: boolean;
 }
 
-/**
- * Компонент выбора YAML‑шаблона и управления сопутствующими исполнителями.
- */
+/** Нормализация ФИО/имени так же, как в редакторе */
+const normalizeAuthor = (u: any): string => {
+  const candidate =
+    u?.author ?? u?.fio ?? u?.name ?? `${u?.last_name ?? ''} ${u?.first_name ?? ''}`.trim();
+  return candidate && candidate.length > 0 ? candidate : `User ${u?.id ?? ''}`;
+};
+
+/** Нормализация роли (если нужна для отображения/логики) */
+const normalizeRole = (u: any, rolesDict: Array<{ id: number; name: string }>): string => {
+  if (u?.role?.name) return u.role.name;
+  if (typeof u?.role === 'string') return u.role;
+  const found = rolesDict?.find((r) => r.id === u?.roleId);
+  return found?.name ?? '';
+};
+
 const YamlTemplateSelect: FC<Props> = ({
   bucket,
   prefix = '',
@@ -40,7 +58,11 @@ const YamlTemplateSelect: FC<Props> = ({
 }) => {
   const fetchTemplates = templateStore((store) => store.fetchTemplates);
   const { users, roles } = useUserStore();
-  /** Состояние списка шаблонов, индикатор загрузки и выбор модалки */
+  const me = userStore((s) => s.user);
+
+  /** метод стора таймлайна для переноса блоков */
+  const transferRowBlocks = useTimelineStore((store) => store.transferRowBlocks);
+
   const [templateList, setTemplateList] = useState<Template[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isAddExecutorModalOpen, setAddExecutorModalOpen] = useState(false);
@@ -73,8 +95,8 @@ const YamlTemplateSelect: FC<Props> = ({
    */
   const filterRoles = useMemo(() => {
     if (!selectedTemplate) return [];
-    const rawSettings = (selectedTemplate.raw as any).settings;
-    if (typeof rawSettings !== 'object') return [];
+    const rawSettings = (selectedTemplate.raw as any)?.settings;
+    if (typeof rawSettings !== 'object' || !rawSettings) return [];
     return Object.values(rawSettings)
       .map((setting: any) => setting.engineer)
       .filter((roleName: any) => typeof roleName === 'string');
@@ -97,9 +119,44 @@ const YamlTemplateSelect: FC<Props> = ({
   );
 
   /** Показать индикатор загрузки, пока идёт fetch */
-  if (isLoading) {
-    return <Spin />;
-  }
+  if (isLoading) return <Spin />;
+
+  /** Удаление исполнителя с автоподстановкой текущего пользователя + перенос блоков */
+  const handleRemoveExecutor = (executorId: number) => {
+    const isLast = executors.length <= 1;
+
+    if (!isLast) {
+      removeExecutor?.(executorId);
+      return;
+    }
+
+    /** если единственный — текущий пользователь, ничего не меняем (оставляем его)*/
+    if (me && String(executorId) === String(me.id)) {
+      message.info('Нельзя удалить единственного исполнителя — остаётся текущий пользователь.');
+      return;
+    }
+
+    if (!me) {
+      message.warning('Не найден текущий пользователь. Удаление последнего исполнителя запрещено.');
+      return;
+    }
+
+    const author = normalizeAuthor(me);
+    const roleName = normalizeRole(me, roles);
+
+    if (!executors.some((ex) => String(ex.id) === String(me.id))) {
+      addExecutor?.({ id: me.id, author, role: roleName } as User);
+    }
+
+    try {
+      transferRowBlocks({ fromExecId: executorId, toExecId: me.id });
+    } catch (e) {
+      console.warn('[YamlTemplateSelect] transferRowBlocks failed:', e);
+    }
+
+    /** удаляем выбранного исполнителя из списка */
+    removeExecutor?.(executorId);
+  };
 
   return (
     <div className="yaml-select-wrapper">
@@ -123,14 +180,14 @@ const YamlTemplateSelect: FC<Props> = ({
       {executors.map((executorItem) => (
         <div key={executorItem.id} className="yaml-executor-row">
           <div className="yaml-executor-field">
-            <Text className="executor-role">{executorItem.role}</Text>
-            <Text className="yaml-executor-input">{executorItem.author}</Text>
+            <Text className="executor-role">Сетевой инженер</Text>
+            <Text className="yaml-executor-input">{normalizeAuthor(executorItem)}</Text>
           </div>
           <Button
             danger
             type="default"
             className="yaml-executor-remove-btn"
-            onClick={() => removeExecutor?.(executorItem.id)}
+            onClick={() => handleRemoveExecutor(executorItem.id)}
           >
             Удалить
           </Button>
@@ -148,12 +205,9 @@ const YamlTemplateSelect: FC<Props> = ({
         onSelect={(executorId) => {
           const foundExecutor = users.find((u) => u.id === executorId);
           if (foundExecutor && addExecutor) {
-            const roleName = roles.find((r) => r.id === foundExecutor.roleId)?.name ?? '';
-            addExecutor({
-              id: foundExecutor.id,
-              author: foundExecutor.name,
-              role: roleName,
-            } as User);
+            const author = normalizeAuthor(foundExecutor);
+            const roleName = normalizeRole(foundExecutor, roles);
+            addExecutor({ id: foundExecutor.id, author, role: roleName } as User);
           }
           setAddExecutorModalOpen(false);
         }}
