@@ -106,7 +106,7 @@ ppr-page {
 
 .timeline-header {
   display: grid;
-  grid-template-columns: 4rem 4rem repeat(24, 1fr);
+  grid-template-columns: 4rem 4rem repeat(var(--hours, 24), 1fr);
   background-color: var(--bg-header, #f9f9f9);
   border-bottom: 1px solid #e0e0e0;
   align-items: center;
@@ -381,4 +381,31 @@ body.dark .popover-content {
 
 body.dark .popover-arrow {
   border-top-color: #3a3f47;
+}
+
+.ppr-row-wrap {
+  position: relative;
+}
+
+.ppr-row__add {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  left: 2.7rem;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  font-weight: 700;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 3;
+}
+.ppr-row__add:hover {
+  background: rgba(255, 255, 255, 0.18);
 }

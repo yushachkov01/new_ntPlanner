@@ -49,7 +49,9 @@ const SingleExecutorRow: FC<Props> = ({
    * Уникальные индексы шаблонов у исполнителя. Определяют количество "полок".
    */
   const tplIds = Array.from(new Set(blocks.map((block) => block.tplIdx)));
-  const rowParts = tplIds.length || 1;
+  /** для строк исполнителей высота всегда одна «полка» */
+  const rowParts = 1;
+  const laneIdx = 0;
 
   const isRowSMR = row.role === 'Инженер СМР';
   const isRowPZ = row.role === 'Представитель Заказчика';
@@ -71,7 +73,7 @@ const SingleExecutorRow: FC<Props> = ({
           <div key={i} className="timeline-row__grid-cell" />
         ))}
 
-        {tplIds.map((tplIdx, partIdx) => {
+        {tplIds.map((tplIdx) => {
           const inner = blocks.filter((block) => block.tplIdx === tplIdx);
           if (!inner.length) return null;
 
@@ -86,23 +88,20 @@ const SingleExecutorRow: FC<Props> = ({
           );
           if (e <= s) e += 1440;
 
-          // числовой id для dnd-kit и строковой ключ
-          const dragIdx = row.id * 1000 + tplIdx;
-          const reactKey = `row-${row.id}-${tplIdx}`;
           const widthPx =
             document.querySelector('.timeline-row__blocks')?.getBoundingClientRect().width ?? 0;
 
           return (
             <TemplateFrameBlock
-              key={reactKey}
-              idx={dragIdx}
+              key={`row-${row.id}-${tplIdx}`}
+              idx={row.id * 1000 + tplIdx}
               startMin={s}
               endMin={e}
               windowStartMin={startMin}
               totalWindowMin={spanMin}
               containerWidthPx={widthPx}
               rowParts={rowParts}
-              partIndex={partIdx}
+              partIndex={laneIdx}
               onToggleExpand={() => {}}
               isSMRTemplate={isRowSMR || inner.some((block) => hasStage(block, 'Инженер СМР'))}
               isPZTemplate={
@@ -122,7 +121,7 @@ const SingleExecutorRow: FC<Props> = ({
                   onClick={() => onBlockClick(block.tplIdx)}
                   showStages
                   laneParts={rowParts}
-                  laneIndex={partIdx}
+                  laneIndex={laneIdx}
                 />
               ))}
             </TemplateFrameBlock>

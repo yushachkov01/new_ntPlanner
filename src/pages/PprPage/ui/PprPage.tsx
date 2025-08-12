@@ -7,6 +7,7 @@ import type { FC } from 'react';
 
 import './PprPage.css';
 import { usePprTimeline } from '@/features/ppr/model/hooks/usePprTimeline';
+import useTimelineStore from '@entities/timeline/model/store/timelineStore';
 import type { User } from '@entities/users/model/mapping/mapping';
 import PprRow from '@features/ppr/ui/PprRow/PprRow';
 import TaskDetail from '@features/ppr/ui/TaskDetail/TaskDetail';
@@ -109,6 +110,24 @@ const PprPage: FC<Props> = ({
     },
   } = usePprTimeline({ gridStart, gridEnd, executors, onTimerChange, onMoveBetweenExecutors });
 
+  /**создать/свернуть доп. строку; проверка существования */
+  const addExtraRowBelow = useTimelineStore((s) => s.addExtraRowBelow)!;
+  const hasExtraRow = useTimelineStore((s) => s.hasExtraRow)!;
+  const collapseEmptyExtraFor = useTimelineStore((s) => s.collapseEmptyExtraFor)!;
+  const rowsSnapshot = useTimelineStore((s) => s.rows);
+
+  /** проверка: пустая ли доп. строка у базовой */
+  const isExtraEmpty = (baseId: number) => {
+    const extra = (rowsSnapshot ?? []).find((r) => r.isExtra && r.parentId === baseId);
+    return !extra || (extra.blocks?.length ?? 0) === 0;
+  };
+
+  /** есть ли блоки на самой доп. строке (для показа «−» только когда она пуста) */
+  const extraHasBlocks = (baseId: number) => {
+    const extra = (rowsSnapshot ?? []).find((r) => r.isExtra && r.parentId === baseId);
+    return !!(extra && (extra.blocks?.length ?? 0) > 0);
+  };
+
   return (
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
       <div className="ppr-page">
@@ -116,10 +135,7 @@ const PprPage: FC<Props> = ({
           Таймлайн ({gridStart}–{gridEnd})
         </h2>
 
-        <div
-          className="timeline-header"
-          style={{ gridTemplateColumns: `4rem 4rem repeat(${hourLabels.length},1fr)` }}
-        >
+        <div className="timeline-header" style={{ ['--hours' as any]: hourLabels.length }}>
           <div />
           <div />
           {hourLabels.map((hour) => (
@@ -128,26 +144,62 @@ const PprPage: FC<Props> = ({
         </div>
 
         <div ref={timelineContainerRef}>
-          {rowsToRender.map((row) => (
-            <PprRow
-              key={row.id}
-              row={row}
-              rowsState={rowsState}
-              hourLabels={hourLabels}
-              spanMin={windowSpanMin}
-              startMin={windowStartMin}
-              coverageMap={coverageMap}
-              openBlockId={activeBlock?.id ?? null}
-              setOpenBlockId={setActiveBlockId}
-              onBlockClick={onBlockClick}
-              onTimerChange={onTimerChange}
-              setExpandedUsers={setUsersExpanded}
-              setShowingAll={setShowingAllTasks}
-              timelineWidthPx={timelineWidthPx}
-              expandedExecutorId={expandedExecutorId}
-              setExpandedExecutorId={setExpandedExecutorId}
-            />
-          ))}
+          {rowsToRender.map((row) => {
+            /** не показываем кнопки на агрегаторе «Все задачи» (id === 0) и на доп. строках */
+            const isParentRow = row.id !== 0 && !row.isExtra;
+            const hasExtra = isParentRow && hasExtraRow(row.id);
+            const extraEmpty = isParentRow ? isExtraEmpty(row.id) : true;
+            /** «+» показываем, если доп. строки нет; «−» — только если доп. строка есть и она пуста */
+            const showAdd = isParentRow && !hasExtra;
+            const showMinus = isParentRow && hasExtra && !extraHasBlocks(row.id);
+
+            return (
+              /** обёртка для аккуратных кнопок «+» / «−» */
+              <div key={row.id} className="ppr-row-wrap">
+                {showAdd && (
+                  <button
+                    type="button"
+                    className="ppr-row__add"
+                    title="Добавить дополнительную строку"
+                    aria-label="Добавить дополнительную строку"
+                    onClick={() => addExtraRowBelow(row.id)}
+                  >
+                    +
+                  </button>
+                )}
+
+                {showMinus && (
+                  <button
+                    type="button"
+                    className="ppr-row__add"
+                    title="Свернуть дополнительную строку"
+                    aria-label="Свернуть дополнительную строку"
+                    onClick={() => collapseEmptyExtraFor(row.id)}
+                  >
+                    −
+                  </button>
+                )}
+
+                <PprRow
+                  row={row}
+                  rowsState={rowsState}
+                  hourLabels={hourLabels}
+                  spanMin={windowSpanMin}
+                  startMin={windowStartMin}
+                  coverageMap={coverageMap}
+                  openBlockId={activeBlock?.id ?? null}
+                  setOpenBlockId={setActiveBlockId}
+                  onBlockClick={onBlockClick}
+                  onTimerChange={onTimerChange}
+                  setExpandedUsers={setUsersExpanded}
+                  setShowingAll={setShowingAllTasks}
+                  timelineWidthPx={timelineWidthPx}
+                  expandedExecutorId={expandedExecutorId}
+                  setExpandedExecutorId={setExpandedExecutorId}
+                />
+              </div>
+            );
+          })}
         </div>
 
         {showingAllTasks && (

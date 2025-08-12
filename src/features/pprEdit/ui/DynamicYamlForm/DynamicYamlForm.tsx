@@ -1,4 +1,4 @@
-import { Form, Typography, Button } from 'antd';
+import { Form, Typography, Button, message } from 'antd';
 import React, { useEffect, useMemo, useState } from 'react';
 
 import './DynamicYamlForm.css';
@@ -21,6 +21,25 @@ interface Props {
 
 type RowWithSource = Record<string, any> & { __sourceKey?: string };
 
+/** Универсальная проверка заполненности значений формы */
+/** Пусто/не пусто */
+const isEmptyValue = (value: unknown): boolean => {
+  if (value === null || value === undefined) return true;
+  if (typeof value === 'string') return value.trim() === '';
+  if (typeof value === 'boolean') return value === false;
+  if (typeof value === 'number') return Number.isNaN(value);
+  if (value instanceof Date) return Number.isNaN(+value);
+  if (Array.isArray(value)) return value.length === 0 || value.every(isEmptyValue);
+  if (typeof value === 'object') {
+    const obj = value as Record<string, unknown>;
+    const vals = Object.values(obj);
+    return vals.length === 0 || vals.every(isEmptyValue);
+  }
+  return false;
+};
+/** true => есть хотя бы одно ЗАПОЛНЕННОЕ значение */
+const hasAnyFilled = (values: Record<string, any>): boolean =>
+  Object.values(values).some((value) => !isEmptyValue(value));
 /**
  * Динамическая форма, рендерящая поля по конфигурации YAML.
  * schema: объект YAML-схемы
@@ -140,6 +159,12 @@ export default function DynamicYamlForm({ schema, executors = [], templateKey }:
    * vals: значения полей формы
    */
   const onFinish = (vals: Record<string, any>) => {
+    /** Если не заполнено ни одного поля — ничего не добавляем/не сохраняем */
+    if (!hasAnyFilled(vals)) {
+      message.warning('Заполните хотя бы одно поле перед добавлением записи');
+      return;
+    }
+
     /**
      * ключ раздела в templateStore
      */
@@ -147,6 +172,7 @@ export default function DynamicYamlForm({ schema, executors = [], templateKey }:
 
     /**
      * предыдущее глобальное состояние значений по этому ключу
+     * params
      */
     const prevGlobalValues = getTemplateValues(templateSectionKey);
 

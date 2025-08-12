@@ -47,10 +47,15 @@ const PprEditorPage: React.FC = () => {
   const { timelineWindow, setTimelineWindow } = WorkTimeStore();
 
   /** используем «точечное» удаление блоков по префиксу sourceKey (templateKey) */
-  const removeBySourcePrefix = useTimelineStore((s) => s.removeBySourcePrefix);
+  const removeBySourcePrefix = useTimelineStore((s) => (s as any).removeBySourcePrefix);
 
   /** Все пользователи чтобы по rowId восстановить исполнителя */
   const allUsers = useUserStore((s) => s.users || []);
+
+  /** util из стора таймлайна: принадлежность строк одному исполнителю */
+  const isSamePersonRow = useTimelineStore((s) => s.isSamePersonRow);
+  /**  экшен схлопывания пустой доп. строки (для возврата «+») */
+  const collapseEmptyExtraFor = useTimelineStore((s) => s.collapseEmptyExtraFor);
 
   /** Если есть основной шаблон, а исполнителей нет — добавляем текущего */
   useEffect(() => {
@@ -97,14 +102,44 @@ const PprEditorPage: React.FC = () => {
       return nextList;
     });
 
+  /** Итоговый список исполнителей для таймлайна */
+  const pprExecutors = useMemo(
+    () =>
+      Array.from(
+        new Map(
+          (executorsByTemplate.flat() as any[]).map(normalizeExec).map((e) => [String(e.id), e]),
+        ).values(),
+      ),
+    [executorsByTemplate],
+  );
+
+  /** helper: получить корневой id строки (если это extra — берём parentId) */
+  const getRootRowId = (rowId: number) => {
+    const rows = useTimelineStore.getState().rows ?? [];
+    const row = rows.find((r) => r.id === rowId);
+    return row?.isExtra ? row.parentId! : rowId;
+  };
+
   /**
    * По rowId (числовой id строки таймлайна) находим пользователя и возвращаем исполнителя.
    */
   const resolveExecutorByRowId = (rowId: number) => {
-    const found = allUsers.find(
-      (u) => toRowId(u?.id ?? u?.user_id ?? u?.value ?? u?.key) === rowId,
+    const baseId = getRootRowId(rowId);
+    const fromPpr = (pprExecutors as any[]).find(
+      (u) => toRowId(u?.id ?? u?.user_id ?? u?.value ?? u?.key) === baseId,
     );
-    return found ? normalizeExec(found) : null;
+    if (fromPpr) return normalizeExec(fromPpr);
+
+    const found = allUsers.find(
+      (u) => toRowId(u?.id ?? u?.user_id ?? u?.value ?? u?.key) === baseId,
+    );
+    if (found) return normalizeExec(found);
+
+    if (currentUser && toRowId(currentUser?.id) === baseId) {
+      return normalizeExec(currentUser);
+    }
+
+    return null;
   };
 
   /**
@@ -136,8 +171,17 @@ const PprEditorPage: React.FC = () => {
     targetRowId: number;
     sourceEmptyAfter: boolean;
   }) => {
-    /** если перенос в ту же строку — ничего не делаем */
-    if (sourceRowId === targetRowId) return;
+    /** если перенос в ту же строку — схлопываем пустую доп. строку и выходим */
+    if (sourceRowId === targetRowId) {
+      collapseEmptyExtraFor?.(sourceRowId);
+      return;
+    }
+
+    /** перенос внутри одного и того же исполнителя (в/из доп. строки) — списки не меняем */
+    if (isSamePersonRow?.(sourceRowId, targetRowId)) {
+      if (sourceEmptyAfter) collapseEmptyExtraFor?.(sourceRowId);
+      return;
+    }
 
     /** ключ шаблона */
     const keyFromSource = sourceKey ? String(sourceKey).split('::')[0] : undefined;
@@ -163,27 +207,20 @@ const PprEditorPage: React.FC = () => {
         }
       }
 
-      /**  если ключа нет — считаем, что перенос сделали из тех слотов, где был исходный */
-      if (slotIndex < 0 && slotsWithSource.length) {
-        if (addExec) {
-          const addIdStr = String(addExec.id);
-          for (const i of slotsWithSource) {
-            const list = next[i] ?? [];
-            if (!list.some((e) => String(e.id) === addIdStr)) {
-              list.push(addExec);
-            }
-            next[i] = list;
+      /** Какие слоты правим (если ключ не распознан — правим те, где был исходный) */
+      const slotsToAffect =
+        slotIndex >= 0 ? [slotIndex] : slotsWithSource.length ? slotsWithSource : [0];
+
+      /**  переключаем «текущего» исполнителя на целевого */
+      if (addExec) {
+        const addIdStr = String(addExec.id);
+        for (const idx of slotsToAffect) {
+          const list = next[idx] ?? [];
+          if (list.length <= 1) {
+            next[idx] = [addExec];
+          } else {
+            next[idx] = [addExec, ...list.filter((e) => String(e.id) !== addIdStr)];
           }
-        }
-      } else {
-        if (slotIndex < 0) slotIndex = 0;
-        if (addExec) {
-          const addIdStr = String(addExec.id);
-          const list = next[slotIndex] ?? [];
-          if (!list.some((e) => String(e.id) === addIdStr)) {
-            list.push(addExec);
-          }
-          next[slotIndex] = list;
         }
       }
 
@@ -217,21 +254,10 @@ const PprEditorPage: React.FC = () => {
     const execIds = (executorsByTemplate[index + 1] ?? []).map((e) => e.id);
     if (prevKey) {
       /** удаляем только блоки, созданные «старым» шаблоном этой вкладки */
-      removeBySourcePrefix({ execIds, prefix: String(prevKey) });
+      removeBySourcePrefix?.({ execIds, prefix: String(prevKey) });
     }
     setAdditionalTemplates((prev) => prev.map((item, idx) => (idx === index ? newTemplate : item)));
   };
-
-  /** Итоговый список исполнителей для таймлайна */
-  const pprExecutors = useMemo(
-    () =>
-      Array.from(
-        new Map(
-          (executorsByTemplate.flat() as any[]).map(normalizeExec).map((e) => [String(e.id), e]),
-        ).values(),
-      ),
-    [executorsByTemplate],
-  );
 
   return (
     <section className="ppr-editor-card">
@@ -254,7 +280,7 @@ const PprEditorPage: React.FC = () => {
                 const prevMainKey = (mainTemplate as any)?.key;
                 const execIds = (executorsByTemplate[0] ?? []).map((e) => e.id);
                 if (prevMainKey) {
-                  removeBySourcePrefix({ execIds, prefix: String(prevMainKey) });
+                  removeBySourcePrefix?.({ execIds, prefix: String(prevMainKey) });
                 }
                 setMainTemplate(tpl);
               }}

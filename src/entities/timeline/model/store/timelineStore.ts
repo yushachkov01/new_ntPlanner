@@ -35,6 +35,10 @@ export interface Executor {
   author: string;
   role: string;
   blocks?: BlockExt[];
+
+  /**  доп. строка исполнителя  */
+  isExtra?: boolean;
+  parentId?: number;
 }
 
 /**
@@ -228,6 +232,18 @@ interface TimelineState {
 
   /**- transferRowBlocks — перенести ВСЕ блоки со строки fromExecId на строку toExecId */
   transferRowBlocks?: (p: { fromExecId: number | string; toExecId: number | string }) => void;
+
+  /** доп. строка исполнителя  */
+  addEmptyExtraRowFor?: (baseRowId: number) => void;
+  /** алиас под существующий UI-колбэк */
+  addExtraRowBelow?: (baseRowId: number) => void;
+  hasExtraRow?: (baseRowId: number) => boolean;
+  isSamePersonRow?: (rowA: number, rowB: number) => boolean;
+
+  /**  удаление пустой доп. строки (возвращаем «+») */
+  collapseEmptyExtraFor?: (rowOrBaseId: number) => void;
+  /**  массово: убрать все пустые доп. строки (на случай dnd в ту же строку) */
+  collapseAllEmptyExtras?: () => void;
 }
 
 /**
@@ -481,6 +497,84 @@ const useTimelineStore = create<TimelineState>((set, get) => ({
       fromRow.blocks = [];
 
       return { rows: nextRows };
+    });
+  },
+
+  /** доп. строка исполнителя  */
+
+  addEmptyExtraRowFor: (baseRowId: number) => {
+    set((state) => {
+      const rows = Array.isArray(state.rows) ? [...state.rows] : [];
+      const baseIdx = rows.findIndex((r) => r.id === baseRowId);
+      if (baseIdx === -1) return { rows };
+
+      /** максимум 1 дополнительная строка на исполнителя */
+      const exists = rows.some((r) => r.isExtra && r.parentId === baseRowId);
+      if (exists) return { rows };
+
+      const base = rows[baseIdx];
+      const extraId = toRowId(`extra:${baseRowId}`);
+      const extra: Executor = {
+        id: extraId,
+        author: base.author,
+        role: base.role,
+        blocks: [],
+        isExtra: true,
+        parentId: baseRowId,
+      };
+
+      /** вставляем сразу под базовой строкой */
+      rows.splice(baseIdx + 1, 0, extra);
+      return { rows };
+    });
+  },
+
+  /**  чтобы существующий UI-колбэк addExtraRowBelow работал без правок */
+  addExtraRowBelow: (baseRowId: number) => {
+    get().addEmptyExtraRowFor?.(baseRowId);
+  },
+
+  hasExtraRow: (baseRowId: number) => {
+    const rows = get().rows ?? [];
+    return rows.some((r) => r.isExtra && r.parentId === baseRowId);
+  },
+
+  isSamePersonRow: (rowA: number, rowB: number) => {
+    if (rowA === rowB) return true;
+    const rows = get().rows ?? [];
+    const a = rows.find((r) => r.id === rowA);
+    const b = rows.find((r) => r.id === rowB);
+    if (!a || !b) return false;
+    const aRoot = a.isExtra ? a.parentId : a.id;
+    const bRoot = b.isExtra ? b.parentId : b.id;
+    return aRoot === bRoot;
+  },
+
+  /** удалить доп. строку владельца, если она пустая (возврат «+») */
+  collapseEmptyExtraFor: (rowOrBaseId: number) => {
+    set((state) => {
+      const rows = Array.isArray(state.rows) ? [...state.rows] : [];
+      const cur = rows.find((r) => r.id === rowOrBaseId);
+      const baseId = cur?.isExtra ? cur.parentId : rowOrBaseId;
+      if (!baseId) return { rows };
+
+      const extraIdx = rows.findIndex((r) => r.isExtra && r.parentId === baseId);
+      if (extraIdx === -1) return { rows };
+
+      const extra = rows[extraIdx];
+      if ((extra.blocks?.length ?? 0) > 0) return { rows };
+
+      rows.splice(extraIdx, 1);
+      return { rows };
+    });
+  },
+
+  /**  массово удаляем все пустые доп. строки (на случай dnd в ту же строку) */
+  collapseAllEmptyExtras: () => {
+    set((state) => {
+      const rows = Array.isArray(state.rows) ? [...state.rows] : [];
+      const filtered = rows.filter((r) => !(r.isExtra && (r.blocks?.length ?? 0) === 0));
+      return { rows: filtered };
     });
   },
 }));
