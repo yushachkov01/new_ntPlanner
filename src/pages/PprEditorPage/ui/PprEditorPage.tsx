@@ -188,7 +188,7 @@ const PprEditorPage: React.FC = () => {
     const effectiveKey = templateKey ?? keyFromSource;
 
     /**  первичная попытка — по ключу шаблона */
-    let slotIndex = resolveTemplateSlotIndex(effectiveKey);
+    const slotIndex = resolveTemplateSlotIndex(effectiveKey);
 
     const addExec = resolveExecutorByRowId(targetRowId);
     const removeExec = resolveExecutorByRowId(sourceRowId);
@@ -287,6 +287,7 @@ const PprEditorPage: React.FC = () => {
               executors={(executorsByTemplate[0] ?? []).map(normalizeExec)}
               addExecutor={(executor) => addExecutor(0, executor)}
               removeExecutor={(executorId) => removeExecutor(0, executorId)}
+              tabCandidates={tabExecutors}
             />
           )}
         </div>
@@ -329,6 +330,7 @@ const PprEditorPage: React.FC = () => {
             executors={(executorsByTemplate[idx + 1] ?? []).map(normalizeExec)}
             addExecutor={(executor) => addExecutor(idx + 1, executor)}
             removeExecutor={(executorId) => removeExecutor(idx + 1, executorId)}
+            tabCandidates={tabExecutors}
           />
           {template.raw && (
             <DynamicYamlForm

@@ -1,13 +1,13 @@
 import { Button, Select, Spin, Typography, message } from 'antd';
-import React, { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { FC } from 'react';
 
 import type { Template } from '@/entities/template/model/store/templateStore';
 import { templateStore } from '@/entities/template/model/store/templateStore';
 import { userStore } from '@/entities/user/model/store/UserStore';
 import { useUserStore } from '@/entities/users/model/store/userStore';
-import AddExecutorModal from '@/features/pprEdit/ui/AddExecutorModal/AddExecutorModal';
 import './YamlTemplateSelect.css';
+import AddSelectedFromTabModal from '@/features/pprEdit/ui/AddSelectedFromTabModal/AddSelectedFromTabModal';
 import useTimelineStore from '@entities/timeline/model/store/timelineStore';
 import type { User } from '@entities/users/model/mapping/mapping';
 
@@ -24,6 +24,8 @@ interface Props {
   onChange?: (template: Template) => void;
   /** Список текущих исполнителей для шаблона */
   executors?: User[];
+  /** кандидаты из вкладки «Исполнители» (ровно то, что выбрал пользователь в табе) */
+  tabCandidates?: User[];
   /** Функция добавления исполнителя */
   addExecutor?: (executor: User) => void;
   /** Функция удаления исполнителя по ID */
@@ -53,6 +55,7 @@ const YamlTemplateSelect: FC<Props> = ({
   value,
   onChange,
   executors = [],
+  tabCandidates = [],
   addExecutor,
   removeExecutor,
 }) => {
@@ -118,8 +121,14 @@ const YamlTemplateSelect: FC<Props> = ({
     [templateList, prefix],
   );
 
-  /** Показать индикатор загрузки, пока идёт fetch */
-  if (isLoading) return <Spin />;
+  /** кандидаты для модалки: из таба, иначе — executors этого шаблона */
+  const modalCandidates = useMemo(() => {
+    const base = (tabCandidates?.length ? tabCandidates : executors) as any[];
+    if (!filterRoles.length) return base;
+    return base.filter((u) =>
+      filterRoles.includes(typeof u?.role === 'string' ? u.role : u?.role?.name),
+    );
+  }, [tabCandidates, executors, filterRoles]);
 
   /** Удаление исполнителя с автоподстановкой текущего пользователя + перенос блоков */
   const handleRemoveExecutor = (executorId: number) => {
@@ -160,58 +169,66 @@ const YamlTemplateSelect: FC<Props> = ({
 
   return (
     <div className="yaml-select-wrapper">
-      <Select
-        className="yaml-long-field"
-        placeholder="Выберите шаблон"
-        showSearch
-        optionFilterProp="label"
-        options={selectOptions.map((option) => ({
-          value: option.value,
-          label: option.label,
-        }))}
-        value={value}
-        onChange={(selectedValue) => {
-          const option = selectOptions.find((opt) => opt.value === selectedValue)!;
-          setSelectedTemplate(option.template);
-          onChange?.(option.template);
-        }}
-      />
+      {isLoading ? (
+        <Spin />
+      ) : (
+        <>
+          <Select
+            className="yaml-long-field"
+            placeholder="Выберите шаблон"
+            showSearch
+            optionFilterProp="label"
+            options={selectOptions.map((option) => ({ value: option.value, label: option.label }))}
+            value={value}
+            onChange={(selectedValue) => {
+              const opt = selectOptions.find((option) => option.value === selectedValue)!;
+              setSelectedTemplate(opt.template);
+              onChange?.(opt.template);
+            }}
+          />
 
-      {executors.map((executorItem) => (
-        <div key={executorItem.id} className="yaml-executor-row">
-          <div className="yaml-executor-field">
-            <Text className="executor-role">Сетевой инженер</Text>
-            <Text className="yaml-executor-input">{normalizeAuthor(executorItem)}</Text>
+          {executors.map((executorItem) => (
+            <div key={executorItem.id} className="yaml-executor-row">
+              <div className="yaml-executor-field">
+                <Text className="executor-role">Сетевой инженер</Text>
+                <Text className="yaml-executor-input">{normalizeAuthor(executorItem)}</Text>
+              </div>
+              <Button
+                danger
+                type="default"
+                className="yaml-executor-remove-btn"
+                onClick={() => handleRemoveExecutor(executorItem.id)}
+              >
+                Удалить
+              </Button>
+            </div>
+          ))}
+
+          <div className="yaml-executor-add-row">
+            <Button onClick={() => setAddExecutorModalOpen(true)}>Добавить исполнителя4</Button>
           </div>
-          <Button
-            danger
-            type="default"
-            className="yaml-executor-remove-btn"
-            onClick={() => handleRemoveExecutor(executorItem.id)}
-          >
-            Удалить
-          </Button>
-        </div>
-      ))}
 
-      <div className="yaml-executor-add-row">
-        <Button onClick={() => setAddExecutorModalOpen(true)}>Добавить исполнителя</Button>
-      </div>
+          <AddSelectedFromTabModal
+            open={isAddExecutorModalOpen}
+            onClose={() => setAddExecutorModalOpen(false)}
+            candidates={modalCandidates}
+            onSelect={(id) => {
+              const picked =
+                (modalCandidates as any[]).find((u) => String(u.id) === String(id)) ||
+                (users as any[]).find((u) => String(u.id) === String(id));
 
-      <AddExecutorModal
-        open={isAddExecutorModalOpen}
-        onClose={() => setAddExecutorModalOpen(false)}
-        filterRoles={filterRoles}
-        onSelect={(executorId) => {
-          const foundExecutor = users.find((u) => u.id === executorId);
-          if (foundExecutor && addExecutor) {
-            const author = normalizeAuthor(foundExecutor);
-            const roleName = normalizeRole(foundExecutor, roles);
-            addExecutor({ id: foundExecutor.id, author, role: roleName } as User);
-          }
-          setAddExecutorModalOpen(false);
-        }}
-      />
+              if (picked && addExecutor) {
+                const author = normalizeAuthor(picked);
+                const roleName = normalizeRole(picked, roles);
+                addExecutor({ id: picked.id, author, role: roleName } as User);
+              } else {
+                message.info('Все выбранные в табе уже добавлены.');
+              }
+              setAddExecutorModalOpen(false);
+            }}
+          />
+        </>
+      )}
     </div>
   );
 };
