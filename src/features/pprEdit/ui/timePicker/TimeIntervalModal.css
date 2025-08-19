@@ -38,15 +38,54 @@ body.dark .time-interval-modal .ant-btn-primary {
   color: #fff;
 }
 
-body.dark .time-interval-modal .ant-picker-dropdown .ant-picker-time-panel-cell-inner {
-  color: #ffffff;
+body.dark .time-interval-dropdown {
+  background: #424d57 !important;
+  border: 1px solid #2a2a2a !important;
+  color: #fff !important;
+}
+
+body.dark .time-interval-dropdown .ant-picker-panel,
+body.dark .time-interval-dropdown .ant-picker-time-panel {
+  background: var(--modal-bg) !important;
+  border: none !important;
+  color: #fff !important;
+}
+
+body.dark .time-interval-dropdown .ant-picker-time-panel-cell-inner {
+  color: #fff !important;
 }
 
 body.dark
-  .time-interval-modal
-  .ant-picker-dropdown
+  .time-interval-dropdown
   .ant-picker-time-panel-cell-selected
   .ant-picker-time-panel-cell-inner {
+  background: #008fce !important;
+  color: #fff !important;
+}
+
+body.dark .time-interval-dropdown .ant-picker-time-panel-cell-inner:hover {
+  background: #2a2a2a !important;
+  color: #fff !important;
+}
+
+body.dark .time-interval-dropdown .ant-btn {
+  background: #2a2a2a;
+  border-color: #2a2a2a;
+  color: #fff;
+}
+body.dark .time-interval-dropdown .ant-btn-primary {
   background: #008fce;
-  color: #ffffff;
+  border-color: #008fce;
+  color: #fff;
+}
+
+body.dark .time-interval-dropdown.ant-picker-dropdown {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+body.dark .time-interval-dropdown .ant-picker-panel-container {
+  background: #424d57 !important;
+  border: 1px solid #2a2a2a !important;
+  box-shadow: none !important;
 }

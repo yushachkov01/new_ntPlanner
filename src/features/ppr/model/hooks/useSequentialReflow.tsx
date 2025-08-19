@@ -1,9 +1,9 @@
 import { useEffect } from 'react';
 
-import { absEnd } from '@/features/ppr/lib/timeMath';
+import { toAbs } from '@/features/ppr/lib/timeMath';
 import { parseTimeToMinutes, toTime } from '@/shared/ui/time/toTime';
 
-import type { Executor, BlockExt } from '../types';
+import type { Executor } from '../types';
 
 /**
  * Хук: внутри каждой строки делает бандлы последовательными (без перекрытий).
@@ -15,69 +15,73 @@ import type { Executor, BlockExt } from '../types';
  */
 type SetRowsState = (fn: (prev: Executor[]) => Executor[]) => void;
 
+/** Упаковать блоки в начало окна */
+function packToStart(blocks: any[], windowStartMin: number): any[] {
+  if (!blocks?.length) return blocks;
+  const items = blocks
+    .map((b) => {
+      const sMin = parseTimeToMinutes(b.startTime);
+      const eMin = parseTimeToMinutes(b.endTime);
+      const [, eAbs] = toAbs(sMin, eMin);
+      const duration = eAbs - sMin;
+
+      // нормализованный старт для корректной сортировки через полночь
+      const sAbsForSort = sMin < windowStartMin ? sMin + 1440 : sMin;
+
+      return { b, sAbsForSort, duration };
+    })
+    .sort((a, b) => a.sAbsForSort - b.sAbsForSort);
+
+  let cursor = windowStartMin;
+  return items.map(({ b, duration }) => {
+    const ns = cursor;
+    const ne = cursor + duration;
+    cursor = ne;
+    return { ...b, startTime: toTime(ns), endTime: toTime(ne) };
+  });
+}
+
+/**
+ * Держит каждую рабочую строку плотно слева (без зазоров),
+ * «Все задачи» (id=0) не трогаем.
+ */
 export const useSequentialReflow = (
   rowsState: Executor[],
   setRowsState: SetRowsState,
   windowStartMin: number,
 ) => {
   useEffect(() => {
-    if (!Array.isArray(rowsState) || rowsState.length === 0) return;
+    if (!rowsState?.length) return;
 
-    setRowsState((prevRows: Executor[]) => {
-      let changedAnyRow = false;
+    let changedAnyRow = false;
 
-      const nextRows = prevRows.map((row) => {
-        const rowBlocks = row.blocks ?? [];
-        if (rowBlocks.length === 0) return row;
+    const nextRows = rowsState.map((row) => {
+      if (row.id === 0) return row;
+      const rowBlocks = row.blocks ?? [];
+      if (rowBlocks.length === 0) return row;
 
-        const blocksByTemplate = new Map<number, BlockExt[]>();
-        for (const block of rowBlocks) {
-          if (!blocksByTemplate.has(block.tplIdx)) blocksByTemplate.set(block.tplIdx, []);
-          blocksByTemplate.get(block.tplIdx)!.push(block);
-        }
+      const packed = packToStart(rowBlocks, windowStartMin);
 
-        const bundleInfos = [...blocksByTemplate.values()].map((bundleBlocks) => {
-          const minStartAbs = Math.min(
-            ...bundleBlocks.map((block) => parseTimeToMinutes(block.startTime)),
-          );
-          const maxEndAbs = Math.max(
-            ...bundleBlocks.map((block) => {
-              const startAbs = parseTimeToMinutes(block.startTime);
-              const endAbs = absEnd(startAbs, parseTimeToMinutes(block.endTime));
-              return endAbs;
-            }),
-          );
-          return { blocks: bundleBlocks, startAbs: minStartAbs, endAbs: maxEndAbs };
-        });
-
-        bundleInfos.sort((left, right) => left.startAbs - right.startAbs);
-
-        let cursorAbs = bundleInfos.length ? bundleInfos[0].startAbs : windowStartMin;
-
-        for (const bundleInfo of bundleInfos) {
-          const targetStartAbs = Math.max(cursorAbs, bundleInfo.startAbs);
-          if (targetStartAbs > bundleInfo.startAbs) {
-            const shift = targetStartAbs - bundleInfo.startAbs;
-
-            for (const block of bundleInfo.blocks) {
-              const startAbs = parseTimeToMinutes(block.startTime);
-              const endAbs = absEnd(startAbs, parseTimeToMinutes(block.endTime));
-              block.startTime = toTime(startAbs + shift);
-              block.endTime = toTime(endAbs + shift);
-            }
-
-            bundleInfo.startAbs += shift;
-            bundleInfo.endAbs += shift;
-            changedAnyRow = true;
+      let equal = packed.length === rowBlocks.length;
+      if (equal) {
+        for (let i = 0; i < rowBlocks.length; i++) {
+          if (
+            rowBlocks[i].startTime !== packed[i].startTime ||
+            rowBlocks[i].endTime !== packed[i].endTime
+          ) {
+            equal = false;
+            break;
           }
-
-          cursorAbs = bundleInfo.endAbs;
         }
+      }
+      if (equal) return row;
 
-        return changedAnyRow ? { ...row, blocks: [...rowBlocks] } : row;
-      });
-
-      return changedAnyRow ? nextRows : prevRows;
+      changedAnyRow = true;
+      return { ...row, blocks: packed };
     });
+
+    if (changedAnyRow) {
+      setRowsState(() => nextRows);
+    }
   }, [rowsState, setRowsState, windowStartMin]);
 };

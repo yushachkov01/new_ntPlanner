@@ -1,0 +1,11 @@
+query FetchLastInterfaces($dev: uuid!, $type: String!) {
+  public7_query(
+    where: { device: { _eq: $dev }, request_type: { _eq: $type } }
+    order_by: { received_at: desc_nulls_last }
+    limit: 1
+  ) {
+    status
+    received_at
+    result
+  }
+}

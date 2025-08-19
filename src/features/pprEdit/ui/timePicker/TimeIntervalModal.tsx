@@ -50,6 +50,7 @@ export const TimeIntervalModal: React.FC<Props> = ({ open, onCancel, onOk }) => 
           format="HH:mm"
           minuteStep={5}
           getPopupContainer={getPopupContainer}
+          dropdownClassName="time-interval-dropdown"
         />
         —
         <TimePicker
@@ -59,6 +60,7 @@ export const TimeIntervalModal: React.FC<Props> = ({ open, onCancel, onOk }) => 
           format="HH:mm"
           minuteStep={5}
           getPopupContainer={getPopupContainer}
+          dropdownClassName="time-interval-dropdown"
         />
       </Space>
     </Modal>

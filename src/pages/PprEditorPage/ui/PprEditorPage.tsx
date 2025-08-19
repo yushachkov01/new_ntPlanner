@@ -1,240 +1,108 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 
 import './PprEditorPage.css';
 import LocationOverview from '@/widgets/layout/LocationOverview/ui/LocationOverview';
 import type { Template } from '@entities/template/model/store/templateStore.ts';
-import useTimelineStore, { toRowId } from '@entities/timeline/model/store/timelineStore';
+import useTimelineStore from '@entities/timeline/model/store/timelineStore';
 import { userStore } from '@entities/user/model/store/UserStore';
-import { useUserStore } from '@entities/users/model/store/userStore';
 import { WorkTimeStore } from '@entities/workTimeStore/model/store/workTimeStore';
+import { usePprExecutors } from '@features/pprEdit/model/hooks/usePprExecutors';
+import { usePprWizard } from '@features/pprEdit/model/hooks/usePprWizard';
+import { useTimelineMove } from '@features/pprEdit/model/hooks/useTimelineMove';
 import DynamicYamlForm from '@features/pprEdit/ui/DynamicYamlForm/DynamicYamlForm';
 import { PlannedTaskDropdown } from '@features/pprEdit/ui/PlannedTaskDropdown/PlannedTaskDropdown';
 import PprEditorTabs from '@features/pprEdit/ui/PprEditorTabs/PprEditorTabs';
+import { normalizeExec } from '@features/pprEdit/ui/utils/execUtils/execUtils';
+import { resolveTemplateWithRaw } from '@features/pprEdit/ui/utils/templateRaw/templateRaw';
 import YamlTemplateSelect from '@features/pprEdit/ui/yamlTemplate/YamlTemplateSelect';
 import PprPage from '@pages/PprPage';
 
-import { Button } from 'antd';
+import { Button, Steps, message } from 'antd';
 
-/** нормализуем структуру исполнителя */
-const normalizeExec = (u: any) => ({
-  /** id может быть числом ИЛИ строкой (UUID)  */
-  id: u?.id ?? u?.user_id ?? u?.value ?? u?.key,
-  author:
-    u?.author ??
-    u?.fio ??
-    u?.name ??
-    `${u?.last_name ?? ''} ${u?.first_name ?? ''}`.trim() ??
-    `User ${u?.id ?? ''}`,
-  role: u?.role?.name ?? u?.role ?? '',
-});
+/**
+ * Бакет и префикс для загрузки YAML-шаблонов
+ */
+const BUCKET = 'yamls';
+const PREFIX = '';
 
 const PprEditorPage: React.FC = () => {
-  /** UI-состояния */
-  const [selectedTaskId, setSelectedTaskId] = useState<string>();
-  const [mainTemplate, setMainTemplate] = useState<Template>();
-  const [additionalTemplates, setAdditionalTemplates] = useState<Template[]>([]);
+  /**
+   * Хук мастера: текущее состояние шагов и выбранных сущностей
+   */
+  const {
+    selectedTaskId,
+    setSelectedTaskId,
+    tabsConfirmed,
+    setTabsConfirmed,
+    paramsConfirmed,
+    setParamsConfirmed,
+    mainTemplate,
+    setMainTemplate,
+    currentStep,
+    step3Done,
+    step5Done,
+  } = usePprWizard();
+
+  /**
+   * Пользователь и окно таймлайна (старт/финиш сетки)
+   */
   const currentUser = userStore((s) => s.user)!;
-
-  /** Исполнители по шаблонам */
-  const [executorsByTemplate, setExecutorsByTemplate] = useState<any[][]>(
-    currentUser ? [[normalizeExec(currentUser)]] : [[]],
-  );
-  const [tabExecutors, setTabExecutors] = useState<any[]>(
-    (executorsByTemplate[0] ?? []).map(normalizeExec),
-  );
-
-  /** Методы стора рабочего времени */
   const { timelineWindow, setTimelineWindow } = WorkTimeStore();
+
+  /**
+   * Исполнители и слоты (по основному и дополнительным шаблонам)
+   * Params — нет
+   */
+  const {
+    executorsByTemplate,
+    setExecutorsByTemplate,
+    tabExecutors,
+    setTabExecutors,
+    pprExecutors,
+    addExecutor,
+    removeExecutor,
+    normalizeExecId,
+  } = usePprExecutors(currentUser, mainTemplate);
 
   /** используем «точечное» удаление блоков по префиксу sourceKey (templateKey) */
   const removeBySourcePrefix = useTimelineStore((s) => (s as any).removeBySourcePrefix);
 
-  /** Все пользователи чтобы по rowId восстановить исполнителя */
-  const allUsers = useUserStore((s) => s.users || []);
+  /**
+   * Список дополнительных (вторичных) шаблонов, добавленных пользователем
+   */
+  const [additionalTemplates, setAdditionalTemplates] = useState<Template[]>([]);
+  /**
+   * Обработчик перемещения бандлов между исполнителями в таймлайне
+   */
+  const handleMoveBetweenExecutors = useTimelineMove({
+    executorsByTemplate,
+    setExecutorsByTemplate,
+    tabExecutors,
+    setTabExecutors,
+    mainTemplate,
+    additionalTemplates,
+  });
 
-  /** util из стора таймлайна: принадлежность строк одному исполнителю */
-  const isSamePersonRow = useTimelineStore((s) => s.isSamePersonRow);
-  /**  экшен схлопывания пустой доп. строки (для возврата «+») */
-  const collapseEmptyExtraFor = useTimelineStore((s) => s.collapseEmptyExtraFor);
-
-  /** Если есть основной шаблон, а исполнителей нет — добавляем текущего */
+  /**
+   * Фактическое наличие строк в сторе таймлайна
+   */
+  const liveRowsCount = useTimelineStore((s) => s.rows?.length ?? 0);
   useEffect(() => {
-    if (mainTemplate && executorsByTemplate[0].length === 0 && currentUser) {
-      setExecutorsByTemplate((prevList) => {
-        const nextList = [...prevList];
-        nextList[0] = [normalizeExec(currentUser)];
-        return nextList;
-      });
-      setTabExecutors([normalizeExec(currentUser)]);
+    if (step3Done && !paramsConfirmed && liveRowsCount > 0) {
+      setParamsConfirmed(true);
     }
-  }, [mainTemplate, currentUser, executorsByTemplate]);
+  }, [step3Done, paramsConfirmed, liveRowsCount, setParamsConfirmed]);
 
   /**
-   * Добавляет исполнителя к указанному шаблону по индексу
-   * @param templateIndex — индекс шаблона в массиве executorsByTemplate
-   * @param executor — объект исполнителя
+   * Как только на шаге 3 появились блоки (liveRowsCount > 0) — подтверждаем параметры
    */
-  const addExecutor = (templateIndex: number, executor: any) =>
-    setExecutorsByTemplate((prevList) => {
-      const nextList = [...prevList];
-      if (!Array.isArray(nextList[templateIndex])) {
-        nextList[templateIndex] = [];
-      }
-      const ex = normalizeExec(executor);
-      const key = String(ex.id);
-      if (!nextList[templateIndex].some((item: any) => String(item.id) === key)) {
-        nextList[templateIndex].push(ex);
-      }
-      return nextList;
-    });
+  const paramsRef = useRef<HTMLDivElement | null>(null);
+  const [tplReadyTick, setTplReadyTick] = useState(0);
 
-  /**
-   * Удаляет исполнителя из указанного шаблона по индексу
-   * @param templateIndex — индекс шаблона
-   * @param executorId — id исполнителя
-   */
-  const removeExecutor = (templateIndex: number, executorId: number | string) =>
-    setExecutorsByTemplate((prevList) => {
-      const nextList = [...prevList];
-      nextList[templateIndex] = (nextList[templateIndex] ?? []).filter(
-        (item: any) => String(item.id) !== String(executorId),
-      );
-      return nextList;
-    });
-
-  /** Итоговый список исполнителей для таймлайна */
-  const pprExecutors = useMemo(
-    () =>
-      Array.from(
-        new Map(
-          (executorsByTemplate.flat() as any[]).map(normalizeExec).map((e) => [String(e.id), e]),
-        ).values(),
-      ),
-    [executorsByTemplate],
-  );
-
-  /** helper: получить корневой id строки (если это extra — берём parentId) */
-  const getRootRowId = (rowId: number) => {
-    const rows = useTimelineStore.getState().rows ?? [];
-    const row = rows.find((r) => r.id === rowId);
-    return row?.isExtra ? row.parentId! : rowId;
-  };
-
-  /**
-   * По rowId (числовой id строки таймлайна) находим пользователя и возвращаем исполнителя.
-   */
-  const resolveExecutorByRowId = (rowId: number) => {
-    const baseId = getRootRowId(rowId);
-    const fromPpr = (pprExecutors as any[]).find(
-      (u) => toRowId(u?.id ?? u?.user_id ?? u?.value ?? u?.key) === baseId,
-    );
-    if (fromPpr) return normalizeExec(fromPpr);
-
-    const found = allUsers.find(
-      (u) => toRowId(u?.id ?? u?.user_id ?? u?.value ?? u?.key) === baseId,
-    );
-    if (found) return normalizeExec(found);
-
-    if (currentUser && toRowId(currentUser?.id) === baseId) {
-      return normalizeExec(currentUser);
-    }
-
-    return null;
-  };
-
-  /**
-   * Определяем, к какому слоту шаблонов относится templateKey.
-   * Возвращает индекс в executorsByTemplate: 0 — основной, 1 — дополнительные; -1 если не найден.
-   */
-  const resolveTemplateSlotIndex = (templateKey?: string): number => {
-    if (!templateKey) return -1;
-    if ((mainTemplate as any)?.key === templateKey) return 0;
-    const addIdx = additionalTemplates.findIndex((t) => (t as any)?.key === templateKey);
-    return addIdx >= 0 ? addIdx + 1 : -1;
-  };
-
-  /**
-   * Колбэк от таймлайна: перенос бандла между исполнителями.
-   * Добавляем целевого исполнителя в слот шаблона,
-   * и, если исходная строка опустела — удаляем исходного исполнителя.
-   */
-  const handleMoveBetweenExecutors = ({
-    templateKey,
-    sourceKey,
-    sourceRowId,
-    targetRowId,
-    sourceEmptyAfter,
-  }: {
-    templateKey?: string;
-    sourceKey?: string;
-    sourceRowId: number;
-    targetRowId: number;
-    sourceEmptyAfter: boolean;
-  }) => {
-    /** если перенос в ту же строку — схлопываем пустую доп. строку и выходим */
-    if (sourceRowId === targetRowId) {
-      collapseEmptyExtraFor?.(sourceRowId);
-      return;
-    }
-
-    /** перенос внутри одного и того же исполнителя (в/из доп. строки) — списки не меняем */
-    if (isSamePersonRow?.(sourceRowId, targetRowId)) {
-      if (sourceEmptyAfter) collapseEmptyExtraFor?.(sourceRowId);
-      return;
-    }
-
-    /** ключ шаблона */
-    const keyFromSource = sourceKey ? String(sourceKey).split('::')[0] : undefined;
-    const effectiveKey = templateKey ?? keyFromSource;
-
-    /**  первичная попытка — по ключу шаблона */
-    const slotIndex = resolveTemplateSlotIndex(effectiveKey);
-
-    const addExec = resolveExecutorByRowId(targetRowId);
-    const removeExec = resolveExecutorByRowId(sourceRowId);
-    const removeIdStr = removeExec ? String(removeExec.id) : null;
-
-    setExecutorsByTemplate((prev) => {
-      const next = prev.map((slot) => [...(slot ?? [])]);
-
-      /** Слоты, где присутствует исходный исполнитель */
-      const slotsWithSource: number[] = [];
-      if (removeIdStr) {
-        for (let i = 0; i < next.length; i++) {
-          if ((next[i] ?? []).some((e) => String(e.id) === removeIdStr)) {
-            slotsWithSource.push(i);
-          }
-        }
-      }
-
-      /** Какие слоты правим (если ключ не распознан — правим те, где был исходный) */
-      const slotsToAffect =
-        slotIndex >= 0 ? [slotIndex] : slotsWithSource.length ? slotsWithSource : [0];
-
-      /**  переключаем «текущего» исполнителя на целевого */
-      if (addExec) {
-        const addIdStr = String(addExec.id);
-        for (const idx of slotsToAffect) {
-          const list = next[idx] ?? [];
-          if (list.length <= 1) {
-            next[idx] = [addExec];
-          } else {
-            next[idx] = [addExec, ...list.filter((e) => String(e.id) !== addIdStr)];
-          }
-        }
-      }
-
-      /** если исходная строка пустая — удаляем исходного из ВСЕХ слотов, где он встречается */
-      if (sourceEmptyAfter && removeIdStr) {
-        for (let i = 0; i < next.length; i++) {
-          const list = next[i] ?? [];
-          next[i] = list.filter((e) => String(e.id) !== removeIdStr);
-        }
-      }
-
-      return next;
-    });
-  };
+  useEffect(() => {
+    if (!mainTemplate) return;
+    if ((mainTemplate as any).raw) setTplReadyTick((t) => t + 1);
+  }, [mainTemplate]);
 
   /**
    * Добавляет новый пустой шаблон:
@@ -251,7 +119,7 @@ const PprEditorPage: React.FC = () => {
   /** Сменить шаблон (точечно удаляем блоки ) */
   const changeTemplate = (index: number, newTemplate: Template) => {
     const prevKey = (additionalTemplates[index] as any)?.key;
-    const execIds = (executorsByTemplate[index + 1] ?? []).map((e) => e.id);
+    const execIds = (executorsByTemplate[index + 1] ?? []).map(normalizeExecId);
     if (prevKey) {
       /** удаляем только блоки, созданные «старым» шаблоном этой вкладки */
       removeBySourcePrefix?.({ execIds, prefix: String(prevKey) });
@@ -259,39 +127,48 @@ const PprEditorPage: React.FC = () => {
     setAdditionalTemplates((prev) => prev.map((item, idx) => (idx === index ? newTemplate : item)));
   };
 
+  /**
+   * Итоговый набор исполнителей для таймлайна (уникальный)
+   */
+  const timelineExecutors = useMemo(() => pprExecutors as any, [pprExecutors]);
+
   return (
     <section className="ppr-editor-card">
+      <div style={{ padding: '8px 16px 0 16px' }}>
+        <Steps
+          current={currentStep}
+          items={[
+            { title: 'Задача' },
+            { title: 'Значения (в табе)' },
+            { title: 'Шаблон' },
+            { title: 'Параметры шаблона' },
+            { title: 'Заявка готова' },
+          ]}
+        />
+      </div>
+
       <header className="ppr-editor-card__header">
+        <div className="ppr-location-divider" />
         <LocationOverview />
+        <div className="ppr-location-divider" />
       </header>
       <div className="ppr-editor-card__controls">
-        <div className="ppr-editor-card__controls-left">
+        <div className="ppr-editor-card__controls-left" style={{ width: '100%' }}>
           <PlannedTaskDropdown
             className="ppr-editor-card__select"
-            placeholder="Выберите задачу"
+            placeholder="Список выбранных планируемых работ"
             value={selectedTaskId}
-            onChange={setSelectedTaskId}
+            onChange={(val) => {
+              setSelectedTaskId(val);
+              setTabsConfirmed(false);
+              setMainTemplate(undefined);
+              setParamsConfirmed(false);
+            }}
           />
-          {selectedTaskId && (
-            <YamlTemplateSelect
-              bucket="yamls"
-              value={(mainTemplate as any)?.key}
-              onChange={(tpl) => {
-                const prevMainKey = (mainTemplate as any)?.key;
-                const execIds = (executorsByTemplate[0] ?? []).map((e) => e.id);
-                if (prevMainKey) {
-                  removeBySourcePrefix?.({ execIds, prefix: String(prevMainKey) });
-                }
-                setMainTemplate(tpl);
-              }}
-              executors={(executorsByTemplate[0] ?? []).map(normalizeExec)}
-              addExecutor={(executor) => addExecutor(0, executor)}
-              removeExecutor={(executorId) => removeExecutor(0, executorId)}
-              tabCandidates={tabExecutors}
-            />
-          )}
         </div>
-        {selectedTaskId && (
+      </div>
+      {!!selectedTaskId && (
+        <div style={{ marginTop: 12 }}>
           <div className="ppr-editor-card__controls-right">
             <div className="ppr-editor-card__tabs">
               <PprEditorTabs
@@ -300,7 +177,7 @@ const PprEditorPage: React.FC = () => {
                 executors={tabExecutors}
                 addExecutor={(exe) =>
                   setTabExecutors((prev) =>
-                    prev.some((e) => String(e.id) === String(exe.id))
+                    prev.some((e) => String(e.id) === String((exe as any).id))
                       ? prev
                       : [...prev, normalizeExec(exe)],
                   )
@@ -310,21 +187,77 @@ const PprEditorPage: React.FC = () => {
                 }
               />
             </div>
+            {!tabsConfirmed && (
+              <div style={{ marginTop: 12 }}>
+                <Button type="primary" onClick={() => setTabsConfirmed(true)}>
+                  Перейти к выбору шаблона
+                </Button>
+              </div>
+            )}
           </div>
-        )}
-      </div>
-      {mainTemplate?.raw && (
-        <DynamicYamlForm
-          schema={mainTemplate.raw}
-          templateKey={(mainTemplate as any)?.key}
-          executors={(executorsByTemplate[0] ?? []).map(normalizeExec)}
-        />
+        </div>
+      )}
+      {tabsConfirmed && (
+        <div style={{ marginTop: 16 }}>
+          <YamlTemplateSelect
+            bucket={BUCKET}
+            value={(mainTemplate as any)?.key}
+            onChange={async (tpl) => {
+              const prevMainKey = (mainTemplate as any)?.key;
+              const execIds = (executorsByTemplate[0] ?? []).map(normalizeExecId);
+              if (prevMainKey) removeBySourcePrefix?.({ execIds, prefix: String(prevMainKey) });
+              if (currentUser) {
+                const me = normalizeExec(currentUser);
+                setExecutorsByTemplate((prev) => {
+                  const next = [...prev];
+                  const list0 = next[0] ?? [];
+                  const hasMe = list0.some((x: any) => String(x.id) === String(me.id));
+                  next[0] = hasMe ? list0 : [me, ...list0];
+                  return next;
+                });
+                setTabExecutors((prev) =>
+                  prev.some((x) => String(x.id) === String(me.id)) ? prev : [me, ...prev],
+                );
+              }
+
+              // подгрузим raw при необходимости
+              const resolved = await resolveTemplateWithRaw(tpl as Template, BUCKET, PREFIX);
+              if (!resolved) {
+                message.error('Не удалось загрузить YAML шаблона.');
+                return;
+              }
+              setMainTemplate(resolved);
+              setParamsConfirmed(false);
+
+              setTimeout(() => paramsRef.current?.scrollIntoView({ behavior: 'smooth' }), 0);
+            }}
+            executors={(executorsByTemplate[0] ?? []).map(normalizeExec)}
+            addExecutor={(executor) => addExecutor(0, executor)}
+            removeExecutor={(executorId) => removeExecutor(0, executorId)}
+            tabCandidates={tabExecutors}
+          />
+        </div>
+      )}
+      {step3Done && (
+        <div ref={paramsRef}>
+          {(mainTemplate as any)?.key && (mainTemplate as any)?.raw && (
+            <DynamicYamlForm
+              key={`main-${(mainTemplate as any)?.key}-${tplReadyTick}`}
+              schema={(mainTemplate as any)?.raw}
+              templateKey={(mainTemplate as any)?.key}
+              executors={(executorsByTemplate[0] ?? []).map(normalizeExec)}
+              onRowCountChange={(cnt) => {
+                if (!paramsConfirmed && cnt > 0) setParamsConfirmed(true);
+              }}
+            />
+          )}
+        </div>
       )}
 
       {additionalTemplates.map((template, idx) => (
         <React.Fragment key={idx}>
           <YamlTemplateSelect
-            bucket="yamls"
+            bucket={BUCKET}
             value={(template as any).key}
             onChange={(newTpl) => changeTemplate(idx, newTpl)}
             executors={(executorsByTemplate[idx + 1] ?? []).map(normalizeExec)}
@@ -332,27 +265,28 @@ const PprEditorPage: React.FC = () => {
             removeExecutor={(executorId) => removeExecutor(idx + 1, executorId)}
             tabCandidates={tabExecutors}
           />
-          {template.raw && (
+          {(template as any)?.key && (template as any)?.raw && (
             <DynamicYamlForm
-              schema={template.raw}
+              key={`extra-${idx}-${(template as any)?.key}-${tplReadyTick}`}
+              schema={(template as any)?.raw}
               templateKey={(template as any)?.key}
               executors={(executorsByTemplate[idx + 1] ?? []).map(normalizeExec)}
+              onRowCountChange={() => {}}
             />
           )}
         </React.Fragment>
       ))}
 
-      {selectedTaskId && (
+      {step5Done && (
         <>
-          <Button type="dashed" onClick={addTemplate}>
+          <Button type="dashed" onClick={addTemplate} style={{ marginTop: 12 }}>
             Добавить шаблон
           </Button>
-
           <div className="ppr-editor-card__timeline">
             <PprPage
               gridStart={timelineWindow.start}
               gridEnd={timelineWindow.end}
-              executors={pprExecutors as any}
+              executors={timelineExecutors}
               onBlockClick={() => {}}
               onTimerChange={() => {}}
               onMoveBetweenExecutors={handleMoveBetweenExecutors}

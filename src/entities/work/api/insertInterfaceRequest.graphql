@@ -1,0 +1,5 @@
+mutation InsertInterfaceRequest($dev: uuid!, $type: String!) {
+  insert_public7_query_one(object: { device: $dev, request_type: $type }) {
+    id
+  }
+}

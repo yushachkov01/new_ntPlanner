@@ -9,10 +9,8 @@ import { TimeIntervalModal } from '@/features/pprEdit/ui/timePicker/TimeInterval
 import type { User } from '@entities/users/model/mapping/mapping';
 import './PprEditorTabs.css';
 
-const { TabPane } = Tabs;
 const { Text, Link } = Typography;
 
-/** Предустановленные интервалы времени */
 export const PRESET_TIMES = [
   { value: '23:00–06:00', label: 'Ночная смена 23:00 – 06:00' },
   { value: '00:00–08:00', label: 'Ночная смена 00:00 – 08:00' },
@@ -42,11 +40,10 @@ const PprEditorTabs: React.FC<Props> = ({
   onWorkTimeChange,
 }) => {
   const { tasks, timeWorks, projects, rmTasks, device, load } = usePlannedTaskStore();
-
   useEffect(() => {
     load();
   }, [load]);
-  /** Получаем задачу по ID */
+
   const selectedTask = tasks.find((t) => t.id === taskId);
   if (!selectedTask) return null;
 
@@ -54,26 +51,27 @@ const PprEditorTabs: React.FC<Props> = ({
   const projectName = rmTask ? (projects.find((p) => p.id === rmTask.projectId)?.name ?? '') : '';
   /** Список оборудования из задачи */
   const equipmentList = useMemo(() => {
-    return device.filter((d) => d.nodeId === d.nodeId).map((d) => d.hostname);
+    return device.map((d) => d.hostname);
   }, [device]);
 
   const [currentEquip, setCurrentEquip] = useState<string[]>([]);
+  const setDeviceWhitelist = usePlannedTaskStore((s) => s.setDeviceWhitelist);
   useEffect(() => {
-    setCurrentEquip(equipmentList);
-  }, [equipmentList]);
+    if (equipmentList.length) {
+      setCurrentEquip(equipmentList);
+      setDeviceWhitelist(equipmentList);
+    } else {
+      setCurrentEquip([]);
+      setDeviceWhitelist([]);
+    }
+  }, [equipmentList, setDeviceWhitelist]);
 
   /** Интервал работ TimeWorks */
   const tw = timeWorks.find((t) => t.id === selectedTask.timeWorkId);
   const defaultInterval = tw
-    ? `${tw.startAt.toLocaleTimeString('ru-RU', {
-        hour: '2-digit',
-        minute: '2-digit',
-      })}–${tw.endAt.toLocaleTimeString('ru-RU', {
-        hour: '2-digit',
-        minute: '2-digit',
-      })}`
+    ? `${tw.startAt.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}–${tw.endAt.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`
     : PRESET_TIMES[0].value;
-  /** Состояние выбранного интервала и управления кастомным вводом */
+
   const [selectedTimeInterval, setSelectedTimeInterval] = useState(defaultInterval);
   const [isCustomModal, setCustomModal] = useState(false);
 
@@ -108,108 +106,125 @@ const PprEditorTabs: React.FC<Props> = ({
   const { users, roles: userRoles, load: loadUsers } = useUserStore();
   /** Управление модалкой добавления исполнителя */
   const [isAddExecutorModalVisible, setAddExecutorModalVisible] = useState(false);
-
   useEffect(() => {
     if (users.length === 0) loadUsers();
   }, [users.length, loadUsers]);
 
+  const items = [
+    {
+      key: 'work',
+      label: 'Карта работ',
+      children: (
+        <div className="tab-content tab-content--work">
+          <div>
+            <p>
+              <Text>Описание:&nbsp;</Text>
+              <Text strong>{selectedTask.description}</Text>
+            </p>
+            <p className="tab-content-project">
+              <Text>Проект:&nbsp;</Text>
+              <Text strong>{projectName}</Text>
+            </p>
+            <div className="tab-links">
+              {rmTask && (
+                <Link href={selectedTask.rm} target="_blank">
+                  Перейти к задаче в Redmine
+                </Link>
+              )}
+              <Link href={selectedTask.rd} target="_blank">
+                Перейти к РД
+              </Link>
+            </div>
+          </div>
+          <div className="tab-content__right">
+            <Text>Время работ:</Text>
+            <Select
+              style={{ width: 200 }}
+              value={selectedTimeInterval}
+              options={timeOptions}
+              onSelect={handleTimeSelect}
+            />
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: 'equip',
+      label: 'Сетевое оборудование',
+      children: (
+        <div className="tab-content tab-content--equipment">
+          <p className="equipment-title">Оборудование:</p>
+          {equipmentList.length === 0 ? (
+            <Text type="secondary">Нет оборудования</Text>
+          ) : (
+            <List
+              bordered
+              dataSource={equipmentList}
+              renderItem={(eq) => (
+                <List.Item>
+                  <Checkbox
+                    checked={currentEquip.includes(eq)}
+                    onChange={(e) => {
+                      setCurrentEquip((prev) => {
+                        const next = e.target.checked
+                          ? Array.from(new Set([...prev, eq]))
+                          : prev.filter((i) => i !== eq);
+                        setDeviceWhitelist(next);
+                        return next;
+                      });
+                    }}
+                  >
+                    {eq}
+                  </Checkbox>
+                </List.Item>
+              )}
+            />
+          )}
+          <Button
+            className="tab-content--equipment--tabs"
+            type="primary"
+            disabled={!currentEquip.length}
+            onClick={() => console.log('Опрос:', currentEquip)}
+          >
+            Провести опрос
+          </Button>
+        </div>
+      ),
+    },
+    {
+      key: 'exec',
+      label: 'Исполнители',
+      children: (
+        <div className="tab-content tab-content--members">
+          <p className="members-title">Участники:</p>
+          {executors.map((exe, idx) => (
+            <div key={exe.id} className="members-row">
+              <UserOutlined className="members-icon" />
+              <span className="members-name">
+                {exe.role} — {exe.author}
+              </span>
+              {idx > 0 ? (
+                <Button className="members-remove" onClick={() => removeExecutor(exe.id)}>
+                  Удалить
+                </Button>
+              ) : (
+                <Button
+                  className="yaml-executor-add-btn"
+                  onClick={() => setAddExecutorModalVisible(true)}
+                >
+                  Добавить исполнителя
+                </Button>
+              )}
+            </div>
+          ))}
+        </div>
+      ),
+    },
+  ];
+
   return (
     <>
-      <Tabs defaultActiveKey="1" className="ppr-editor-tabs">
-        <TabPane tab="Карта работ" key="1">
-          <div className="tab-content tab-content--work">
-            <div>
-              <p>
-                <Text>Описание:&nbsp;</Text>
-                <Text strong>{selectedTask.description}</Text>
-              </p>
-              <p className="tab-content-project">
-                <Text>Проект:&nbsp;</Text>
-                <Text strong>{projectName}</Text>
-              </p>
-              <div className="tab-links">
-                {rmTask && (
-                  <Link href={selectedTask.rm} target="_blank">
-                    Перейти к задаче в Redmine
-                  </Link>
-                )}
-                <Link href={selectedTask.rd} target="_blank">
-                  Перейти к РД
-                </Link>
-              </div>
-            </div>
-            <div className="tab-content__right">
-              <Text>Время работ:</Text>
-              <Select
-                style={{ width: 200 }}
-                value={selectedTimeInterval}
-                options={timeOptions}
-                onSelect={handleTimeSelect}
-              />
-            </div>
-          </div>
-        </TabPane>
-        <TabPane tab="Сетевое оборудование" key="2">
-          <div className="tab-content tab-content--equipment">
-            <p className="equipment-title">Оборудование:</p>
-            {equipmentList.length === 0 ? (
-              <Text type="secondary">Нет оборудования</Text>
-            ) : (
-              <List
-                bordered
-                dataSource={equipmentList}
-                renderItem={(eq) => (
-                  <List.Item>
-                    <Checkbox
-                      checked={currentEquip.includes(eq)}
-                      onChange={(e) =>
-                        setCurrentEquip((prev) =>
-                          e.target.checked ? [...prev, eq] : prev.filter((i) => i !== eq),
-                        )
-                      }
-                    >
-                      {eq}
-                    </Checkbox>
-                  </List.Item>
-                )}
-              />
-            )}
-            <Button
-              className="tab-content--equipment--tabs"
-              type="primary"
-              disabled={!currentEquip.length}
-              onClick={() => console.log('Опрос:', currentEquip)}
-            >
-              Провести опрос
-            </Button>
-          </div>
-        </TabPane>
-        <TabPane tab="Исполнители" key="3">
-          <div className="tab-content tab-content--members">
-            <p className="members-title">Участники:</p>
-            {executors.map((exe, idx) => (
-              <div key={exe.id} className="members-row">
-                <UserOutlined className="members-icon" />
-                <span className="members-name">
-                  {exe.role} — {exe.author}
-                </span>
-                {idx > 0 ? (
-                  <Button className="members-remove" onClick={() => removeExecutor(exe.id)}>
-                    Удалить
-                  </Button>
-                ) : (
-                  <Button
-                    className="yaml-executor-add-btn"
-                    onClick={() => setAddExecutorModalVisible(true)}
-                  >
-                    Добавить исполнителя
-                  </Button>
-                )}
-              </div>
-            ))}
-          </div>
-        </TabPane>
-      </Tabs>
+      <Tabs items={items} className="ppr-editor-tabs" />
 
       <AddExecutorModal
         open={isAddExecutorModalVisible}

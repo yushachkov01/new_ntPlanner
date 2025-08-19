@@ -5,167 +5,10 @@ import { create } from 'zustand';
 
 import type { StageField } from '@/entities/template/model/store/templateStore';
 import { parseTimeToMinutes, toTime } from '@/shared/ui/time/toTime';
+import type { BlockExt, Executor } from '@entities/timeline/model/types/types';
 
-/**
- * Блок на таймлайне (один отрезок стадии)
- */
-export interface BlockExt {
-  /**  уникальный числовой идентификатор блока */
-  id: number;
-  /** Заголовок/подпись блока */
-  label: string;
-  /** Время начала в формате "HH:MM" */
-  startTime: string;
-  /** Время окончания в формате "HH:MM" (может «перетекать» на следующий день) */
-  endTime: string;
-  status?: string;
-  subSteps?: string[];
-  /** Индекс бандла; блоки с одинаковым tplIdx считаются одним «бандлом» */
-  tplIdx: number;
-  /** Список ключей стадий, к которым относится блок (обычно один ключ) */
-  stageKeys: string[];
-  /** Метаданные стадий по ключу */
-  stagesField: Record<string, StageField>;
-  /** Ключ-источник (строка таблицы), чтобы можно было удалить все блоки одной записи */
-  sourceKey?: string;
-}
-
-export interface Executor {
-  id: number;
-  author: string;
-  role: string;
-  blocks?: BlockExt[];
-
-  /**  доп. строка исполнителя  */
-  isExtra?: boolean;
-  parentId?: number;
-}
-
-/**
- * Делает стабильный number из string|number id (для стора).
- * Нужно, когда из внешнего мира приходят строковые/UUID id.
- * params
- *  - id: исходный идентификатор (string | number)
- */
-const toRowId = (id: string | number): number => {
-  /** Строковое представление входного id */
-  const stringId = String(id);
-
-  /** Аккумулируемый хэш для получения стабильного числовой rowId, с которым дальше работает таймлайн и DnD-логика.
-   */
-  let hashed = 5381;
-
-  for (let i = 0; i < stringId.length; i++) {
-    /** Код текущего символа */
-    const code = stringId.charCodeAt(i);
-    /** Обновление хэша: hash * 33 + code (с приводом к 32-бит) */
-    hashed = (hashed << 5) + hashed + code;
-    hashed |= 0;
-  }
-
-  /** Положительный (и ненулевой) идентификатор строки */
-  const positiveId = Math.abs(hashed) || 1;
-
-  return typeof id === 'number' && Number.isFinite(id) ? id : positiveId;
-};
-
-/**
- * Возвращает «абсолютный» конец интервала с учетом перехода через полночь.
- * Если конец <= начало, считаем, что конец на следующем дне.
- * params
- *  - startMin: начало (в минутах)
- *  - endRawMin: конец как есть (в минутах)
- */
-const absEnd = (startMin: number, endRawMin: number) =>
-  endRawMin <= startMin ? endRawMin + 1440 : endRawMin;
-
-/**
- * Упаковать строку так, чтобы бандлы (tplIdx) шли ПОСЛЕДОВАТЕЛЬНО без перекрытий.
- * Меняет времена в блоках вперед (не двигает назад).
- * params
- *  - row: строка исполнителя, которую нужно упаковать
- *  - startRefMin: опорный старт, откуда можно начинать укладку
- */
-const packRowSequential = (row: Executor, startRefMin = 0) => {
-  /** копия массива блоков  */
-  const blocks = row.blocks ?? [];
-  if (blocks.length === 0) return;
-
-  /** Группировка блоков по tplIdx (бандлы) */
-  const bundlesByTpl = new Map<number, BlockExt[]>();
-  for (const block of blocks) {
-    if (!bundlesByTpl.has(block.tplIdx)) bundlesByTpl.set(block.tplIdx, []);
-    bundlesByTpl.get(block.tplIdx)!.push(block);
-  }
-
-  /**
-   * Сводки по бандлам: массив объектов { blocks, s, e },
-   * где s/e — абсолютные границы бандла в минутах.
-   */
-  const bundleInfos = [...bundlesByTpl.values()].map((group) => {
-    /** Минимальный старт среди блоков бандла */
-    const bundleStart = Math.min(...group.map((b) => parseTimeToMinutes(b.startTime)));
-    /** Максимальный конец среди блоков бандла (с учетом перехода через 00:00) */
-    const bundleEnd = Math.max(
-      ...group.map((b) => {
-        const startMin = parseTimeToMinutes(b.startTime);
-        const endMin = absEnd(startMin, parseTimeToMinutes(b.endTime));
-        return endMin;
-      }),
-    );
-    return { blocks: group, s: bundleStart, e: bundleEnd };
-  });
-
-  /** Сортировка бандлов по их текущему старту */
-  bundleInfos.sort((a, b) => a.s - b.s);
-
-  /** Курсор укладки — от опоры или от первого бандла, что больше */
-  let cursorMin = Math.max(startRefMin, bundleInfos.length ? bundleInfos[0].s : startRefMin);
-
-  /** Флаг, были ли изменения (важно для триггера обновления Zustand) */
-  let moved = false;
-
-  for (const info of bundleInfos) {
-    /** Целевой старт бандла — не раньше курсора и не раньше его текущего старта */
-    const targetStart = Math.max(cursorMin, info.s);
-
-    if (targetStart > info.s) {
-      /** Сдвиг (в минутах), на который нужно передвинуть весь бандл */
-      const shiftMin = targetStart - info.s;
-
-      /** Сдвигаем каждый блок бандла вперед */
-      for (const blk of info.blocks) {
-        /** Текущий старт блока в минутах */
-        const blkStartMin = parseTimeToMinutes(blk.startTime);
-        /** Текущий абсолютный конец блока в минутах */
-        const blkEndMin = absEnd(blkStartMin, parseTimeToMinutes(blk.endTime));
-
-        /** Новый старт блока (после сдвига) */
-        const newStartMin = blkStartMin + shiftMin;
-        /** Новый конец блока (после сдвига) */
-        const newEndMin = blkEndMin + shiftMin;
-        blk.startTime = toTime(newStartMin);
-        blk.endTime = toTime(newEndMin);
-      }
-
-      /** Обновляем сводные границы бандла после сдвига */
-      info.s += shiftMin;
-      info.e += shiftMin;
-      moved = true;
-    }
-
-    /** Следующий бандл должен начинаться после текущего */
-    cursorMin = info.e;
-  }
-
-  if (moved) {
-    /**
-     * Создаем новый массив блоков для корректного shallow-сравнения в Zustand,
-     * чтобы подписчики получили обновление.
-     */
-    row.blocks = [...blocks];
-  }
-};
+import { repackRowLeft } from '../logic/pack';
+import { normSource, parseDurationToMinutes, toRowId, absEnd } from '../utils/time';
 
 /**
  * Параметры добавления бандла из YAML
@@ -183,7 +26,7 @@ type AddFromYamlParams = {
   stageKeys: string[];
   stagesField: Record<string, StageField>;
   windowStartMin?: number;
-  sourceKey?: string;
+  sourceKey?: string | number;
 };
 
 /**
@@ -192,7 +35,14 @@ type AddFromYamlParams = {
  *  - execIds: список исполнителей (если не указан — у всех)
  *  - sourceKey: ключ-источник (привязка к записи таблицы)
  */
-type RemoveParams = { execIds?: Array<string | number>; sourceKey: string };
+type RemoveParams = { execIds?: Array<string | number>; sourceKey: string | number };
+
+/**
+ * Параметры удаления блоков по префиксу ключа
+ * @property execIds - список исполнителей (если не указан — у всех)
+ * @property prefix - строка-префикс ключа
+ */
+type RemoveByPrefixParams = { execIds?: Array<string | number>; prefix: string };
 
 /**
  * Параметры очистки блоков у исполнителей
@@ -202,7 +52,7 @@ type RemoveParams = { execIds?: Array<string | number>; sourceKey: string };
 type ResetParams = { execIds?: Array<string | number> };
 
 /**
- * Срез Zustand для таймлайна
+ * Интерфейс состояния Zustand для таймлайна
  */
 interface TimelineState {
   /** Текущее состояние строк таймлайна (исполнители + их блоки) */
@@ -216,35 +66,54 @@ interface TimelineState {
   /**
    * Добавить бандл из YAML (последовательно для указанных исполнителей)
    */
-  addFromYaml: (p: AddFromYamlParams) => void;
+  addFromYaml: (params: AddFromYamlParams) => void;
 
   /**
    * Удалить все блоки, созданные одной записью (по sourceKey),
    * только у указанных исполнителей (или у всех)
    */
-  removeBySource: (p: RemoveParams) => void;
+  removeBySource: (params: RemoveParams) => void;
+
+  /** Удалить блоки по префиксу ключа */
+  removeBySourcePrefix?: (params: RemoveByPrefixParams) => void;
 
   /**
    * Очистить блоки у указанных исполнителей (или у всех).
    * Используем при смене шаблона.
    */
-  resetExecutors: (p?: ResetParams) => void;
+  resetExecutors: (params?: ResetParams) => void;
 
   /**- transferRowBlocks — перенести ВСЕ блоки со строки fromExecId на строку toExecId */
-  transferRowBlocks?: (p: { fromExecId: number | string; toExecId: number | string }) => void;
+  transferRowBlocks?: (params: { fromExecId: number | string; toExecId: number | string }) => void;
 
-  /** доп. строка исполнителя  */
+  /** Сжать блоки в строке влево */
+  compactRowLeft?: (rowId: number, startRefMin?: number) => void;
+
+  /** Сжать блоки в нескольких строках */
+  compactRowsLeft?: (rowIds: number[], startRefMin?: number) => void;
+
+  /** Привязать (снапнуть) блоки к левому краю с учётом ссылки */
+  snapRowLeft?: (rowId: number, startRefMin?: number) => void;
+  /** ===== доп. строка исполнителя ===== */
   addEmptyExtraRowFor?: (baseRowId: number) => void;
   /** алиас под существующий UI-колбэк */
   addExtraRowBelow?: (baseRowId: number) => void;
+  /** Проверить, есть ли у исполнителя доп. строка */
   hasExtraRow?: (baseRowId: number) => boolean;
+  /** Проверить, относятся ли строки к одному исполнителю */
   isSamePersonRow?: (rowA: number, rowB: number) => boolean;
-
-  /**  удаление пустой доп. строки (возвращаем «+») */
+  /** удаление пустой доп. строки (возвращаем «+») */
   collapseEmptyExtraFor?: (rowOrBaseId: number) => void;
   /**  массово: убрать все пустые доп. строки (на случай dnd в ту же строку) */
   collapseAllEmptyExtras?: () => void;
 }
+
+/**
+ * Минимальное значение минут (гарантия что > 0)
+ * @param numberValue - исходное число
+ * @returns округлённое значение (>= 1)
+ */
+const min1 = (numberValue: number) => (numberValue > 0 ? Math.floor(numberValue) : 1);
 
 /**
  * Хук-слайс Zustand для работы с таймлайном.
@@ -259,11 +128,7 @@ const useTimelineStore = create<TimelineState>((set, get) => ({
    * params
    *  - rows: новый массив строк
    */
-  setRows: (rows) => {
-    /** Нормализованный массив строк (или пустой, если прилетело не-массив) */
-    const normalized = Array.isArray(rows) ? rows : [];
-    set({ rows: normalized });
-  },
+  setRows: (rows) => set({ rows: Array.isArray(rows) ? rows : [] }),
 
   /**
    * Добавление бандла из YAML ко всем/указанным исполнителям.
@@ -280,100 +145,91 @@ const useTimelineStore = create<TimelineState>((set, get) => ({
     sourceKey,
   }: AddFromYamlParams) => {
     set((state) => {
-      /** Текущее состояние строк (массив) */
-      const baseRows = Array.isArray(state.rows) ? state.rows : [];
-
-      /** Глубокая поверхностная копия строк и их блоков */
-      const nextRows = baseRows.map((row) => ({ ...row, blocks: [...(row.blocks ?? [])] }));
+      /** Копия текущих строк с блоками */
+      const nextRows = (state.rows ?? []).map((row) => ({
+        ...row,
+        blocks: [...(row.blocks ?? [])],
+      }));
 
       /**
        * Целевые исполнители: либо те, что передали, либо все строки.
        * Преобразуем идентификаторы в стабильные числовые rowId.
        */
-      const targetRowIds = (execIds?.length ? execIds : nextRows.map((r) => r.id)).map(toRowId);
-
-      /** Глобальный счетчик id для новых блоков */
-      const nextBlockId =
-        Math.max(0, ...nextRows.flatMap((r) => r.blocks ?? []).map((b) => b.id)) + 1;
-
-      /** Текущий изменяемый счетчик id, чтобы присваивать уникальные значения */
-      let runningBlockId = nextBlockId;
-
-      /**
-       * Глобальный «самый правый» конец среди ВСЕХ блоков (в абсолютных минутах),
-       * чтобы новый бандл шел строго после уже размещенных.
-       */
-      const globalLastEnd = Math.max(
-        windowStartMin,
-        ...nextRows
-          .flatMap((r) => r.blocks ?? [])
-          .map((b) => {
-            /** Старт блока в минутах */
-            const blockStartMin = parseTimeToMinutes(b.startTime);
-            /** Абсолютный конец блока в минутах (учет перехода через ночь) */
-            const blockEndMin = parseTimeToMinutes(b.endTime);
-            /** Нормализованный конец */
-            return blockEndMin <= blockStartMin ? blockEndMin + 1440 : blockEndMin;
-          }),
+      const targetRowIds = (execIds && execIds.length ? execIds : [toRowId('default')]).map(
+        toRowId,
       );
 
-      /**
-       * Сквозной курсор укладки (минуты), который «перетекает»
-       * от одного исполнителя к следующему, обеспечивая последовательность.
-       */
-      let globalCursorMin = globalLastEnd;
-
-      /** Раскладываем бандл по каждому целевому исполнителю */
+      /** Если строки ещё нет — добавляем пустую */
       for (const rowId of targetRowIds) {
-        /** Строка-исполнитель, куда будем добавлять блоки */
-        const row = nextRows.find((r) => r.id === rowId);
-        if (!row) continue;
-        row.blocks ??= [];
+        if (!nextRows.some((row) => row.id === rowId)) {
+          nextRows.push({ id: rowId, author: '', role: '', blocks: [] });
+        }
+      }
 
+      /** Стартовое время для каждого исполнителя */
+      const baseStartByRow = new Map<number, number>();
+      for (const rowId of targetRowIds) {
+        const row = nextRows.find((r) => r.id === rowId)!;
+        const blocks = row.blocks ?? [];
+        const startMin =
+          blocks.length === 0
+            ? Math.max(0, Math.floor(windowStartMin))
+            : Math.max(
+                ...blocks.map((block) =>
+                  absEnd(parseTimeToMinutes(block.startTime), parseTimeToMinutes(block.endTime)),
+                ),
+              );
+        baseStartByRow.set(rowId, startMin);
+      }
+
+      /** Следующий уникальный id блока */
+      const nextBlockId =
+        Math.max(0, ...nextRows.flatMap((r) => r.blocks ?? []).map((block) => block.id)) + 1;
+      let runningBlockId = nextBlockId;
+
+      /** Индекс шаблона */
+      const nextTplIdxBase =
+        Math.max(-1, ...nextRows.flatMap((r) => r.blocks ?? []).map((block) => block.tplIdx)) + 1;
+
+      /** Добавляем блоки по каждому исполнителю */
+      for (const rowId of targetRowIds) {
+        const row = nextRows.find((r) => r.id === rowId)!;
+        const blocks = row.blocks ?? [];
+        let cursor = baseStartByRow.get(rowId)!;
         /**
          * Новый tplIdx для этой строки — чтобы свежедобавленный бандл
          * не «склеивался» с уже существующими при переносах.
          */
-        const nextTplIdx = row.blocks.length ? Math.max(...row.blocks.map((b) => b.tplIdx)) + 1 : 0;
-
-        /** курсор для укладки стадий внутри одного исполнителя */
-        let localCursorMin = globalCursorMin;
-
+        const tplIdx = nextTplIdxBase + (rowId === targetRowIds[0] ? 0 : 1);
         /** Последовательно добавляем стадии бандла */
         for (const stageKey of stageKeys) {
           /** Метаданные стадии (таймеры и т.п.) */
-          const stageMeta = (stagesField as any)[stageKey] || {};
+          const stageMeta = (stagesField as any)[stageKey];
+          const rawDur = stageMeta?.duration ?? stageMeta?.time ?? 0;
+          const parsed = parseDurationToMinutes(rawDur);
+          const durationMin = min1(parsed);
 
-          /** Длительность стадии (в минутах) */
-          const stageDurationMin = Math.max(
-            1,
-            Number(stageMeta.timer_default ?? stageMeta.timer ?? 0) || 0,
-          );
-
-          /** Абсолютный старт новой стадии (минуты) */
-          const stageStartAbsMin = localCursorMin;
-          /** Абсолютный конец новой стадии (минуты) */
-          const stageEndAbsMin = stageStartAbsMin + stageDurationMin;
+          /** Старт и конец блока */
+          const stageStartAbsMin = cursor;
+          const stageEndAbsMin = stageStartAbsMin + durationMin;
 
           /** Создаем блок стадии */
-          row.blocks.push({
+          blocks.push({
             id: runningBlockId++,
-            label,
-            startTime: toTime(stageStartAbsMin),
-            endTime: toTime(stageEndAbsMin),
-            tplIdx: nextTplIdx,
+            label: String(label ?? stageKey),
+            startTime: toTime(stageStartAbsMin % (24 * 60)),
+            endTime: toTime(stageEndAbsMin % (24 * 60)),
+            tplIdx,
             stageKeys: [stageKey],
-            stagesField: { [stageKey]: stageMeta },
-            sourceKey,
+            stagesField,
+            sourceKey: normSource(sourceKey ?? `${label}::${stageKey}`),
           });
 
-          /** Сдвиг курсора для следующей стадии */
-          localCursorMin = stageEndAbsMin;
+          cursor = stageEndAbsMin;
         }
 
-        /** Следующий исполнитель начнет укладку после конца текущего бандла */
-        globalCursorMin = localCursorMin;
-        packRowSequential(row, windowStartMin);
+        /** Сдвигаем блоки к левому краю */
+        repackRowLeft(row, baseStartByRow.get(rowId)!);
       }
 
       return { rows: nextRows };
@@ -387,23 +243,41 @@ const useTimelineStore = create<TimelineState>((set, get) => ({
    *  - execIds, sourceKey
    */
   removeBySource: ({ execIds, sourceKey }) => {
+    const key = normSource(sourceKey);
+    if (!key) return;
+
     set((state) => {
-      /** Набор целевых rowId (если задан execIds), иначе null => для всех */
-      const idSet = execIds?.length ? new Set(execIds.map(toRowId)) : null;
+      const rows = (state.rows ?? []).map((row) => ({ ...row, blocks: [...(row.blocks ?? [])] }));
+      const byIds = new Set((execIds ?? []).map(toRowId));
 
-      /** Текущее состояние строк */
-      const baseRows = Array.isArray(state.rows) ? state.rows : [];
+      for (const row of rows) {
+        if (byIds.size && !byIds.has(row.id)) continue;
+        row.blocks = (row.blocks ?? []).filter((block) => (block.sourceKey ?? '') !== key);
+        repackRowLeft(row, 0);
+      }
+      return { rows };
+    });
+  },
 
-      /** Новый массив строк с отфильтрованными блоками */
-      const filteredRows = baseRows.map((row) => ({
-        ...row,
-        blocks:
-          idSet && !idSet.has(row.id)
-            ? row.blocks
-            : (row.blocks ?? []).filter((b) => b.sourceKey !== sourceKey),
-      }));
+  /**
+   * Удаление блоков по префиксу sourceKey
+   */
+  removeBySourcePrefix: ({ execIds, prefix }) => {
+    const prefixStr = String(prefix ?? '').trim();
+    if (!prefixStr) return;
 
-      return { rows: filteredRows };
+    set((state) => {
+      const rows = (state.rows ?? []).map((row) => ({ ...row, blocks: [...(row.blocks ?? [])] }));
+      const byIds = new Set((execIds ?? []).map(toRowId));
+
+      for (const row of rows) {
+        if (byIds.size && !byIds.has(row.id)) continue;
+        row.blocks = (row.blocks ?? []).filter(
+          (block) => !String(block.sourceKey ?? '').startsWith(prefixStr),
+        );
+        repackRowLeft(row, 0);
+      }
+      return { rows };
     });
   },
 
@@ -414,89 +288,95 @@ const useTimelineStore = create<TimelineState>((set, get) => ({
    */
   resetExecutors: ({ execIds }: ResetParams = {}) => {
     set((state) => {
-      /** Набор целевых rowId (если задан execIds), иначе null => для всех */
-      const idSet = execIds?.length ? new Set(execIds.map(toRowId)) : null;
-
-      /** Текущее состояние строк */
-      const baseRows = Array.isArray(state.rows) ? state.rows : [];
-
-      /** Новый массив строк с очищенными блоками (по условию) */
-      const clearedRows = baseRows.map((row) => ({
-        ...row,
-        blocks: idSet && !idSet.has(row.id) ? row.blocks : [],
-      }));
-
-      return { rows: clearedRows };
+      if (!execIds || execIds.length === 0) return { rows: [] as Executor[] };
+      const ids = new Set(execIds.map(toRowId));
+      const rows = (state.rows ?? []).filter((r) => !ids.has(r.id));
+      return { rows };
     });
   },
 
   /**- transferRowBlocks — перенести ВСЕ блоки со строки fromExecId на строку toExecId */
   transferRowBlocks: ({ fromExecId, toExecId }) => {
+    const fromId = toRowId(fromExecId);
+    const toId = toRowId(toExecId);
+    if (fromId === toId) return;
+
     set((state) => {
-      /**  поверхностная копия строк и их блоков */
-      const nextRows = (Array.isArray(state.rows) ? state.rows : []).map((r) => ({
-        ...r,
-        blocks: [...(r.blocks ?? [])],
-      }));
+      const rows = Array.isArray(state.rows) ? [...state.rows] : [];
+      const fromIdx = rows.findIndex((r) => r.id === fromId);
+      const toIdx = rows.findIndex((r) => r.id === toId);
+      if (fromIdx < 0 || toIdx < 0) return state;
 
-      const fromId = toRowId(fromExecId);
-      const toId = toRowId(toExecId);
+      const fromRow = { ...rows[fromIdx], blocks: [...(rows[fromIdx].blocks ?? [])] };
+      const toRow = { ...rows[toIdx], blocks: [...(rows[toIdx].blocks ?? [])] };
 
-      const fromRow = nextRows.find((r) => r.id === fromId);
-      let toRow = nextRows.find((r) => r.id === toId);
+      const oldTpls = Array.from(new Set((fromRow.blocks ?? []).map((block) => block.tplIdx))).sort(
+        (a, b) => a - b,
+      );
+      const nextIdxBase = Math.max(-1, ...(toRow.blocks ?? []).map((block) => block.tplIdx)) + 1;
+      const idxMap = new Map<number, number>(oldTpls.map((tpl, i) => [tpl, nextIdxBase + i]));
 
-      /** Если строки приёмника нет — создаём пустую (автор подтянется через useMergeExecutors) */
-      if (!toRow) {
-        toRow = { id: toId, author: '—', role: '', blocks: [] };
-        nextRows.push(toRow);
+      const moving: BlockExt[] = [];
+      for (const block of fromRow.blocks ?? []) {
+        moving.push({ ...block, tplIdx: idxMap.get(block.tplIdx)! });
       }
-
-      /** Если переносить нечего — просто выходим */
-      if (!fromRow || !fromRow.blocks?.length) {
-        return { rows: nextRows };
-      }
-      const destMaxTpl = toRow.blocks?.length ? Math.max(...toRow.blocks.map((b) => b.tplIdx)) : -1;
-
-      /**
-       * Построим упорядоченный список «бандлов» источника:
-       * берём уникальные tplIdx и сортируем по минимальному старту блока в этом бандле,
-       * чтобы сохранить относительный порядок групп.
-       */
-      const srcBundles: Array<{ tpl: number; s: number }> = [];
-      const seen = new Set<number>();
-      for (const b of fromRow.blocks) {
-        if (seen.has(b.tplIdx)) continue;
-        seen.add(b.tplIdx);
-        const minStart = Math.min(
-          ...fromRow.blocks
-            .filter((x) => x.tplIdx === b.tplIdx)
-            .map((x) => parseTimeToMinutes(x.startTime)),
-        );
-        srcBundles.push({ tpl: b.tplIdx, s: minStart });
-      }
-      srcBundles.sort((a, b) => a.s - b.s);
-
-      /** Отображение «старый tplIdx → новый tplIdx» с учётом сдвига базы */
-      const idxMap = new Map<number, number>();
-      srcBundles.forEach((bundle, i) => {
-        idxMap.set(bundle.tpl, destMaxTpl + 1 + i);
-      });
-
-      /**
-       * Переносим блоки: время НЕ меняем, только переиндексируем tplIdx по карте,
-       * чтобы целые бандлы остались бандами и не «разбились».
-       */
-      const moved = fromRow.blocks.map((b) => ({
-        ...b,
-        tplIdx: idxMap.get(b.tplIdx)!,
-      }));
-
-      toRow.blocks = [...(toRow.blocks ?? []), ...moved];
-
       /** Исходную строку очищаем */
       fromRow.blocks = [];
+      toRow.blocks = [...(toRow.blocks ?? []), ...moving];
 
-      return { rows: nextRows };
+      repackRowLeft(fromRow, 0);
+      repackRowLeft(toRow, 0);
+
+      rows[fromIdx] = fromRow;
+      rows[toIdx] = toRow;
+      return { rows };
+    });
+  },
+
+  /**
+   * Сжимает блоки в строке
+   */
+  compactRowLeft: (rowId, startRefMin = 0) => {
+    set((state) => {
+      const rows = Array.isArray(state.rows) ? [...state.rows] : [];
+      const idx = rows.findIndex((r) => r.id === rowId);
+      if (idx < 0) return state;
+      const row = { ...rows[idx], blocks: [...(rows[idx].blocks ?? [])] };
+      repackRowLeft(row, startRefMin);
+      rows[idx] = row;
+      return { rows };
+    });
+  },
+
+  /**
+   * Сжимает блоки в нескольких строках
+   */
+  compactRowsLeft: (rowIds, startRefMin = 0) => {
+    set((state) => {
+      const rows = Array.isArray(state.rows) ? [...state.rows] : [];
+      const setIds = new Set(rowIds.map(toRowId));
+      for (let i = 0; i < rows.length; i++) {
+        if (!setIds.has(rows[i].id)) continue;
+        const row = { ...rows[i], blocks: [...(rows[i].blocks ?? [])] };
+        repackRowLeft(row, startRefMin);
+        rows[i] = row;
+      }
+      return { rows };
+    });
+  },
+
+  /**
+   * Привязывает блоки в строке к левому краю
+   */
+  snapRowLeft: (rowId, startRefMin = 0) => {
+    set((state) => {
+      const rows = Array.isArray(state.rows) ? [...state.rows] : [];
+      const idx = rows.findIndex((r) => r.id === rowId);
+      if (idx < 0) return state;
+      const row = { ...rows[idx], blocks: [...(rows[idx].blocks ?? [])] };
+      repackRowLeft(row, startRefMin);
+      rows[idx] = row;
+      return { rows };
     });
   },
 
@@ -505,22 +385,19 @@ const useTimelineStore = create<TimelineState>((set, get) => ({
   addEmptyExtraRowFor: (baseRowId: number) => {
     set((state) => {
       const rows = Array.isArray(state.rows) ? [...state.rows] : [];
-      const baseIdx = rows.findIndex((r) => r.id === baseRowId);
-      if (baseIdx === -1) return { rows };
+      const baseIdx = rows.findIndex((r) => r.id === baseRowId && !r.isExtra);
+      if (baseIdx < 0) return state;
 
-      /** максимум 1 дополнительная строка на исполнителя */
-      const exists = rows.some((r) => r.isExtra && r.parentId === baseRowId);
-      if (exists) return { rows };
+      if (rows.some((r) => r.isExtra && r.parentId === baseRowId)) return state;
 
       const base = rows[baseIdx];
-      const extraId = toRowId(`extra:${baseRowId}`);
       const extra: Executor = {
-        id: extraId,
+        id: Math.max(1, ...rows.map((r) => r.id)) + 1,
         author: base.author,
         role: base.role,
-        blocks: [],
         isExtra: true,
         parentId: baseRowId,
+        blocks: [],
       };
 
       /** вставляем сразу под базовой строкой */
@@ -534,19 +411,25 @@ const useTimelineStore = create<TimelineState>((set, get) => ({
     get().addEmptyExtraRowFor?.(baseRowId);
   },
 
+  /**
+   * Проверка наличия доп. строки у исполнителя
+   */
   hasExtraRow: (baseRowId: number) => {
     const rows = get().rows ?? [];
     return rows.some((r) => r.isExtra && r.parentId === baseRowId);
   },
 
+  /**
+   * Проверка — это строки одного и того же исполнителя
+   */
   isSamePersonRow: (rowA: number, rowB: number) => {
     if (rowA === rowB) return true;
     const rows = get().rows ?? [];
     const a = rows.find((r) => r.id === rowA);
     const b = rows.find((r) => r.id === rowB);
     if (!a || !b) return false;
-    const aRoot = a.isExtra ? a.parentId : a.id;
-    const bRoot = b.isExtra ? b.parentId : b.id;
+    const aRoot = a.isExtra ? (a.parentId ?? a.id) : a.id;
+    const bRoot = b.isExtra ? (b.parentId ?? b.id) : b.id;
     return aRoot === bRoot;
   },
 
@@ -554,15 +437,17 @@ const useTimelineStore = create<TimelineState>((set, get) => ({
   collapseEmptyExtraFor: (rowOrBaseId: number) => {
     set((state) => {
       const rows = Array.isArray(state.rows) ? [...state.rows] : [];
-      const cur = rows.find((r) => r.id === rowOrBaseId);
-      const baseId = cur?.isExtra ? cur.parentId : rowOrBaseId;
-      if (!baseId) return { rows };
+      const baseId = (() => {
+        const base = rows.find((r) => r.id === rowOrBaseId);
+        if (!base) return rowOrBaseId;
+        return base.isExtra ? (base.parentId ?? rowOrBaseId) : rowOrBaseId;
+      })();
 
       const extraIdx = rows.findIndex((r) => r.isExtra && r.parentId === baseId);
-      if (extraIdx === -1) return { rows };
+      if (extraIdx < 0) return state;
 
       const extra = rows[extraIdx];
-      if ((extra.blocks?.length ?? 0) > 0) return { rows };
+      if ((extra.blocks?.length ?? 0) > 0) return state;
 
       rows.splice(extraIdx, 1);
       return { rows };
@@ -580,4 +465,5 @@ const useTimelineStore = create<TimelineState>((set, get) => ({
 }));
 
 export default useTimelineStore;
-export { toRowId };
+export { toRowId } from '../utils/time';
+export type { BlockExt, Executor } from '@entities/timeline/model/types/types';

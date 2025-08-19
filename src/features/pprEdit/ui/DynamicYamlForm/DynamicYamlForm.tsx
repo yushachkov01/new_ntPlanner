@@ -1,30 +1,48 @@
-import { Form, Typography, Button, message } from 'antd';
+/**
+ * Рендерит динамическую форму по YAML-схеме, ведёт таблицу добавленных строк,
+ * синхронизирует каждую строку с таймлайном
+ * поддерживает редактирование/удаление, и уведомляет родителя о количестве строк.
+ *
+ */
+
+import { Form, Typography, Button, message, Skeleton, Alert } from 'antd';
 import React, { useEffect, useMemo, useState } from 'react';
 
 import './DynamicYamlForm.css';
 import { templateStore } from '@/entities/template/model/store/templateStore';
 import type { FieldCfg } from '@/features/pprEdit/model/types';
+import { buildFieldTree } from '@/features/pprEdit/model/typeSystem/FieldTreeBuilder';
+import { DeclarativeFormRenderer } from '@/features/pprEdit/ui/DeclarativeFormRenderer/DeclarativeFormRenderer';
 import useTimelineStore from '@entities/timeline/model/store/timelineStore';
+import { useTypesStore } from '@entities/types/model/store/typesStore';
 import type { User } from '@entities/users/model/mapping/mapping';
-import { FieldRenderer } from '@features/pprEdit/ui/DynamicYamlForm/FieldRenderer/FieldRenderer';
 
-import { toArray } from './helpers/toArray';
 import { FieldsTable } from '../FieldsTable/FieldsTable';
+import { toArray } from './helpers/toArray';
 
 const { Title } = Typography;
 
+/**
+ * - schema: любая YAML-схема шаблона
+ * - executors?: массив исполнителей
+ * - templateKey?: ключ шаблона
+ * - onRowCountChange?: (count: number) => void — уведомление о числе записей в таблице
+ */
 interface Props {
   schema: any;
   executors?: Array<Pick<User, 'id'> & { author?: string; role?: string }>;
   templateKey?: string;
+  onRowCountChange?: (count: number) => void;
 }
 
 type RowWithSource = Record<string, any> & { __sourceKey?: string };
 
-/** Универсальная проверка заполненности значений формы */
-/** Пусто/не пусто */
+/**
+ * Универсальная проверка пустого значения.
+ * Возвращает true, если значение "пустое"
+ */
 const isEmptyValue = (value: unknown): boolean => {
-  if (value === null || value === undefined) return true;
+  if (value == null) return true;
   if (typeof value === 'string') return value.trim() === '';
   if (typeof value === 'boolean') return value === false;
   if (typeof value === 'number') return Number.isNaN(value);
@@ -41,17 +59,16 @@ const isEmptyValue = (value: unknown): boolean => {
 const hasAnyFilled = (values: Record<string, any>): boolean =>
   Object.values(values).some((value) => !isEmptyValue(value));
 /**
- * Динамическая форма, рендерящая поля по конфигурации YAML.
- * schema: объект YAML-схемы
- * executors: исполнители, для которых будут создаваться блоки
- * templateKey: ключ шаблона
+ * Компонент DynamicYamlForm: динамическая форма + таблица записей + связка с таймлайном.
  */
-export default function DynamicYamlForm({ schema, executors = [], templateKey }: Props) {
+export default function DynamicYamlForm({
+  schema,
+  executors = [],
+  templateKey,
+  onRowCountChange,
+}: Props) {
   /** Управление формой Ant Design */
   const [form] = Form.useForm();
-
-  /** Состояние корневых полей */
-  const [rootFields, setRootFields] = useState<FieldCfg[]>([]);
   const [localData, setLocalData] = useState<RowWithSource[]>([]);
 
   /**
@@ -82,15 +99,81 @@ export default function DynamicYamlForm({ schema, executors = [], templateKey }:
   const removeBySource = useTimelineStore((state) => state.removeBySource);
 
   /**
-   * реакция на смену схемы - перерисовываем поля и очищаем значения
+   *   для декларативной формы:
+   * - types: загруженные типы
+   * - loadTypes: загрузка
+   * - isTypesLoading/error: состояние загрузки
+   */
+  const types = useTypesStore((state) => state.types);
+  const loadTypes = useTypesStore((state) => state.load);
+  const isTypesLoading = useTypesStore((state) => state.isLoading);
+  const typesError = useTypesStore((state) => state.error);
+
+  /**
+   * Флаг готовности типов: есть объект и в нём есть ключи.
+   */
+  const typesReady = !!types && typeof types === 'object' && Object.keys(types).length > 0;
+
+  /**
+   *  форс-загрузка типов при монтировании (первичный прогрев).
    */
   useEffect(() => {
-    /**
-     * нормализация полей формы из schema.settings
-     * params
-     */
-    setRootFields(toArray({ fields: schema.settings }));
+    void loadTypes(true);
+  }, [loadTypes]);
 
+  /**
+   * догрузка типов, если они ещё не готовы.
+   */
+  useEffect(() => {
+    if (!typesReady) void loadTypes();
+  }, [typesReady, loadTypes, types]);
+
+  /**
+   * Исходные параметры для формы (верхний уровень),
+   */
+  const rawParams = useMemo(() => {
+    const params =
+      Array.isArray(schema?.params) && schema.params.length
+        ? (schema.params as FieldCfg[])
+        : (toArray({ fields: schema?.settings }) as FieldCfg[]);
+    return params;
+  }, [schema?.params, schema?.settings]);
+
+  /**
+   * Делаем ключи полей уникальными
+   */
+  const uiParams = useMemo(() => {
+    const seenCounters = new Map<string, number>();
+    return (rawParams ?? []).map((fieldConfig: any) => {
+      const originalKey = String(fieldConfig.key ?? fieldConfig.name ?? '');
+      if (!originalKey) return fieldConfig;
+      const ordinalIndex = seenCounters.get(originalKey) ?? 0;
+      seenCounters.set(originalKey, ordinalIndex + 1);
+      return ordinalIndex === 0
+        ? fieldConfig
+        : { ...fieldConfig, key: `${originalKey}__${ordinalIndex + 1}` };
+    }) as FieldCfg[];
+  }, [rawParams]);
+
+  /**
+   * Колонки таблицы (видимые заголовки) по текущей конфигурации полей.
+   */
+  const tableColumns = useMemo<FieldCfg[]>(
+    () =>
+      (uiParams ?? []).map((fieldConfig: any) => ({
+        key: fieldConfig.key ?? fieldConfig.name,
+        name: fieldConfig.label ?? fieldConfig.name ?? fieldConfig.key,
+        label: fieldConfig.label,
+        type: fieldConfig.type,
+        widget: (fieldConfig as any).widget,
+      })),
+    [uiParams],
+  );
+
+  /**
+   * Сброс формы/таблицы при смене схемы/шаблона.
+   */
+  useEffect(() => {
     /**
      * сброс значений формы
      */
@@ -105,7 +188,14 @@ export default function DynamicYamlForm({ schema, executors = [], templateKey }:
      * выход из режима редактирования
      */
     setEditingIndex(null);
-  }, [schema.headline, schema.settings, form, templateKey]);
+  }, [schema?.headline, uiParams, form, templateKey]);
+
+  /**
+   * Уведомляем родителя о количестве строк в таблице.
+   */
+  useEffect(() => {
+    onRowCountChange?.(localData.length);
+  }, [localData.length, onRowCountChange]);
 
   /**
    * вычисляет упорядоченную цепочку стадий из YAML
@@ -118,36 +208,30 @@ export default function DynamicYamlForm({ schema, executors = [], templateKey }:
      * копия входной схемы
      */
     const rawSchema = schema ?? {};
+    let startStageKey: string | undefined;
+    let stagesField: Record<string, any> = {};
 
-    /**
-     * стартовый ключ стадии
-     */
-    const startKey: string | undefined =
-      Array.isArray(rawSchema.current_stages) && rawSchema.current_stages.length
-        ? rawSchema.current_stages[0]
-        : undefined;
+    if (rawSchema?.current_stages && rawSchema?.stages_field) {
+      const asArray = Array.isArray(rawSchema.current_stages)
+        ? rawSchema.current_stages
+        : [rawSchema.current_stages];
+      startStageKey = asArray?.[0];
+      stagesField = rawSchema.stages_field ?? {};
+    } else if (rawSchema?.start && rawSchema?.stages) {
+      startStageKey = rawSchema.start;
+      stagesField = rawSchema.stages ?? {};
+    }
 
-    /**
-     * словарь метаданных стадий
-     */
-    const stagesField: Record<string, any> = rawSchema.stages_field ?? {};
-
-    /**
-     * результирующий список ключей стадий по порядку
-     */
     const stageKeys: string[] = [];
+    let cursorKey = startStageKey;
+    let stepGuardCounter = 0;
 
-    /**
-     * текущий курсор-ключ при обходе цепочки стадий
-     */
-    let cursorKey = startKey;
-    let guard = 0;
-
-    while (cursorKey && cursorKey !== 'exit' && guard < 200) {
-      if (!stagesField[cursorKey]) break;
+    while (cursorKey && cursorKey !== 'exit' && stagesField[cursorKey] && stepGuardCounter < 500) {
       stageKeys.push(cursorKey);
-      cursorKey = stagesField[cursorKey]?.if_success;
-      guard++;
+      const successNext = stagesField[cursorKey]?.if_success;
+      if (!successNext) break;
+      cursorKey = Array.isArray(successNext) ? successNext[0] : successNext;
+      stepGuardCounter++;
     }
 
     return { stageKeys, stagesField: stagesField as Record<string, any> };
@@ -168,12 +252,7 @@ export default function DynamicYamlForm({ schema, executors = [], templateKey }:
     /**
      * ключ раздела в templateStore
      */
-    const templateSectionKey = schema.headline;
-
-    /**
-     * предыдущее глобальное состояние значений по этому ключу
-     * params
-     */
+    const templateSectionKey = schema?.headline;
     const prevGlobalValues = getTemplateValues(templateSectionKey);
 
     /**
@@ -198,18 +277,12 @@ export default function DynamicYamlForm({ schema, executors = [], templateKey }:
        * новая строка таблицы с прикреплённым sourceKey
        */
       const nextRow: RowWithSource = { ...vals, __sourceKey: sourceKey };
-
-      /**
-       * новое значение таблицы
-       */
-      const nextLocalData = [...localData, nextRow];
-
-      setLocalData(nextLocalData);
+      setLocalData((prev) => [...prev, nextRow]);
       setTemplateValues(templateSectionKey, [...prevGlobalValues, nextRow]);
 
       if (stageKeys.length) {
         addFromYaml({
-          label: schema.headline || schema.templateName || 'Новая запись',
+          label: schema?.headline || schema?.templateName || 'Новая запись',
           stageKeys,
           stagesField,
           execIds: executorIds,
@@ -228,20 +301,27 @@ export default function DynamicYamlForm({ schema, executors = [], templateKey }:
        */
       const patchedRow: RowWithSource = { ...vals, __sourceKey: sourceKey };
 
-      /**
-       * новый массив локальных данных с заменой строки по индексу
-       */
-      const nextLocalData = localData.map((rowItem, index) =>
-        index === editingIndex ? patchedRow : rowItem,
+      setLocalData((prev) =>
+        prev.map((rowItem, index) => (index === editingIndex ? patchedRow : rowItem)),
       );
-
-      setLocalData(nextLocalData);
       setTemplateValues(
         templateSectionKey,
         prevGlobalValues.map((rowItem: any, index: number) =>
           index === editingIndex ? patchedRow : rowItem,
         ),
       );
+      if (sourceKey) {
+        removeBySource({ sourceKey });
+        if (stageKeys.length) {
+          addFromYaml({
+            label: schema?.headline || schema?.templateName || 'Обновлённая запись',
+            stageKeys,
+            stagesField,
+            execIds: executorIds,
+            sourceKey,
+          });
+        }
+      }
     }
 
     /**
@@ -256,48 +336,39 @@ export default function DynamicYamlForm({ schema, executors = [], templateKey }:
    * params
    * - index: индекс удаляемой записи
    */
-  const handleDelete = (index: number) => {
-    /**
-     * ключ раздела в templateStore — headline схемы
-     * params
-     */
-    const templateSectionKey = schema.headline;
-
-    /**
-     * предыдущее глобальное состояние значений по этому ключу
-     */
+  const handleDelete = (index: number, passedSourceKey?: string) => {
+    const templateSectionKey = schema?.headline;
     const prevGlobalValues = getTemplateValues(templateSectionKey);
 
-    /**
-     * удаляемая строка
-     */
-    const rowToRemove = localData[index];
+    const sourceKey = String(
+      passedSourceKey ??
+        (localData[index] as any)?.__sourceKey ??
+        (prevGlobalValues?.[index] as any)?.__sourceKey ??
+        '',
+    ).trim();
 
-    /**
-     * её sourceKey (если есть)
-     */
-    const rowSourceKey = rowToRemove?.__sourceKey;
+    if (sourceKey) {
+      /** Удаляем блоки с таймлайна по ключу (для всех исполнителей) */
+      removeBySource({ sourceKey });
 
-    /**
-     * локальные данные без удаляемой строки
-     */
-    const nextLocalData = localData.filter((_, i) => i !== index);
-
-    setLocalData(nextLocalData);
-    setTemplateValues(
-      templateSectionKey,
-      prevGlobalValues.filter((_: any, i: number) => i !== index),
-    );
-
-    if (rowSourceKey) {
-      /**
-       * id исполнителей, у которых нужно удалить связанные блоки
-       */
-      const executorIds = (executors ?? []).map((executor: any) => executor.id);
-      removeBySource({ execIds: executorIds, sourceKey: rowSourceKey });
+      setLocalData((prev) => prev.filter((row) => (row as any)?.__sourceKey !== sourceKey));
+      setTemplateValues(
+        templateSectionKey,
+        (prevGlobalValues ?? []).filter((row: any) => row?.__sourceKey !== sourceKey),
+      );
+    } else {
+      /** если ключа нет, удаляем по индексу только в таблицах */
+      setLocalData((prev) => prev.filter((_, i) => i !== index));
+      setTemplateValues(
+        templateSectionKey,
+        (prevGlobalValues ?? []).filter((_: any, i: number) => i !== index),
+      );
     }
 
-    if (editingIndex === index) {
+    if (
+      editingIndex === index ||
+      (sourceKey && localData[editingIndex ?? -1]?.__sourceKey === sourceKey)
+    ) {
       form.resetFields();
       setEditingIndex(null);
     }
@@ -326,25 +397,59 @@ export default function DynamicYamlForm({ schema, executors = [], templateKey }:
     form.setFieldsValue(formRow);
   };
 
+  /**
+   * Построение дерева полей (если types загружены).
+   */
+  const fieldTree = useMemo(() => {
+    if (!typesReady) return { nodes: [] };
+    try {
+      const tree = buildFieldTree(uiParams ?? [], types);
+      return tree;
+    } catch {
+      return { nodes: [] };
+    }
+  }, [uiParams, typesReady, types]);
+
   return (
     <section className="dyf__root">
-      <Title level={4}>{schema.headline}</Title>
+      <Title level={4}>{schema?.headline}</Title>
+
       <div className="dyf__layout">
         <div className="dyf__form-col">
           <Form form={form} layout="vertical" onFinish={onFinish}>
-            {rootFields.map((field) => (
-              <FieldRenderer key={field.key} field={field} path={[]} onRemove={() => {}} />
-            ))}
+            {!typesReady ? (
+              <>
+                {typesError && (
+                  <Alert
+                    type="warning"
+                    showIcon
+                    message="Не удалось загрузить types.yaml"
+                    description={typesError}
+                    style={{ marginBottom: 12 }}
+                  />
+                )}
+                <Skeleton active paragraph={{ rows: 3 }} />
+              </>
+            ) : (
+              <DeclarativeFormRenderer nodes={fieldTree.nodes} />
+            )}
+
             <Form.Item>
-              <Button type="primary" htmlType="submit" block>
+              <Button
+                type="primary"
+                htmlType="submit"
+                block
+                disabled={!typesReady && isTypesLoading}
+              >
                 {editingIndex === null ? 'Добавить запись' : 'Сохранить изменения'}
               </Button>
             </Form.Item>
           </Form>
         </div>
+
         <div className="dyf__table-col">
           <FieldsTable
-            rootFields={rootFields}
+            rootFields={tableColumns}
             data={localData}
             onEdit={handleEdit}
             onDelete={handleDelete}
