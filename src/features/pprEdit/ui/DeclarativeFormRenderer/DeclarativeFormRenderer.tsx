@@ -29,37 +29,19 @@ function useDeviceOptions() {
   /** Белый список хостов, выбранный во вкладке «Сетевое оборудование» */
   const deviceWhitelist = usePlannedTaskStore((store) => store.deviceWhitelist);
 
-  /** Опции для селекта устройств */
-  const options = useMemo(() => {
+  return useMemo(() => {
     const filteredDevices =
       deviceWhitelist && deviceWhitelist.length
-        ? devices.filter((device: any) => deviceWhitelist.includes(device.hostname))
-        : devices;
-
-    return (filteredDevices ?? []).map((device: any) => ({
-      label: device.hostname,
-      value: String(device.id),
+        ? (devices ?? []).filter((device: any) => deviceWhitelist.includes(device?.hostname))
+        : (devices ?? []);
+    return filteredDevices.map((device: any) => ({
+      label: device?.hostname,
+      value: String(device?.id),
     }));
   }, [devices, deviceWhitelist]);
-
-  if (import.meta.env && (import.meta as any).env?.DEV) {
-    console.debug('[DYF] device options', options, {
-      whitelist: deviceWhitelist,
-      devicesCount: devices?.length ?? 0,
-    });
-  }
-
-  return options;
 }
 
-/**
- * Декларативный рендерер формы.
- * Рендерит поля по массиву FieldNode: обычные поля или составные (interface).
- *
- * @param nodes — массив узлов для рендера
- */
 export const DeclarativeFormRenderer: React.FC<Props> = ({ nodes }) => {
-  /** Опции устройств для селекта ^device */
   const deviceOptions = useDeviceOptions();
 
   if (import.meta.env && (import.meta as any).env?.DEV) {
@@ -71,6 +53,7 @@ export const DeclarativeFormRenderer: React.FC<Props> = ({ nodes }) => {
         widget: (node as any).widget,
         rawType: (node as any).rawType,
         label: (node as any).label,
+        multiple: (node as any).multiple,
       })),
     );
   }
@@ -196,6 +179,8 @@ const InterfaceField: React.FC<{
 
   /** Флаг блокировки селекта name, если устройство не выбрано */
   const isNameDisabled = !watchedDevice;
+  const isMulti = !!node.multiple;
+  const ifaceNameField = isMulti ? 'names' : 'name'; // массив имён при multiple
 
   return (
     <>
@@ -217,8 +202,9 @@ const InterfaceField: React.FC<{
       </Col>
 
       <Col xs={24}>
-        <Form.Item name={[fieldKey, 'name']} label="Интерфейс">
+        <Form.Item name={[fieldKey, ifaceNameField]} label={isMulti ? 'Интерфейсы' : 'Интерфейс'}>
           <Select
+            mode={isMulti ? 'multiple' : undefined}
             placeholder={namePlaceholder}
             loading={isLoading}
             options={ifaceOptions}
@@ -236,7 +222,7 @@ const InterfaceField: React.FC<{
         </Form.Item>
       </Col>
 
-      {node.withVlan && (
+      {node.withVlan && !isMulti && (
         <Col xs={24}>
           <Form.Item name={[fieldKey, 'vlan']} label="Куда переключаем VLAN">
             <InputNumber style={{ width: '100%' }} min={1} max={4094} />

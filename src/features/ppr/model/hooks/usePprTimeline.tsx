@@ -94,9 +94,12 @@ export function usePprTimeline({
   /** Снапшот строк стора */
   const rowsState = (Array.isArray(rowsStateRaw) ? rowsStateRaw : []) as Executor[];
 
-  /** Все блоки (для «Все задачи» и деталей) */
-  const allBlocks = useMemo(() => rowsState.flatMap((row) => row.blocks ?? []), [rowsState]);
+  /** Показываем только сетевых инженеров */
+  const ROLE_NET = 'Сетевой инженер';
+  const netRows = useMemo(() => rowsState.filter((r) => (r.role ?? '') === ROLE_NET), [rowsState]);
 
+  /** Все блоки (для «Все задачи») — ТОЛЬКО сетевые */
+  const allBlocks = useMemo(() => netRows.flatMap((row) => row.blocks ?? []), [netRows]);
   /** Карта «покрытых» блоков */
   const coverageMap = useMemo(() => calcCoveredMap(allBlocks), [allBlocks]);
 
@@ -128,14 +131,15 @@ export function usePprTimeline({
   /** Что рисуем: «Все Задачи» + нужные строки */
   const rowsToRender: Executor[] = [
     { id: 0, author: 'Все Задачи', role: '', blocks: allBlocks },
-    ...(usersExpanded ? rowsState : rowsState.filter((row) => row.id === expandedExecutorId)),
+    ...(usersExpanded ? netRows : netRows.filter((row) => row.id === expandedExecutorId)),
   ];
 
   /** Активный блок */
   const activeBlock = allBlocks.find((block) => block.id === activeBlockId) ?? null;
+  const rowsForUi = netRows;
 
   return {
-    data: { rowsState, rowsToRender, allBlocks },
+    data: { rowsState, rowsToRender, allBlocks, rowsForUi },
     layout: {
       hourLabels,
       windowSpanMin,

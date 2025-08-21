@@ -1,7 +1,17 @@
-import { Modal, Tabs, List, Button, Empty } from 'antd';
-import React, { useMemo } from 'react';
+import { Modal, Tabs, List, Empty, Button } from 'antd';
+import React, { useEffect, useMemo, useState } from 'react';
 import '@/features/pprEdit/ui/AddExecutorModal/AddExecutorModal.css';
 
+interface Candidate {
+  id: number | string;
+  author?: string;
+  fio?: string;
+  name?: string;
+  first_name?: string;
+  last_name?: string;
+  role?: string | { name: string };
+  roleId?: number;
+}
 /**
  * Props для модального окна добавления исполнителя ИЗ таба «Исполнители»
  * @property open — флаг, открыто ли модальное окно
@@ -13,43 +23,52 @@ interface Props {
   open: boolean;
   onClose: () => void;
   onSelect: (id: number | string) => void;
-  candidates: Array<{
-    id: number | string;
-    author?: string;
-    fio?: string;
-    name?: string;
-    first_name?: string;
-    last_name?: string;
-    role?: string | { name: string };
-  }>;
+  /** кандидаты — ровно те, что выбраны в табе «Исполнители» */
+  candidates: Candidate[];
 }
 
 const { TabPane } = Tabs;
 
-const normalizeAuthor = (u: any): string => {
+const ROLE_NET = 'Сетевой инженер';
+const ROLE_SMR = 'Инженер СМР';
+const ROLE_CUST = 'Представитель Заказчика';
+const ROLES_ORDER = [ROLE_NET, ROLE_SMR, ROLE_CUST] as const;
+
+const normalizeAuthor = (u: Candidate): string => {
   const candidate =
     u?.author ?? u?.fio ?? u?.name ?? `${u?.last_name ?? ''} ${u?.first_name ?? ''}`.trim();
   return candidate && candidate.length > 0 ? candidate : `User ${u?.id ?? ''}`;
 };
 
-/**
- * Модальное окно выбора из списка исполнителей
- */
+const normalizeRole = (u: Candidate): string => {
+  if (u?.role && typeof u.role === 'object' && 'name' in u.role) {
+    return String((u.role as any).name);
+  }
+  if (typeof u?.role === 'string') return u.role;
+  return '';
+};
 const AddSelectedFromTabModal: React.FC<Props> = ({ open, onClose, onSelect, candidates = [] }) => {
   /** Группировка кандидатов по роли */
-  const groupedByRole = useMemo(() => {
-    const map = new Map<string, any[]>();
-    for (const u of candidates) {
-      const roleName =
-        (typeof (u as any)?.role === 'string' ? (u as any).role : (u as any)?.role?.name) ||
-        'Сетевой инженер';
-      if (!map.has(roleName)) map.set(roleName, []);
-      map.get(roleName)!.push(u);
+  const buckets = useMemo(() => {
+    const map: Record<string, Candidate[]> = {
+      [ROLE_NET]: [],
+      [ROLE_SMR]: [],
+      [ROLE_CUST]: [],
+    };
+    for (const candidate of candidates) {
+      const role = normalizeRole(candidate);
+      if (role && map[role]) map[role].push(candidate);
     }
     return map;
   }, [candidates]);
 
-  const roleTabs = Array.from(groupedByRole.entries());
+  /** активная вкладка с учётом наличия людей */
+  const [activeRole, setActiveRole] = useState<string>(ROLE_NET);
+  useEffect(() => {
+    if (!open) return;
+    const firstWithPeople = ROLES_ORDER.find((r) => (buckets[r] ?? []).length > 0) ?? ROLE_NET;
+    setActiveRole(firstWithPeople);
+  }, [open, buckets]);
 
   return (
     <Modal
@@ -58,35 +77,39 @@ const AddSelectedFromTabModal: React.FC<Props> = ({ open, onClose, onSelect, can
       footer={null}
       title="Добавить исполнителя"
       rootClassName="add-executor-modal"
+      destroyOnClose={false}
+      maskClosable
     >
-      <Tabs>
-        {roleTabs.length > 0 ? (
-          roleTabs.map(([roleName, list]) => (
+      <Tabs activeKey={activeRole} onChange={setActiveRole}>
+        {ROLES_ORDER.map((roleName) => {
+          const list = buckets[roleName] ?? [];
+          return (
             <TabPane tab={roleName} key={roleName}>
-              <List
-                dataSource={list}
-                renderItem={(user: any) => (
-                  <List.Item>
-                    <Button
-                      type="text"
-                      className="add-executor-modal__tabs"
-                      onClick={() => {
-                        onSelect(user.id);
-                        onClose();
-                      }}
-                    >
-                      {normalizeAuthor(user)}
-                    </Button>
-                  </List.Item>
-                )}
-              />
+              {list.length === 0 ? (
+                <Empty description="Нет доступных исполнителей" />
+              ) : (
+                <List
+                  dataSource={list}
+                  rowKey={(candidate) => String(candidate.id)}
+                  renderItem={(user) => (
+                    <List.Item>
+                      <Button
+                        type="text"
+                        className="add-executor-modal__tabs"
+                        onClick={() => {
+                          onSelect(user.id);
+                          onClose();
+                        }}
+                      >
+                        {normalizeAuthor(user)}
+                      </Button>
+                    </List.Item>
+                  )}
+                />
+              )}
             </TabPane>
-          ))
-        ) : (
-          <TabPane tab="Исполнители" key="__empty__">
-            <Empty description="Нет доступных исполнителей" />
-          </TabPane>
-        )}
+          );
+        })}
       </Tabs>
     </Modal>
   );

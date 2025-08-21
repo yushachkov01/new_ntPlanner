@@ -31,6 +31,37 @@ interface Props extends TaskDetailProps {
 }
 
 /**
+ * Обрабатываем поле time чтобы в последующем (длительность в минутах )
+ */
+function parseDurationToMinutesSafe(value: unknown): number | undefined {
+  if (value == null) return undefined;
+
+  if (typeof value === 'number' && isFinite(value)) {
+    const n = Math.floor(value);
+    return n > 0 ? n : undefined;
+  }
+
+  if (typeof value === 'string') {
+    const v = value.trim().toLowerCase();
+    if (/^\d+$/.test(v)) {
+      const n = parseInt(v, 10);
+      return n > 0 ? n : undefined;
+    }
+    const hMatch = v.match(/(\d+)\s*h/);
+    const mMatch = v.match(/(\d+)\s*m/);
+
+    if (hMatch || mMatch) {
+      const h = hMatch ? parseInt(hMatch[1], 10) : 0;
+      const m = mMatch ? parseInt(mMatch[1], 10) : 0;
+      const total = h * 60 + m;
+      return total > 0 ? total : undefined;
+    }
+  }
+
+  return undefined;
+}
+
+/**
  * Детальная форма задачи:
  * отображение этапов, исполнителей, формы полей и конфигов,
  * а также обработка готовности и загрузки файлов.
@@ -175,6 +206,14 @@ const TaskDetail: FC<Props> = ({
           )
           .filter((user): user is typeof currentUser => !!user && user.role === meta.engineer);
 
+        //  начальное значение таймера для формы
+        const yamlMinutes =
+          parseDurationToMinutesSafe((meta as any)?.time) ??
+          parseDurationToMinutesSafe((meta as any)?.duration) ??
+          parseDurationToMinutesSafe((meta as any)?.timer_default);
+
+        const timerInitial = Math.max(1, yamlMinutes ?? durationMinutes ?? 1);
+
         return (
           <section key={key} className="task-detail__stage">
             <p className="task-detail__header">{meta.description}</p>
@@ -203,7 +242,7 @@ const TaskDetail: FC<Props> = ({
                 <Form
                   layout="vertical"
                   initialValues={{
-                    timer: meta.timer_default,
+                    timer: timerInitial,
                     ...Object.fromEntries(
                       Object.values(meta.fields ?? {}).map((field) => [
                         field.key,
@@ -218,6 +257,7 @@ const TaskDetail: FC<Props> = ({
                   }}
                 >
                   <Form.Item
+                    key="__timer__"
                     label="Таймер (мин)"
                     name="timer"
                     rules={[{ required: true, type: 'number', min: 1 }]}
@@ -263,6 +303,7 @@ const TaskDetail: FC<Props> = ({
             </div>
 
             <AddExecutorModal
+              key={`modal-${key}`}
               open={modalStageKey === key}
               onClose={() => setModalStageKey(null)}
               onSelect={handleSelectExecutor}

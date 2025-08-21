@@ -55,7 +55,7 @@ const PprPage: FC<Props> = ({
   /** значения и хелперы таймлайна из хука */
   const {
     /** снимок всех строк таймлайна из стора */
-    data: { rowsState, rowsToRender, allBlocks },
+    data: { rowsState, rowsToRender, allBlocks, rowsForUi },
 
     /** параметры разметки и геометрии таймлайна */
     layout: {
@@ -182,7 +182,7 @@ const PprPage: FC<Props> = ({
 
                 <PprRow
                   row={row}
-                  rowsState={rowsState}
+                  rowsState={rowsForUi}
                   hourLabels={hourLabels}
                   spanMin={windowSpanMin}
                   startMin={windowStartMin}

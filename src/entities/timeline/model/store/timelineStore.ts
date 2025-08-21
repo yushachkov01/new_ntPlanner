@@ -106,6 +106,11 @@ interface TimelineState {
   collapseEmptyExtraFor?: (rowOrBaseId: number) => void;
   /**  массово: убрать все пустые доп. строки (на случай dnd в ту же строку) */
   collapseAllEmptyExtras?: () => void;
+  /**
+   * Обновить длительность всех блоков конкретной стадии внутри бандла
+   * Используется при ручном изменении «Таймер (мин)» в карточке задачи.
+   */
+  updateTplStageDuration?: (params: { tplIdx: number; stageKey: string; minutes: number }) => void;
 }
 
 /**
@@ -114,6 +119,63 @@ interface TimelineState {
  * @returns округлённое значение (>= 1)
  */
 const min1 = (numberValue: number) => (numberValue > 0 ? Math.floor(numberValue) : 1);
+
+/**
+ * Построение последовательности стадий по цепочке if_success,
+ * начиная со стартового ключа
+ */
+function orderStagesByIfSuccess(
+  stageKeys: string[],
+  stagesField: Record<string, StageField>,
+): string[] {
+  const out: string[] = [];
+  if (!stageKeys || stageKeys.length === 0) return out;
+
+  let current = stageKeys[0];
+  const visited = new Set<string>();
+  let guard = 0;
+
+  while (current && !visited.has(current) && guard++ < 1000) {
+    const meta: any = (stagesField as any)[current];
+    if (!meta) break;
+
+    out.push(current);
+    visited.add(current);
+
+    let next: any = meta?.if_success;
+    if (Array.isArray(next)) next = next[0];
+
+    // конец ветки
+    if (!next || typeof next !== 'string' || next === 'exit') break;
+
+    // если следующая стадия не определена в stages — останавливаемся
+    if (!(next in stagesField)) break;
+    current = next;
+  }
+  return out;
+}
+
+/**
+ * стартовая стадия цепочки if_success:
+ */
+function guessStartStageKey(
+  stageSet: Set<string>,
+  stagesField: Record<string, StageField>,
+): string | undefined {
+  const hasIncoming = new Set<string>();
+  for (const key of stageSet) {
+    const meta: any = (stagesField as any)[key];
+    let next: any = meta?.if_success;
+    if (Array.isArray(next)) next = next[0];
+    if (typeof next === 'string' && next !== 'exit' && stageSet.has(next)) {
+      hasIncoming.add(next);
+    }
+  }
+  for (const key of stageSet) {
+    if (!hasIncoming.has(key)) return key;
+  }
+  return [...stageSet][0];
+}
 
 /**
  * Хук-слайс Zustand для работы с таймлайном.
@@ -191,6 +253,9 @@ const useTimelineStore = create<TimelineState>((set, get) => ({
       const nextTplIdxBase =
         Math.max(-1, ...nextRows.flatMap((r) => r.blocks ?? []).map((block) => block.tplIdx)) + 1;
 
+      /** строим порядок по if_success, начиная с первого ключа  */
+      const orderedStageKeys = orderStagesByIfSuccess(stageKeys, stagesField);
+
       /** Добавляем блоки по каждому исполнителю */
       for (const rowId of targetRowIds) {
         const row = nextRows.find((r) => r.id === rowId)!;
@@ -202,7 +267,7 @@ const useTimelineStore = create<TimelineState>((set, get) => ({
          */
         const tplIdx = nextTplIdxBase + (rowId === targetRowIds[0] ? 0 : 1);
         /** Последовательно добавляем стадии бандла */
-        for (const stageKey of stageKeys) {
+        for (const stageKey of orderedStageKeys) {
           /** Метаданные стадии (таймеры и т.п.) */
           const stageMeta = (stagesField as any)[stageKey];
           const rawDur = stageMeta?.duration ?? stageMeta?.time ?? 0;
@@ -460,6 +525,98 @@ const useTimelineStore = create<TimelineState>((set, get) => ({
       const rows = Array.isArray(state.rows) ? [...state.rows] : [];
       const filtered = rows.filter((r) => !(r.isExtra && (r.blocks?.length ?? 0) === 0));
       return { rows: filtered };
+    });
+  },
+  /**
+   * Обновить длительность блоков конкретной стадии внутри бандла
+   * Используется при ручном изменении «Таймер (мин)» в карточке задачи.
+   */
+  updateTplStageDuration: ({ tplIdx, stageKey, minutes }) => {
+    const safeMinutes = min1(Number(minutes) || 0);
+
+    set((state) => {
+      const rows = (state.rows ?? []).map((row) => ({ ...row, blocks: [...(row.blocks ?? [])] }));
+      for (const row of rows) {
+        const blocks = row.blocks ?? [];
+        const blocksInTemplate = blocks.filter((block) => block.tplIdx === tplIdx);
+        if (blocksInTemplate.length === 0) continue;
+        /**
+         * пересобираем СТРОГО по цепочке if_success,
+         */
+        const stageSet = new Set<string>();
+        for (const block of blocksInTemplate) {
+          for (const stageKeyCandidate of block.stageKeys ?? []) {
+            stageSet.add(stageKeyCandidate);
+          }
+        }
+        const anyStagesField = (blocksInTemplate[0]?.stagesField ?? {}) as Record<
+          string,
+          StageField
+        >;
+
+        /** находим стартовую стадию по графу if_success */
+        const startKey = guessStartStageKey(stageSet, anyStagesField);
+
+        /** строим цепочку от старта */
+        const chain = startKey ? orderStagesByIfSuccess([startKey], anyStagesField) : [];
+
+        /** сопоставляем ключам цепочки реальные блоки */
+        const sortedBlocks: BlockExt[] = [];
+        for (const chainKey of chain) {
+          const block = blocksInTemplate.find(
+            (blockCandidate) =>
+              Array.isArray(blockCandidate.stageKeys) &&
+              blockCandidate.stageKeys.includes(chainKey),
+          );
+          if (block) sortedBlocks.push(block);
+        }
+
+        if (sortedBlocks.length === 0) continue;
+
+        /** старт бандла */
+        const firstStart = Math.min(
+          ...sortedBlocks.map((block) => parseTimeToMinutes(block.startTime)),
+        );
+
+        /** текущие длительности каждого блока бандла  */
+        const durations = sortedBlocks.map((block) => {
+          const start = parseTimeToMinutes(block.startTime);
+          const end = parseTimeToMinutes(block.endTime);
+          return Math.max(1, absEnd(start, end) - start);
+        });
+
+        /** подменяем длительность только у нужной стадии */
+        const targetIndex = sortedBlocks.findIndex(
+          (block) => Array.isArray(block.stageKeys) && block.stageKeys.includes(stageKey),
+        );
+        if (targetIndex >= 0) {
+          durations[targetIndex] = safeMinutes;
+        }
+
+        /** пересобираем времена start/end */
+        let cursor = firstStart;
+        for (let stageIndex = 0; stageIndex < sortedBlocks.length; stageIndex++) {
+          const block = sortedBlocks[stageIndex];
+          const duration = Math.max(1, durations[stageIndex]);
+          const newStart = cursor;
+          const newEnd = cursor + duration;
+
+          /** переписываем исходный объект в row.blocks */
+          const idxInRow = blocks.findIndex((blockCandidate) => blockCandidate.id === block.id);
+          if (idxInRow >= 0) {
+            blocks[idxInRow] = {
+              ...blocks[idxInRow],
+              startTime: toTime(newStart % (24 * 60)),
+              endTime: toTime(newEnd % (24 * 60)),
+            };
+          }
+          cursor = newEnd;
+        }
+        /** чтобы не было перекрытий */
+        repackRowLeft(row, 0);
+      }
+
+      return { rows };
     });
   },
 }));

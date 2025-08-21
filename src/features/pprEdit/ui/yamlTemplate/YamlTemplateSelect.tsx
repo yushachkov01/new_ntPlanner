@@ -17,21 +17,12 @@ import type { User } from '@entities/users/model/mapping/mapping';
 
 import * as jsYaml from 'js-yaml';
 
-interface Props {
-  bucket: string;
-  prefix?: string;
-  value?: string;
-  onChange?: (template: Template) => void;
-  executors?: User[];
-  /** кандидаты из вкладки «Исполнители» (ровно то, что выбрал пользователь в табе) */
-  tabCandidates?: User[];
-  addExecutor?: (executor: User) => void;
-  removeExecutor?: (executorId: number) => void;
+const { Text } = Typography;
 
-  /** оставлено для совместимости пропсов, в логике не используется */
-  minOneExecutorRequired?: boolean;
-  hasRows?: boolean;
-}
+const ROLE_NET = 'Сетевой инженер';
+const ROLE_SMR = 'Инженер СМР';
+const ROLE_CUST = 'Представитель Заказчика';
+const ROLES_ORDER = [ROLE_NET, ROLE_SMR, ROLE_CUST] as const;
 
 /** Нормализация ФИО/имени так же, как в редакторе */
 const normalizeAuthor = (u: any): string => {
@@ -59,7 +50,6 @@ const joinKey = (prefix?: string, name?: string) => {
 const resolveObjectKeyCandidates = (tpl: Template, prefix: string | undefined): string[] => {
   const list: string[] = [];
   const anyTpl = tpl as any;
-
   if (anyTpl?.objectKey) list.push(String(anyTpl.objectKey));
   if (anyTpl?.key && String(anyTpl.key).includes('/')) list.push(String(anyTpl.key));
 
@@ -70,7 +60,6 @@ const resolveObjectKeyCandidates = (tpl: Template, prefix: string | undefined): 
   }
   return Array.from(new Set(list.filter(Boolean)));
 };
-
 const parseYamlToObject = (text: string) => {
   try {
     return YAML.parse(text);
@@ -80,6 +69,23 @@ const parseYamlToObject = (text: string) => {
   } catch {}
   return undefined;
 };
+
+interface Props {
+  bucket: string;
+  prefix?: string;
+  value?: string;
+  onChange?: (template: Template) => void;
+
+  /** общий пул уже добавленных исполнителей (каждый со своей ролью) */
+  executors?: User[];
+  /** кандидаты из вкладки «Исполнители» (ровно то, что выбрал пользователь в табе) */
+  tabCandidates?: User[];
+  addExecutor?: (executor: User) => void;
+  removeExecutor?: (executorId: number) => void;
+
+  minOneExecutorRequired?: boolean;
+  hasRows?: boolean;
+}
 
 const YamlTemplateSelect: FC<Props> = ({
   bucket,
@@ -103,8 +109,6 @@ const YamlTemplateSelect: FC<Props> = ({
   const [isModalOpen, setModalOpen] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
 
-  const { Text } = Typography;
-
   /** загрузка списка шаблонов */
   useEffect(() => {
     let isActive = true;
@@ -118,16 +122,6 @@ const YamlTemplateSelect: FC<Props> = ({
       isActive = false;
     };
   }, [bucket, prefix, fetchTemplates]);
-
-  /** роли, допустимые для исполнителей, из выбранного шаблона */
-  const filterRoles = useMemo(() => {
-    if (!selectedTemplate) return [];
-    const rawSettings = (selectedTemplate.raw as any)?.settings;
-    if (typeof rawSettings !== 'object' || !rawSettings) return [];
-    return Object.values(rawSettings)
-      .map((s: any) => s?.engineer)
-      .filter((r: any) => typeof r === 'string');
-  }, [selectedTemplate]);
 
   /** опции выбора шаблонов */
   const selectOptions = useMemo(
@@ -144,14 +138,17 @@ const YamlTemplateSelect: FC<Props> = ({
     [templateList, prefix],
   );
 
-  /** кандидаты для модалки: из таба, иначе — executors этого шаблона */
-  const modalCandidates = useMemo(() => {
-    const base = (tabCandidates?.length ? tabCandidates : executors) as any[];
-    if (!filterRoles.length) return base;
-    return base.filter((u) =>
-      filterRoles.includes(typeof u?.role === 'string' ? u.role : u?.role?.name),
-    );
-  }, [tabCandidates, executors, filterRoles]);
+  /* executors by role */
+  const roleBuckets = useMemo(() => {
+    const toRoleName = (user: any) => normalizeRole(user, roles);
+    return {
+      [ROLE_NET]: executors.filter((user) => toRoleName(user) === ROLE_NET),
+      [ROLE_SMR]: executors.filter((user) => toRoleName(user) === ROLE_SMR),
+      [ROLE_CUST]: executors.filter((user) => toRoleName(user) === ROLE_CUST),
+    };
+  }, [executors, roles]);
+
+  const modalCandidates = useMemo(() => tabCandidates ?? [], [tabCandidates]);
 
   /** Удаление исполнителя с автоподстановкой текущего пользователя + перенос блоков */
   const handleRemoveExecutor = (executorId: number) => {
@@ -167,7 +164,6 @@ const YamlTemplateSelect: FC<Props> = ({
       message.info('Нельзя удалить единственного исполнителя — остаётся текущий пользователь.');
       return;
     }
-
     if (!me) {
       message.warning('Не найден текущий пользователь. Удаление последнего исполнителя запрещено.');
       return;
@@ -175,18 +171,12 @@ const YamlTemplateSelect: FC<Props> = ({
 
     const author = normalizeAuthor(me);
     const roleName = normalizeRole(me, roles);
-
     if (!executors.some((ex) => String(ex.id) === String(me.id))) {
       addExecutor?.({ id: me.id, author, role: roleName } as User);
     }
-
     try {
       transferRowBlocks({ fromExecId: executorId, toExecId: me.id });
-    } catch (e) {
-      console.warn('[YamlTemplateSelect] transferRowBlocks failed:', e);
-    }
-
-    /** удаляем выбранного исполнителя из списка */
+    } catch {}
     removeExecutor?.(executorId);
   };
 
@@ -210,7 +200,6 @@ const YamlTemplateSelect: FC<Props> = ({
     /**  Читем YAML из MinIO по кандидатам ключей */
     const candidates = resolveObjectKeyCandidates(tpl as Template, prefix);
     if (!candidates.length) {
-      console.error('[YamlTemplateSelect] Не могу определить путь до YAML для шаблона', tpl);
       message.error('Не удалось определить путь до шаблона.');
       return;
     }
@@ -226,20 +215,59 @@ const YamlTemplateSelect: FC<Props> = ({
         }
       }
     }
-
     if (!parsed) {
-      console.error(
-        '[YamlTemplateSelect] Не удалось прочитать YAML ни по одному пути:',
-        candidates,
-      );
       message.error('Не удалось загрузить файл шаблона.');
       return;
     }
 
-    /** поднимаем шаблон С KEY и С ОБЪЕКТОМ raw */
     const enriched: Template = { ...(tpl as Template), key: ensuredKey, raw: parsed } as Template;
     setSelectedTemplate(enriched);
     onChange?.(enriched);
+  };
+
+  /** маппинг роли в класс цветного индикатора (те же цвета, что на таймлайне) */
+  const roleChipClass = (roleTitle: (typeof ROLES_ORDER)[number]) => {
+    if (roleTitle === ROLE_NET) return 'yaml-role-chip--engineer';
+    if (roleTitle === ROLE_SMR) return 'yaml-role-chip--installer';
+    if (roleTitle === ROLE_CUST) return 'yaml-role-chip--auditor';
+    return '';
+  };
+
+  /** колонка роли: заголовок + список исполнителей этой роли */
+  const renderRoleColumn = (roleTitle: (typeof ROLES_ORDER)[number]) => {
+    const list = roleBuckets[roleTitle] || [];
+
+    /** если исполнителей этой роли нет — ничего не показываем */
+    if (list.length === 0) return null;
+
+    return (
+      <div className="yaml-role-col" key={roleTitle}>
+        <div className="yaml-executor-row">
+          <div className="yaml-executor-field">
+            <Text className="executor-role">
+              {roleTitle}
+              <span className={`yaml-role-chip ${roleChipClass(roleTitle)}`} />
+            </Text>
+          </div>
+        </div>
+
+        {list.map((exe) => (
+          <div key={`${roleTitle}-${exe.id}`} className="yaml-executor-row">
+            <div className="yaml-executor-field">
+              <input className="yaml-executor-input" value={normalizeAuthor(exe)} readOnly />
+            </div>
+            <Button
+              danger
+              type="default"
+              className="yaml-executor-remove-btn"
+              onClick={() => handleRemoveExecutor(exe.id)}
+            >
+              Удалить
+            </Button>
+          </div>
+        ))}
+      </div>
+    );
   };
 
   return (
@@ -258,25 +286,15 @@ const YamlTemplateSelect: FC<Props> = ({
             onChange={handleTemplatePick}
           />
 
-          {executors.map((executorItem) => (
-            <div key={executorItem.id} className="yaml-executor-row">
-              <div className="yaml-executor-field">
-                <Text className="executor-role">Сетевой инженер</Text>
-                <Text className="yaml-executor-input">{normalizeAuthor(executorItem)}</Text>
-              </div>
-              <Button
-                danger
-                type="default"
-                className="yaml-executor-remove-btn"
-                onClick={() => handleRemoveExecutor(executorItem.id)}
-              >
-                Удалить
-              </Button>
-            </div>
-          ))}
+          <div className="yaml-roles-inline">{ROLES_ORDER.map(renderRoleColumn)}</div>
 
           <div className="yaml-executor-add-row">
-            <Button onClick={() => setModalOpen(true)}>Добавить исполнителя</Button>
+            <Button
+              onClick={() => setModalOpen(true)}
+              disabled={(modalCandidates ?? []).length === 0}
+            >
+              Добавить исполнителя
+            </Button>
           </div>
 
           <AddSelectedFromTabModal
@@ -288,14 +306,19 @@ const YamlTemplateSelect: FC<Props> = ({
                 (modalCandidates as any[]).find((u) => String(u.id) === String(id)) ||
                 (users as any[]).find((u) => String(u.id) === String(id));
 
-              if (picked && addExecutor) {
-                const author = normalizeAuthor(picked);
-                const roleName = normalizeRole(picked, roles);
-                addExecutor({ id: picked.id, author, role: roleName } as User);
-              } else {
-                message.info('Все выбранные в табе уже добавлены.');
+              if (!picked) {
+                message.warning('Не удалось найти выбранного исполнителя.');
+                return;
               }
-              setModalOpen(false);
+
+              if (executors.some((e) => String(e.id) === String(picked.id))) {
+                message.info('Этот исполнитель уже добавлен.');
+                return;
+              }
+
+              const author = normalizeAuthor(picked);
+              const roleName = normalizeRole(picked, roles);
+              addExecutor?.({ id: (picked as any).id, author, role: roleName } as User);
             }}
           />
         </>

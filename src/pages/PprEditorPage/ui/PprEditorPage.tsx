@@ -67,6 +67,7 @@ const PprEditorPage: React.FC = () => {
 
   /** используем «точечное» удаление блоков по префиксу sourceKey (templateKey) */
   const removeBySourcePrefix = useTimelineStore((s) => (s as any).removeBySourcePrefix);
+  const updateTplStageDuration = useTimelineStore((s) => (s as any).updateTplStageDuration);
 
   /**
    * Список дополнительных (вторичных) шаблонов, добавленных пользователем
@@ -336,7 +337,13 @@ const PprEditorPage: React.FC = () => {
               gridEnd={timelineWindow.end}
               executors={timelineExecutors}
               onBlockClick={() => {}}
-              onTimerChange={() => {}}
+              onTimerChange={(tplIdx, stageKey, newTimer) => {
+                updateTplStageDuration?.({
+                  tplIdx,
+                  stageKey,
+                  minutes: Number(newTimer) || 0,
+                });
+              }}
               onMoveBetweenExecutors={handleMoveBetweenExecutors}
             />
           </div>
