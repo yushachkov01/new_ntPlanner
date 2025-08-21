@@ -9,6 +9,7 @@ import { WorkTimeStore } from '@entities/workTimeStore/model/store/workTimeStore
 import { usePprExecutors } from '@features/pprEdit/model/hooks/usePprExecutors';
 import { usePprWizard } from '@features/pprEdit/model/hooks/usePprWizard';
 import { useTimelineMove } from '@features/pprEdit/model/hooks/useTimelineMove';
+import ConfirmDeleteDialog from '@features/pprEdit/ui/ConfirmDeleteDialog/ConfirmDeleteDialog';
 import DynamicYamlForm from '@features/pprEdit/ui/DynamicYamlForm/DynamicYamlForm';
 import { PlannedTaskDropdown } from '@features/pprEdit/ui/PlannedTaskDropdown/PlannedTaskDropdown';
 import PprEditorTabs from '@features/pprEdit/ui/PprEditorTabs/PprEditorTabs';
@@ -71,6 +72,7 @@ const PprEditorPage: React.FC = () => {
    * Список дополнительных (вторичных) шаблонов, добавленных пользователем
    */
   const [additionalTemplates, setAdditionalTemplates] = useState<Template[]>([]);
+  const [hiddenExtraSlots, setHiddenExtraSlots] = useState<Set<number>>(new Set());
   /**
    * Обработчик перемещения бандлов между исполнителями в таймлайне
    */
@@ -112,20 +114,41 @@ const PprEditorPage: React.FC = () => {
    */
   const addTemplate = () => {
     const me = normalizeExec(currentUser);
+    const newIndex = additionalTemplates.length;
     setAdditionalTemplates((prev) => [...prev, {} as Template]);
     setExecutorsByTemplate((prevList) => [...prevList, currentUser ? [me] : []]);
+    setHiddenExtraSlots((prev) => {
+      const next = new Set(prev);
+      next.delete(newIndex);
+      return next;
+    });
   };
 
   /** Сменить шаблон (точечно удаляем блоки ) */
-  const changeTemplate = (index: number, newTemplate: Template) => {
+  const changeTemplate = async (index: number, newTemplate: Template) => {
     const prevKey = (additionalTemplates[index] as any)?.key;
     const execIds = (executorsByTemplate[index + 1] ?? []).map(normalizeExecId);
     if (prevKey) {
       /** удаляем только блоки, созданные «старым» шаблоном этой вкладки */
       removeBySourcePrefix?.({ execIds, prefix: String(prevKey) });
     }
-    setAdditionalTemplates((prev) => prev.map((item, idx) => (idx === index ? newTemplate : item)));
+    const resolved = await resolveTemplateWithRaw(newTemplate as Template, BUCKET, PREFIX);
+    if (!resolved) {
+      message.error('Не удалось загрузить YAML шаблона.');
+      return;
+    }
+    setAdditionalTemplates((prev) => prev.map((item, idx) => (idx === index ? resolved : item)));
+    setHiddenExtraSlots((prev) => {
+      const next = new Set(prev);
+      next.delete(index);
+      return next;
+    });
   };
+
+  /** состояние модалки подтверждения */
+  const [confirmState, setConfirmState] = useState<
+    { open: true; kind: 'main' | 'extra'; index?: number } | { open: false }
+  >({ open: false });
 
   /**
    * Итоговый набор исполнителей для таймлайна (уникальный)
@@ -198,7 +221,7 @@ const PprEditorPage: React.FC = () => {
         </div>
       )}
       {tabsConfirmed && (
-        <div style={{ marginTop: 16 }}>
+        <div className="ppr-template-wrap" style={{ marginTop: 16 }}>
           <YamlTemplateSelect
             bucket={BUCKET}
             value={(mainTemplate as any)?.key}
@@ -236,6 +259,15 @@ const PprEditorPage: React.FC = () => {
             removeExecutor={(executorId) => removeExecutor(0, executorId)}
             tabCandidates={tabExecutors}
           />
+          <Button
+            className="ppr-template-wrap__delete"
+            danger
+            ghost
+            disabled={!(mainTemplate as any)?.key}
+            onClick={() => setConfirmState({ open: true, kind: 'main' })}
+          >
+            Удалить шаблон
+          </Button>
         </div>
       )}
       {step3Done && (
@@ -254,28 +286,44 @@ const PprEditorPage: React.FC = () => {
         </div>
       )}
 
-      {additionalTemplates.map((template, idx) => (
-        <React.Fragment key={idx}>
-          <YamlTemplateSelect
-            bucket={BUCKET}
-            value={(template as any).key}
-            onChange={(newTpl) => changeTemplate(idx, newTpl)}
-            executors={(executorsByTemplate[idx + 1] ?? []).map(normalizeExec)}
-            addExecutor={(executor) => addExecutor(idx + 1, executor)}
-            removeExecutor={(executorId) => removeExecutor(idx + 1, executorId)}
-            tabCandidates={tabExecutors}
-          />
-          {(template as any)?.key && (template as any)?.raw && (
-            <DynamicYamlForm
-              key={`extra-${idx}-${(template as any)?.key}-${tplReadyTick}`}
-              schema={(template as any)?.raw}
-              templateKey={(template as any)?.key}
-              executors={(executorsByTemplate[idx + 1] ?? []).map(normalizeExec)}
-              onRowCountChange={() => {}}
-            />
-          )}
-        </React.Fragment>
-      ))}
+      {additionalTemplates.map((template, idx) => {
+        if (hiddenExtraSlots.has(idx)) return null;
+        return (
+          <React.Fragment key={idx}>
+            <div className="ppr-template-wrap" style={{ marginTop: 12 }}>
+              <YamlTemplateSelect
+                bucket={BUCKET}
+                value={(template as any).key}
+                onChange={(newTpl) => changeTemplate(idx, newTpl)}
+                executors={(executorsByTemplate[idx + 1] ?? []).map(normalizeExec)}
+                addExecutor={(executor) => addExecutor(idx + 1, executor)}
+                removeExecutor={(executorId) => removeExecutor(idx + 1, executorId)}
+                tabCandidates={tabExecutors}
+              />
+
+              <Button
+                className="ppr-template-wrap__delete"
+                danger
+                ghost
+                disabled={!(template as any)?.key}
+                onClick={() => setConfirmState({ open: true, kind: 'extra', index: idx })}
+              >
+                Удалить шаблон
+              </Button>
+            </div>
+
+            {(template as any)?.key && (template as any)?.raw && (
+              <DynamicYamlForm
+                key={`extra-${idx}-${(template as any)?.key}-${tplReadyTick}`}
+                schema={(template as any)?.raw}
+                templateKey={(template as any)?.key}
+                executors={(executorsByTemplate[idx + 1] ?? []).map(normalizeExec)}
+                onRowCountChange={() => {}}
+              />
+            )}
+          </React.Fragment>
+        );
+      })}
 
       {step5Done && (
         <>
@@ -294,6 +342,22 @@ const PprEditorPage: React.FC = () => {
           </div>
         </>
       )}
+      <ConfirmDeleteDialog
+        open={!!confirmState.open}
+        kind={confirmState.open ? confirmState.kind : undefined}
+        index={confirmState.open ? confirmState.index : undefined}
+        mainTemplate={mainTemplate}
+        additionalTemplates={additionalTemplates}
+        executorsByTemplate={executorsByTemplate}
+        normalizeExecId={normalizeExecId}
+        removeBySourcePrefix={removeBySourcePrefix}
+        setMainTemplate={setMainTemplate}
+        setParamsConfirmed={setParamsConfirmed}
+        setTabsConfirmed={setTabsConfirmed}
+        setAdditionalTemplates={setAdditionalTemplates}
+        setHiddenExtraSlots={setHiddenExtraSlots}
+        onCancel={() => setConfirmState({ open: false })}
+      />
     </section>
   );
 };

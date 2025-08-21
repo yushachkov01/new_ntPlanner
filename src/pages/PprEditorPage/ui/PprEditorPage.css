@@ -77,3 +77,13 @@ body.dark .ppr-editor-card__tabs {
 .ppr-editor-card__tabs * {
   word-break: break-word;
 }
+.ppr-template-wrap {
+  position: relative;
+}
+
+.ppr-template-wrap__delete {
+  position: absolute;
+  right: 0;
+  top: 0px;
+  z-index: 2;
+}
