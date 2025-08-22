@@ -1,25 +1,31 @@
-import { Button, Input, InputNumber, Select, Form, Typography, Table } from 'antd';
+import { CheckOutlined, RollbackOutlined } from '@ant-design/icons';
+import { Button, Collapse, Typography } from 'antd';
 import type { FC } from 'react';
-import { useState, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import type { StageField } from '@/entities/template/model/store/templateStore';
-import { executorStore } from '@entities/executor/model/store/executorStore';
+import {
+  buildFullStageOrder,
+  buildIncomingTypeMap,
+  type IncomingType,
+} from '@/shared/utils/stageGraph';
 import { userStore } from '@entities/user/model/store/UserStore';
+import { useUserStore } from '@entities/users/model/store/userStore';
+import { useSyncedOpenKeys } from '@features/ppr/model/hooks/useSyncedOpenKeys';
 import type { TaskDetailProps } from '@features/ppr/model/types';
 import type { ConfigFile as BaseConfigFile } from '@features/ppr/ui/ConfigUploader/ConfigUploader';
-import ConfigUploader from '@features/ppr/ui/ConfigUploader/ConfigUploader';
-import AddExecutorModal from '@features/pprEdit/ui/AddExecutorModal/AddExecutorModal';
 import './TaskDetail.css';
+import type { ConfigFile, SimpleUser } from '@features/ppr/ui/StagePanel/StagePanel';
+import { StagePanel } from '@features/ppr/ui/StagePanel/StagePanel';
 
 const { Text } = Typography;
 
-/**
- * Расширяем базовый файл конфига, добавляя время и автора загрузки
- */
-interface ConfigFile extends BaseConfigFile {
-  uploadedAt: string;
-  uploadedBy: string;
-}
+/** Цвета бейджа роли исполнителя справа в заголовке панели. */
+const ROLE_COLORS: Record<string, string> = {
+  engineer: '#1e90ff',
+  installer: '#f97316',
+  auditor: '#ef4444',
+};
 
 /**
  * Свойства компонента TaskDetail
@@ -31,40 +37,9 @@ interface Props extends TaskDetailProps {
 }
 
 /**
- * Обрабатываем поле time чтобы в последующем (длительность в минутах )
- */
-function parseDurationToMinutesSafe(value: unknown): number | undefined {
-  if (value == null) return undefined;
-
-  if (typeof value === 'number' && isFinite(value)) {
-    const n = Math.floor(value);
-    return n > 0 ? n : undefined;
-  }
-
-  if (typeof value === 'string') {
-    const v = value.trim().toLowerCase();
-    if (/^\d+$/.test(v)) {
-      const n = parseInt(v, 10);
-      return n > 0 ? n : undefined;
-    }
-    const hMatch = v.match(/(\d+)\s*h/);
-    const mMatch = v.match(/(\d+)\s*m/);
-
-    if (hMatch || mMatch) {
-      const h = hMatch ? parseInt(hMatch[1], 10) : 0;
-      const m = mMatch ? parseInt(mMatch[1], 10) : 0;
-      const total = h * 60 + m;
-      return total > 0 ? total : undefined;
-    }
-  }
-
-  return undefined;
-}
-
-/**
- * Детальная форма задачи:
- * отображение этапов, исполнителей, формы полей и конфигов,
- * а также обработка готовности и загрузки файлов.
+ * Контейнер TaskDetail отвечает за:
+ * - построение порядка этапов и типов «входа» (success/failure),
+ * - управление открытыми панелями Collapse,
  */
 const TaskDetail: FC<Props> = ({
   label,
@@ -75,37 +50,70 @@ const TaskDetail: FC<Props> = ({
   onClose,
   onTimerChange,
 }) => {
-  /** Текущий пользователь */
+  /** Текущий пользователь. */
   const currentUser = userStore((state) => state.user)!;
-  /** Словарь всех исполнителей из стора */
-  const executorMap = executorStore((state) => state.executors);
-  /** Плоский массив исполнителей */
-  const allExecutors = useMemo(() => Object.values(executorMap).flat(), [executorMap]);
 
-  /** Инициализируем отображение исполнителей по этапам */
-  const initialExecutorsByStage: Record<string, number[]> = {};
-  stageKeys.forEach((stageKey) => {
-    initialExecutorsByStage[stageKey] = [currentUser.id];
-  });
-  const [executorsByStage, setExecutorsByStage] = useState(initialExecutorsByStage);
+  /**
+   * Исполнители из стора пользователей.
+   * Хук может вернуть массив или словарь — нормализуем к массиву.
+   */
+  const rawUsers = useUserStore((s: any) => s.users ?? s.executors ?? s.list ?? s);
+  const allExecutors: SimpleUser[] = useMemo(() => {
+    if (!rawUsers) return [];
+    return Array.isArray(rawUsers)
+      ? (rawUsers as SimpleUser[])
+      : (Object.values(rawUsers) as SimpleUser[]);
+  }, [rawUsers]);
 
-  /** Состояние для открытия модального выбора исполнителя */
-  const [modalStageKey, setModalStageKey] = useState<string | null>(null);
-  /** Список конфигураций с метаданными */
-  const [configs, setConfigs] = useState<ConfigFile[]>([]);
   /** Расчёт длительности задачи в минутах */
   const [startHour, startMinute] = startTime.split(':').map(Number);
   const [endHour, endMinute] = endTime.split(':').map(Number);
   const durationMinutes = endHour * 60 + endMinute - (startHour * 60 + startMinute);
 
-  /** Список этапов с их данными для рендера */
-  const orderedStages = useMemo(
-    () =>
-      stageKeys
-        .map((stageKey) => ({ key: stageKey, meta: stagesField[stageKey] }))
-        .filter((entry): entry is { key: string; meta: StageField } => !!entry.meta),
-    [stageKeys, stagesField],
-  );
+  /** Порядок стадий для отображения (детерминированный). */
+  const fullStageOrder = useMemo(() => buildFullStageOrder(stagesField), [stagesField]);
+  /** Тип «входа» в каждую стадию (success/failure) — для иконки слева. */
+  const incomingType = useMemo(() => buildIncomingTypeMap(stagesField), [stagesField]);
+  /** Первая (стартовая) стадия — помечаем как success. */
+  const startStageKey = fullStageOrder[0];
+
+  /**
+   * Управление открытыми панелями Collapse:
+   * - поддерживаем мульти-раскрытие,
+   * - синхронизируемся с внешним `stageKeys[0]` (клик на таймлайне).
+   */
+  const [openKeys, setOpenKeys] = useSyncedOpenKeys(fullStageOrder, stageKeys?.[0]);
+
+  /**
+   * Инициализация исполнительских списков на каждую стадию.
+   * По умолчанию назначаем текущего юзера.
+   */
+  const initialExecutorsByStage: Record<string, number[]> = useMemo(() => {
+    const init: Record<string, number[]> = {};
+    fullStageOrder.forEach((stageKey) => {
+      init[stageKey] = [currentUser.id];
+    });
+    return init;
+  }, [fullStageOrder, currentUser.id]);
+
+  const [executorsByStage, setExecutorsByStage] = useState(initialExecutorsByStage);
+
+  /** Системно чистим состояние при смене набора стадий */
+  useEffect(() => {
+    setExecutorsByStage((prev) => {
+      const next: Record<string, number[]> = {};
+      for (const k of fullStageOrder) {
+        next[k] = prev[k] ?? [currentUser.id];
+      }
+      return next;
+    });
+  }, [fullStageOrder, currentUser.id]);
+
+  /** Модалка добавления исполнителя — к какой стадии сейчас открыта. */
+  const [modalStageKey, setModalStageKey] = useState<string | null>(null);
+
+  /** Конфиги загруженных файлов (общие для формы). */
+  const [configs, setConfigs] = useState<ConfigFile[]>([]);
 
   /** Колонки таблицы конфигов */
   const columns = [
@@ -158,7 +166,7 @@ const TaskDetail: FC<Props> = ({
             ...file,
             uploadedAt: currentTimestamp,
             uploadedBy: currentUser.author,
-          });
+          } as ConfigFile);
         }
       });
       return updatedConfigs;
@@ -183,6 +191,35 @@ const TaskDetail: FC<Props> = ({
     setModalStageKey(null);
   };
 
+  /**
+   * Рендер заголовка панели: слева — иконка направления (success/failure),
+   * по центру — название, справа — бейдж роли (цвет зависит от исполнителя).
+   */
+  const makePanelLabel = (stageKey: string) => {
+    const title = (stagesField[stageKey] as any)?.description ?? stageKey;
+
+    const role: string | undefined = (stagesField[stageKey] as any)?.executor;
+    const color = (role && ROLE_COLORS[role]) || '#9ca3af';
+
+    /** стартовую стадию всегда маркируем как success */
+    const inType: IncomingType = stageKey === startStageKey ? 'success' : incomingType[stageKey];
+
+    return (
+      <div className="td-collapse-title">
+        <span className="td-collapse-title__left">
+          {inType === 'success' && <CheckOutlined className="td-dir-icon success" />}
+          {inType === 'failure' && <RollbackOutlined className="td-dir-icon failure" />}
+        </span>
+
+        <span className="td-collapse-title__text">{title}</span>
+
+        <span className="td-collapse-title__right">
+          <i className="role-swatch" style={{ backgroundColor: color }} />
+        </span>
+      </div>
+    );
+  };
+
   return (
     <div className="task-detail">
       <div className="task-detail__header">
@@ -196,122 +233,48 @@ const TaskDetail: FC<Props> = ({
           </button>
         </div>
       </div>
+      <Collapse
+        className="task-detail__collapse"
+        activeKey={openKeys}
+        onChange={(keys) => {
+          const arr = Array.isArray(keys) ? (keys as string[]) : keys ? ([keys] as string[]) : [];
+          setOpenKeys(arr);
+        }}
+        destroyInactivePanel={false}
+        items={fullStageOrder.map((stageKey) => {
+          const meta = stagesField[stageKey]!;
+          const roleRequired = (meta as any)?.executor;
 
-      {orderedStages.map(({ key, meta }) => {
-        const assignedExecutors = (executorsByStage[key] || [])
-          .map((executorId) =>
-            executorId === currentUser.id
-              ? currentUser
-              : allExecutors.find((exec) => exec.id === executorId),
-          )
-          .filter((user): user is typeof currentUser => !!user && user.role === meta.engineer);
+          const assignedExecutors: SimpleUser[] = (executorsByStage[stageKey] || [])
+            .map((id) =>
+              id === currentUser.id ? currentUser : allExecutors.find((e) => e.id === id),
+            )
+            .filter((u): u is any => !!u && u.role === roleRequired);
 
-        //  начальное значение таймера для формы
-        const yamlMinutes =
-          parseDurationToMinutesSafe((meta as any)?.time) ??
-          parseDurationToMinutesSafe((meta as any)?.duration) ??
-          parseDurationToMinutesSafe((meta as any)?.timer_default);
-
-        const timerInitial = Math.max(1, yamlMinutes ?? durationMinutes ?? 1);
-
-        return (
-          <section key={key} className="task-detail__stage">
-            <p className="task-detail__header">{meta.description}</p>
-            {assignedExecutors.map((user) => (
-              <div key={user.id} className="yaml-executor-row">
-                <div className="yaml-executor-field">
-                  <Text className="executor-role">{user.role}</Text>
-                  <input className="yaml-executor-input" value={user.author} readOnly />
-                </div>
-                <Button
-                  danger
-                  type="default"
-                  className="yaml-executor-remove-btn"
-                  onClick={() => handleRemoveExecutor(key, user.id)}
-                >
-                  Удалить
-                </Button>
-              </div>
-            ))}
-
-            <div style={{ display: 'flex', gap: 20 }}>
-              <div style={{ flex: '0 0 360px' }}>
-                <div className="yaml-executor-add-row">
-                  <Button onClick={() => setModalStageKey(key)}>Добавить исполнителя</Button>
-                </div>
-                <Form
-                  layout="vertical"
-                  initialValues={{
-                    timer: timerInitial,
-                    ...Object.fromEntries(
-                      Object.values(meta.fields ?? {}).map((field) => [
-                        field.key,
-                        field.defaultValue,
-                      ]),
-                    ),
-                  }}
-                  onValuesChange={(changedValues) => {
-                    if (changedValues.timer != null) {
-                      onTimerChange?.(key, changedValues.timer as number);
-                    }
-                  }}
-                >
-                  <Form.Item
-                    key="__timer__"
-                    label="Таймер (мин)"
-                    name="timer"
-                    rules={[{ required: true, type: 'number', min: 1 }]}
-                  >
-                    <InputNumber style={{ width: '100%' }} />
-                  </Form.Item>
-                  {meta.fields &&
-                    Object.values(meta.fields)
-                      .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
-                      .map((field) => (
-                        <Form.Item key={field.key} label={field.name} name={field.key}>
-                          {field.widget === 'dropdown' ? (
-                            <Select
-                              placeholder="Выберите…"
-                              options={(field.options ?? []).map((option) => ({
-                                value: option,
-                                label: option,
-                              }))}
-                            />
-                          ) : (
-                            <Input />
-                          )}
-                        </Form.Item>
-                      ))}
-                </Form>
-              </div>
-
-              <div style={{ flex: 1 }}>
-                <div style={{ textAlign: 'center', marginBottom: 8 }}>
-                  <b>Конфигурации</b>
-                </div>
-                <ConfigUploader onChange={handleConfigChange} />
-                <Table
-                  dataSource={configs}
-                  columns={columns}
-                  rowKey="uid"
-                  pagination={false}
-                  size="small"
-                  bordered
-                  locale={{ emptyText: 'Нет данных' }}
-                />
-              </div>
-            </div>
-
-            <AddExecutorModal
-              key={`modal-${key}`}
-              open={modalStageKey === key}
-              onClose={() => setModalStageKey(null)}
-              onSelect={handleSelectExecutor}
-              filterRoles={[meta.engineer]}
-            />
-          </section>
-        );
-      })}
+          return {
+            key: stageKey,
+            label: makePanelLabel(stageKey),
+            children: (
+              <StagePanel
+                stageKey={stageKey}
+                meta={meta}
+                durationMinutes={durationMinutes}
+                assignedExecutors={assignedExecutors}
+                onOpenAddExecutor={(k) => setModalStageKey(k)}
+                onRemoveExecutor={handleRemoveExecutor}
+                onTimerChange={onTimerChange}
+                columns={columns}
+                configs={configs}
+                onConfigsChange={handleConfigChange}
+                modalStageKey={modalStageKey}
+                onCloseModal={() => setModalStageKey(null)}
+                onSelectExecutor={handleSelectExecutor}
+                filterRole={roleRequired}
+              />
+            ),
+          };
+        })}
+      />
     </div>
   );
 };

@@ -11,7 +11,6 @@
   font-family: Arial, sans-serif;
 }
 
-/* ---------------- Заголовок (Header) ---------------- */
 .task-detail__header {
   display: flex;
   justify-content: space-between;
@@ -33,29 +32,6 @@
   font-size: 0.9rem;
   color: var(--task-text-secondary, #4b5563);
 }
-.task-detail__toggle-full {
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  padding: 0.2rem;
-}
-.toggle-arrow {
-  display: inline-block;
-  width: 0.75rem;
-  height: 0.75rem;
-  border-right: 0.1rem solid var(--task-text-secondary, #4b5563);
-  border-bottom: 0.1rem solid var(--task-text-secondary, #4b5563);
-  transform: rotate(45deg);
-  transition:
-    transform 0.2s,
-    border-color 0.2s;
-}
-.toggle-arrow.up {
-  transform: rotate(-135deg);
-}
-.task-detail__toggle-full:hover .toggle-arrow {
-  border-color: var(--task-text-primary, #1f2937);
-}
 .task-detail__close {
   background: transparent;
   border: none;
@@ -68,213 +44,122 @@
   color: var(--task-text-primary, #1f2937);
 }
 
-/* ───────── Основной контент ───────── */
-.task-detail__body--fullinfo {
-  border-top: 1px solid var(--task-border, #d1d5db);
-  padding-top: 0.75rem;
-  margin-top: 0.5rem;
-}
-
-.task-detail__main-row {
-  display: flex;
-  gap: 24px;
-}
-
-.task-detail__left-col {
-  min-width: 200px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.task-detail__type-row {
-  display: flex;
-  gap: 4px;
-  align-items: baseline;
-}
-.task-detail__type-row strong {
-  font-weight: 600;
-}
-.task-detail__type-value {
-  font-size: 0.95rem;
-  color: var(--task-text-primary, #1f2937);
-}
-
-.task-detail__performer {
-  padding-bottom: 6px;
-}
-.task-detail__performer,
-.task-detail__duration {
-  display: flex;
-  gap: 4px;
-  align-items: baseline;
-}
-.task-detail__performer strong,
-.task-detail__duration strong {
-  font-weight: 600;
-}
-.task-detail__performer-value,
-.task-detail__duration-value {
-  font-size: 0.95rem;
-  color: var(--task-text-primary, #1f2937);
-}
-
-.task-detail__description-full {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-.task-detail__description-full strong {
-  display: flex;
-  justify-content: flex-start;
-  padding-left: 8px;
-}
-.task-detail__description-text {
-  font-size: 0.95rem;
-  color: var(--task-text-primary, #1f2937);
-  line-height: 1.3;
-  margin-left: 8px;
-}
-
-.task-detail__button-row {
-  margin-top: 16px;
-}
-.task-detail__done-btn {
-  background-color: var(--task-btn-bg, #ffffff);
-  border: 1px solid var(--task-btn-border, #d1d5db);
-  color: var(--task-btn-text, #1f2937);
-  padding: 0.5rem 1rem;
-  font-size: 0.9rem;
-  border-radius: 0.75rem;
-  cursor: pointer;
-  transition:
-    background-color 0.2s,
-    color 0.2s;
-}
-.task-detail__done-btn:hover {
-  background-color: var(--task-btn-text, #1f2937);
-  color: #ffffff;
-}
-.task-detail__completed-block {
-  display: flex;
-  align-items: center;
-  font-size: 1rem;
-  color: #52c41a;
-  font-weight: 500;
-}
-
-/* ───────── Блок «файл + описание выполненной работы» ───────── */
-.task-detail__uploaded-wrapper {
-  display: flex;
-  flex-direction: column-reverse;
-  gap: 8px;
+.task-detail__collapse {
   margin-top: 12px;
 }
-.task-detail__file-link {
-  display: flex;
-  align-items: center;
-  font-size: 0.95rem;
-  color: var(--task-text-primary, #1f2937);
-  text-decoration: none;
-  padding: 2px;
-  border: 1px solid var(--task-border, #d1d5db);
-  border-radius: 4px;
-  transition: background-color 0.2s;
-}
-.task-detail__file-link:hover {
-  background-color: rgba(0, 0, 0, 0.04);
-}
-.task-detail__file-icon {
-  font-size: 20px;
-  margin-right: 4px;
-  color: var(--task-text-secondary, #4b5563);
-}
-.task-detail__file-name {
-  color: var(--task-text-primary, #1f2937);
-}
-.task-detail__file-description {
-  flex: 1;
-  font-size: 0.9rem;
-  color: var(--task-text-primary, #1f2937);
-  line-height: 1.3;
-  margin-top: 2px;
-  word-break: break-word;
-  display: flex;
-  justify-content: flex-start !important;
-}
 
-.task-detail__substeps-toggle {
-  margin-top: 16px;
-  padding-top: 8px;
-  border-top: 1px solid var(--task-border, #d1d5db);
-}
-.show-substeps-btn {
-  background: transparent;
-  border: none;
-  color: var(--task-text-primary, #1f2937);
-  font-size: 0.9rem;
-  cursor: pointer;
-  padding: 0.25rem 0;
-  text-decoration: underline;
-}
-.show-substeps-btn:hover {
-  color: var(--task-text-secondary, #4b5563);
-}
-
-/* ───────── Список подэтапов ───────── */
-.task-detail__substeps {
+.task-detail__collapse .ant-collapse-item + .ant-collapse-item {
   margin-top: 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.subtask-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  background-color: var(--subtask-bg, #ffffff);
-  border: 1px solid var(--subtask-border, #d1d5db);
-  border-radius: 0.5rem;
-  padding: 0.4rem 0.75rem;
-  box-sizing: border-box;
-}
-.subtask-item__left {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-.subtask-item__icon {
-  font-size: 1rem;
-  color: var(--task-text-secondary, #4b5563);
-}
-.subtask-item__label {
-  font-size: 0.9rem;
-  color: var(--task-text-primary, #1f2937);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.subtask-item__right {
-  display: flex;
-}
-.subtask-item__comments {
-  background-color: var(--subtask-btn-bg, #ffffff);
-  border: 1px solid var(--subtask-btn-border, #d1d5db);
-  color: var(--subtask-btn-text, #1f2937);
-  font-size: 0.85rem;
-  padding: 0.25rem 0.5rem;
-  border-radius: 0.5rem;
-  cursor: pointer;
-  transition:
-    background-color 0.2s,
-    color 0.2s;
-}
-.subtask-item__comments:hover {
-  background-color: var(--subtask-btn-text, #1f2937);
-  color: var(--subtask-bg, #ffffff);
 }
 
-/* ───────── Тёмная тема ───────── */
+.task-detail__collapse .ant-collapse-item {
+  border-radius: 8px;
+  overflow: hidden;
+  background: #f7f7f7;
+}
+
+.task-detail__collapse .ant-collapse-content {
+  background: #fff;
+}
+
+.task-detail__collapse .ant-collapse-content-box {
+  padding: 16px 24px;
+}
+
+.task-detail__collapse .ant-collapse-content {
+  transition:
+    height 0.24s ease,
+    opacity 0.24s ease;
+}
+.task-detail__collapse .ant-collapse-content-box {
+  transition: opacity 0.24s ease;
+  opacity: 0.98;
+}
+.task-detail__collapse .ant-collapse-item-active .ant-collapse-content-box {
+  opacity: 1;
+}
+
+.td-collapse-title {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+}
+.td-collapse-title__text {
+  display: inline-block;
+  width: 100%;
+  text-align: center;
+  pointer-events: none;
+}
+.td-collapse-title__right {
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  gap: 6px;
+}
+.td-collapse-title__left {
+  position: absolute;
+  left: 28px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+}
+.td-dir-icon {
+  font-size: 16px;
+  line-height: 1;
+  opacity: 0.95;
+}
+.td-dir-icon.success {
+  color: #22c55e;
+} /* зелёная галочка */
+.td-dir-icon.failure {
+  color: #ef4444;
+} /* красный «роллбек» */
+
+/* Бейдж роли исполнителя справа */
+.role-swatch {
+  width: 24px;
+  height: 18px;
+  border-radius: 6px;
+}
+
+.task-detail__stage {
+  padding: 8px 0;
+}
+
+.yaml-executor-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 8px 0;
+}
+.yaml-executor-field {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.executor-role {
+  font-weight: 600;
+  opacity: 0.85;
+}
+
+.yaml-executor-input {
+  flex: 1;
+  min-width: 220px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--task-border, #d1d5db);
+  background: transparent;
+  color: inherit;
+}
+
 body.dark .task-detail {
   background-color: var(--task-bg, #1f2937);
   border-color: var(--task-border, #374151);
@@ -286,74 +171,37 @@ body.dark .task-detail__title {
 body.dark .task-detail__time-text {
   color: var(--task-text-secondary, #d1d5db);
 }
-body.dark .task-detail__toggle-full .toggle-arrow {
-  border-color: var(--task-text-secondary, #d1d5db);
-}
-body.dark .task-detail__toggle-full:hover .toggle-arrow {
-  border-color: var(--task-text-primary, #ffffff);
-}
 body.dark .task-detail__close {
   color: var(--task-text-secondary, #d1d5db);
 }
 body.dark .task-detail__close:hover {
   color: var(--task-text-primary, #ffffff);
 }
-body.dark .task-detail__left-col .task-detail__type-value,
-body.dark .task-detail__left-col .task-detail__performer-value,
-body.dark .task-detail__left-col .task-detail__duration-value {
-  color: var(--task-text-secondary, #d1d5db);
+
+body.dark .ant-collapse {
+  background: var(--task-bg, #1f2937);
 }
-body.dark .task-detail__description-text {
-  color: var(--task-text-primary, #ffffff);
+body.dark .ant-collapse-item {
+  background: #2b2f36;
+  border: 1px solid #3a3f46;
 }
-body.dark .task-detail__done-btn {
-  background-color: var(--subtask-bg, #2f3136);
-  border-color: var(--subtask-border, #444);
-  color: var(--subtask-btn-text, #e5e5e5);
+body.dark .ant-collapse > .ant-collapse-item > .ant-collapse-header {
+  color: #e5e7eb;
+  background: var(--bg-header, #2b2f36) !important;
+  border-top: 1px solid #e5e7eb;
 }
-body.dark .task-detail__done-btn:hover {
-  background-color: var(--subtask-btn-text, #e5e5e5);
-  color: var(--subtask-bg, #2f3136);
+body.dark .ant-collapse > .ant-collapse-item > .ant-collapse-header .ant-collapse-arrow {
+  color: #cbd5e1;
 }
-body.dark .task-detail__completed-block {
-  color: #8bc34a;
+body.dark .ant-collapse-content {
+  background: #2b2f36;
+  border-color: #3a3f46;
 }
-body.dark .task-detail__file-link {
-  color: #f5f5f5;
-  border-color: #444;
+body.dark .ant-collapse-content > .ant-collapse-content-box {
+  color: #e5e7eb;
 }
-body.dark .task-detail__file-link:hover {
-  background-color: rgba(255, 255, 255, 0.08);
-}
-body.dark .task-detail__file-icon {
-  color: var(--task-text-secondary, #d1d5db);
-}
-body.dark .task-detail__file-name {
-  color: var(--task-text-primary, #ffffff);
-}
-body.dark .task-detail__file-description {
-  color: var(--task-text-secondary, #d1d5db);
-}
-body.dark .show-substeps-btn {
-  color: var(--task-text-primary, #ffffff);
-}
-body.dark .show-substeps-btn:hover {
-  color: var(--task-text-secondary, #d1d5db);
-}
-body.dark .subtask-item {
-  background-color: var(--subtask-bg, #2f3136);
-  border-color: #444;
-}
-body.dark .subtask-item__icon,
-body.dark .subtask-item__label {
-  color: var(--task-text-primary, #ffffff);
-}
-body.dark .subtask-item__comments {
-  background-color: var(--subtask-btn-bg, #383c42);
-  border-color: var(--subtask-btn-border, #555);
-  color: var(--subtask-btn-text, #e5e5e5);
-}
-body.dark .subtask-item__comments:hover {
-  background-color: var(--subtask-btn-text, #e5e5e5);
-  color: var(--subtask-bg, #2f3136);
+
+body.dark .role-swatch {
+  border-color: rgba(255, 255, 255, 0.85);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6) inset;
 }
