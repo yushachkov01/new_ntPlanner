@@ -1,4 +1,3 @@
-import { CheckOutlined, RollbackOutlined } from '@ant-design/icons';
 import { Collapse } from 'antd';
 import type { FC } from 'react';
 import { useMemo } from 'react';
@@ -183,7 +182,7 @@ const TaskDetail: FC<Props> = ({
   }, [poolFromAdded, poolFromRows]);
 
   /**
-   * Рендер заголовка панели: слева — иконка направления (success/failure),
+   * Рендер заголовка панели: слева — бейдж направления (ПДС/Rollback),
    * по центру — название, справа — бейдж роли (цвет зависит от исполнителя).
    */
   const makePanelLabel = (stageKey: string) => {
@@ -195,11 +194,47 @@ const TaskDetail: FC<Props> = ({
     /** стартовую стадию всегда маркируем как success */
     const inType: IncomingType = stageKey === startStageKey ? 'success' : incomingType[stageKey];
 
+    const rawTags: any[] = Array.isArray((stagesField[stageKey] as any)?.tags)
+      ? ((stagesField[stageKey] as any).tags as any[])
+      : [];
+    const normTags = rawTags.map((t) => String(t).trim().toLowerCase());
+
+    const tagHasPds = normTags.includes('пдс') || normTags.includes('pds');
+    const tagHasRollback = normTags.includes('rollback') || normTags.includes('rallback');
+
+    const hasPds = tagHasPds || inType === 'success';
+    const hasRollback = tagHasRollback || inType === 'failure';
+
+    const badgeBase: React.CSSProperties = {
+      display: 'inline-block',
+      padding: '2px 8px',
+      borderRadius: 4,
+      fontSize: 12,
+      fontWeight: 600,
+      lineHeight: '16px',
+    };
+
+    let badgeStyle: React.CSSProperties | undefined;
+    let badgeText = '';
+
+    if (hasPds && hasRollback) {
+      /** оба — красный и текст "Rollback + ПДС" */
+      badgeStyle = { ...badgeBase, background: '#7f1d1d', color: '#fee2e2' };
+      badgeText = 'Rollback + ПДС';
+    } else if (hasPds) {
+      /** только ПДС — зелёный */
+      badgeStyle = { ...badgeBase, background: '#0f5132', color: '#e6fffa' };
+      badgeText = 'ПДС';
+    } else if (hasRollback) {
+      /** только Rollback — красный */
+      badgeStyle = { ...badgeBase, background: '#7f1d1d', color: '#fee2e2' };
+      badgeText = 'Rollback';
+    }
+
     return (
       <div className="td-collapse-title">
         <span className="td-collapse-title__left">
-          {inType === 'success' && <CheckOutlined className="td-dir-icon success" />}
-          {inType === 'failure' && <RollbackOutlined className="td-dir-icon failure" />}
+          {badgeText ? <span style={badgeStyle}>{badgeText}</span> : null}
         </span>
 
         <span className="td-collapse-title__text">{title}</span>
