@@ -95,12 +95,6 @@ export const StagePanel: FC<StagePanelProps> = ({
     return Math.max(1, yamlMinutes || durationMinutes || 1);
   }, [meta, durationMinutes]);
 
-  /** Теги из шаблона */
-  const initialTags: string[] = useMemo(() => {
-    const tagsRaw = (meta as any)?.tags;
-    return Array.isArray(tagsRaw) ? tagsRaw.map(String) : [];
-  }, [meta]);
-
   /** Плоский список динамических полей, отсортированный по position */
   const stageFields = useMemo(() => {
     const rawFields = (meta as any)?.fields ?? {};
@@ -119,9 +113,8 @@ export const StagePanel: FC<StagePanelProps> = ({
     return {
       timer: timerInitial,
       ...defaultsFromFields,
-      tags: initialTags,
     };
-  }, [stageFields, timerInitial, initialTags]);
+  }, [stageFields, timerInitial]);
 
   /**
    * Рендер динамического поля по его описанию.
@@ -407,17 +400,6 @@ export const StagePanel: FC<StagePanelProps> = ({
               <InputNumber style={{ width: '100%' }} />
             </Form.Item>
             {stageFields.map(renderDynamicField)}
-
-            <Form.Item label="Теги" name="tags">
-              <Select
-                mode="multiple"
-                open={false}
-                showSearch={false}
-                disabled
-                options={initialTags.map((tag) => ({ value: tag, label: tag }))}
-                value={initialTags}
-              />
-            </Form.Item>
           </Form>
         </div>
 

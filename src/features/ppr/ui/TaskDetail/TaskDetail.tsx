@@ -194,16 +194,22 @@ const TaskDetail: FC<Props> = ({
     /** стартовую стадию всегда маркируем как success */
     const inType: IncomingType = stageKey === startStageKey ? 'success' : incomingType[stageKey];
 
-    const rawTags: any[] = Array.isArray((stagesField[stageKey] as any)?.tags)
-      ? ((stagesField[stageKey] as any).tags as any[])
+    const rawTags = Array.isArray((stagesField[stageKey] as any)?.tags)
+      ? ((stagesField[stageKey] as any).tags as unknown[])
       : [];
-    const normTags = rawTags.map((t) => String(t).trim().toLowerCase());
 
-    const tagHasPds = normTags.includes('пдс') || normTags.includes('pds');
-    const tagHasRollback = normTags.includes('rollback') || normTags.includes('rallback');
+    const normalizedTags = rawTags.map((t) => String(t).trim().toLowerCase());
+    const explicitPds = normalizedTags.includes('пдс') || normalizedTags.includes('pds');
+    const explicitRollback =
+      normalizedTags.includes('rollback') || normalizedTags.includes('rallback');
 
-    const hasPds = tagHasPds || inType === 'success';
-    const hasRollback = tagHasRollback || inType === 'failure';
+    const hasExplicit = normalizedTags.length > 0;
+
+    const showPds = hasExplicit ? explicitPds : inType === 'success';
+    const showRollback = hasExplicit ? explicitRollback : inType === 'failure';
+
+    /** Если одновременно есть оба тега — оба красные; если только ПДС — зелёный */
+    const bothTags = showPds && showRollback;
 
     const badgeBase: React.CSSProperties = {
       display: 'inline-block',
@@ -214,27 +220,21 @@ const TaskDetail: FC<Props> = ({
       lineHeight: '16px',
     };
 
-    let badgeStyle: React.CSSProperties | undefined;
-    let badgeText = '';
+    const pdsStyle: React.CSSProperties = bothTags
+      ? { ...badgeBase, background: '#7f1d1d', color: '#fee2e2' } // красный, когда вместе с rollback
+      : { ...badgeBase, background: '#0f5132', color: '#e6fffa' }; // зелёный, когда один
 
-    if (hasPds && hasRollback) {
-      /** оба — красный и текст "Rollback + ПДС" */
-      badgeStyle = { ...badgeBase, background: '#7f1d1d', color: '#fee2e2' };
-      badgeText = 'Rollback + ПДС';
-    } else if (hasPds) {
-      /** только ПДС — зелёный */
-      badgeStyle = { ...badgeBase, background: '#0f5132', color: '#e6fffa' };
-      badgeText = 'ПДС';
-    } else if (hasRollback) {
-      /** только Rollback — красный */
-      badgeStyle = { ...badgeBase, background: '#7f1d1d', color: '#fee2e2' };
-      badgeText = 'Rollback';
-    }
+    const rollbackStyle: React.CSSProperties = {
+      ...badgeBase,
+      background: '#7f1d1d',
+      color: '#fee2e2',
+    };
 
     return (
       <div className="td-collapse-title">
-        <span className="td-collapse-title__left">
-          {badgeText ? <span style={badgeStyle}>{badgeText}</span> : null}
+        <span className="td-collapse-title__left" style={{ display: 'inline-flex', gap: 8 }}>
+          {showRollback && <span style={rollbackStyle}>Rollback</span>}
+          {showPds && <span style={pdsStyle}>ПДС</span>}
         </span>
 
         <span className="td-collapse-title__text">{title}</span>
