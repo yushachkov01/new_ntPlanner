@@ -10,7 +10,7 @@ import { useUserStore } from '@/entities/users/model/store/userStore';
 import './YamlTemplateSelect.css';
 import AddSelectedFromTabModal from '@/features/pprEdit/ui/AddSelectedFromTabModal/AddSelectedFromTabModal';
 import { getObjectText } from '@/shared/minio/MinioClient';
-import useTimelineStore from '@entities/timeline/model/store/timelineStore';
+import useTimelineStore, { toRowId as toRow } from '@entities/timeline/model/store/timelineStore';
 import type { User } from '@entities/users/model/mapping/mapping';
 
 /** перенос блоков при удалении последнего исполнителя */
@@ -25,40 +25,46 @@ const ROLE_CUST = 'Представитель Заказчика';
 const ROLES_ORDER = [ROLE_NET, ROLE_SMR, ROLE_CUST] as const;
 
 /** Нормализация ФИО/имени так же, как в редакторе */
-const normalizeAuthor = (u: any): string => {
+const normalizeAuthor = (user: any): string => {
   const candidate =
-    u?.author ?? u?.fio ?? u?.name ?? `${u?.last_name ?? ''} ${u?.first_name ?? ''}`.trim();
-  return candidate && candidate.length > 0 ? candidate : `User ${u?.id ?? ''}`;
+    user?.author ??
+    user?.fio ??
+    user?.name ??
+    `${user?.last_name ?? ''} ${user?.first_name ?? ''}`.trim();
+  return candidate && candidate.length > 0 ? candidate : `User ${user?.id ?? ''}`;
 };
 
-/** Нормализация роли (если нужна для отображения/логики) */
-const normalizeRole = (u: any, rolesDict: Array<{ id: number; name: string }>): string => {
-  if (u?.role?.name) return u.role.name;
-  if (typeof u?.role === 'string') return u.role;
-  const found = rolesDict?.find((r) => r.id === u?.roleId);
-  return found?.name ?? '';
+/** Нормализация роли ( нужна для отображения/логики) */
+const normalizeRoleTitle = (user: any, rolesDict: Array<{ id: number; name: string }>): string => {
+  if (user?.role?.name) return user.role.name;
+  if (typeof user?.role === 'string') return user.role;
+  const foundRole = rolesDict?.find((role) => role.id === user?.roleId);
+  return foundRole?.name ?? '';
 };
 
 /**  аккуратная склейка префикса и имени файла */
 const joinKey = (prefix?: string, name?: string) => {
-  const p = (prefix ?? '').replace(/^\/+|\/+$/g, '');
-  const n = (name ?? '').replace(/^\/+/, '');
-  return p ? `${p}/${n}` : n;
+  const cleanedPrefix = (prefix ?? '').replace(/^\/+|\/+$/g, '');
+  const cleanedName = (name ?? '').replace(/^\/+/, '');
+  return cleanedPrefix ? `${cleanedPrefix}/${cleanedName}` : cleanedName;
 };
 
 /** из Template пытаемся получить возможные objectKey в MinIO */
-const resolveObjectKeyCandidates = (tpl: Template, prefix: string | undefined): string[] => {
-  const list: string[] = [];
-  const anyTpl = tpl as any;
-  if (anyTpl?.objectKey) list.push(String(anyTpl.objectKey));
-  if (anyTpl?.key && String(anyTpl.key).includes('/')) list.push(String(anyTpl.key));
-
-  const base = anyTpl?.templateName || anyTpl?.key || '';
-  if (base) {
-    list.push(joinKey(prefix, `${base}.yaml`));
-    list.push(joinKey(prefix, `${base}.yml`));
+const resolveObjectKeyCandidates = (
+  templateItem: Template,
+  prefix: string | undefined,
+): string[] => {
+  const candidates: string[] = [];
+  const templateAny = templateItem as any;
+  if (templateAny?.objectKey) candidates.push(String(templateAny.objectKey));
+  if (templateAny?.key && String(templateAny.key).includes('/'))
+    candidates.push(String(templateAny.key));
+  const baseName = templateAny?.templateName || templateAny?.key || '';
+  if (baseName) {
+    candidates.push(joinKey(prefix, `${baseName}.yaml`));
+    candidates.push(joinKey(prefix, `${baseName}.yml`));
   }
-  return Array.from(new Set(list.filter(Boolean)));
+  return Array.from(new Set(candidates.filter(Boolean)));
 };
 const parseYamlToObject = (text: string) => {
   try {
@@ -97,25 +103,21 @@ const YamlTemplateSelect: FC<Props> = ({
   addExecutor,
   removeExecutor,
 }) => {
-  const fetchTemplates = templateStore((store) => store.fetchTemplates);
+  const fetchTemplates = templateStore((state) => state.fetchTemplates);
   const { users, roles } = useUserStore();
-  const me = userStore((store) => store.user);
-
-  /** метод стора таймлайна для переноса блоков */
-  const transferRowBlocks = useTimelineStore((store) => store.transferRowBlocks);
+  const me = userStore((state) => state.user);
 
   const [templateList, setTemplateList] = useState<Template[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isModalOpen, setModalOpen] = useState(false);
-  const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
 
   /** загрузка списка шаблонов */
   useEffect(() => {
     let isActive = true;
     (async () => {
       setIsLoading(true);
-      const fetched = await fetchTemplates(bucket, prefix);
-      if (isActive) setTemplateList(fetched);
+      const fetchedTemplates = await fetchTemplates(bucket, prefix);
+      if (isActive) setTemplateList(fetchedTemplates);
       setIsLoading(false);
     })();
     return () => {
@@ -140,11 +142,11 @@ const YamlTemplateSelect: FC<Props> = ({
 
   /* executors by role */
   const roleBuckets = useMemo(() => {
-    const toRoleName = (user: any) => normalizeRole(user, roles);
+    const roleTitle = (user: any) => normalizeRoleTitle(user, roles);
     return {
-      [ROLE_NET]: executors.filter((user) => toRoleName(user) === ROLE_NET),
-      [ROLE_SMR]: executors.filter((user) => toRoleName(user) === ROLE_SMR),
-      [ROLE_CUST]: executors.filter((user) => toRoleName(user) === ROLE_CUST),
+      [ROLE_NET]: executors.filter((executor) => roleTitle(executor) === ROLE_NET),
+      [ROLE_SMR]: executors.filter((executor) => roleTitle(executor) === ROLE_SMR),
+      [ROLE_CUST]: executors.filter((executor) => roleTitle(executor) === ROLE_CUST),
     };
   }, [executors, roles]);
 
@@ -152,78 +154,149 @@ const YamlTemplateSelect: FC<Props> = ({
 
   /** Удаление исполнителя с автоподстановкой текущего пользователя + перенос блоков */
   const handleRemoveExecutor = (executorId: number) => {
-    const isLast = executors.length <= 1;
+    const currentList = executors ?? [];
+    const targetExecutor = currentList.find(
+      (executor) => String(executor.id) === String(executorId),
+    );
+    const isNetwork = targetExecutor
+      ? normalizeRoleTitle(targetExecutor, roles) === ROLE_NET
+      : false;
+    const netCount = currentList.filter(
+      (executor) => normalizeRoleTitle(executor, roles) === ROLE_NET,
+    ).length;
 
-    if (!isLast) {
-      removeExecutor?.(executorId);
+    if (isNetwork && netCount <= 1) {
+      message.info('Должен остаться хотя бы один Сетевой инженер.');
       return;
     }
-
-    /** если единственный — текущий пользователь, ничего не меняем (оставляем его)*/
-    if (me && String(executorId) === String(me.id)) {
-      message.info('Нельзя удалить единственного исполнителя — остаётся текущий пользователь.');
-      return;
-    }
-    if (!me) {
-      message.warning('Не найден текущий пользователь. Удаление последнего исполнителя запрещено.');
-      return;
-    }
-
-    const author = normalizeAuthor(me);
-    const roleName = normalizeRole(me, roles);
-    if (!executors.some((ex) => String(ex.id) === String(me.id))) {
-      addExecutor?.({ id: me.id, author, role: roleName } as User);
-    }
-    try {
-      transferRowBlocks({ fromExecId: executorId, toExecId: me.id });
-    } catch {}
-    removeExecutor?.(executorId);
+    removeExecutor?.(executorId as any);
   };
+  const handleTemplatePick = async (selectedValue: string) => {
+    const selectedOption = selectOptions.find((option) => option.value === selectedValue);
+    if (!selectedOption) return;
 
-  /** при выборе шаблона — гарантированно поднимаем объект с key и raw */
-  const handleTemplatePick = async (val: string) => {
-    const opt = selectOptions.find((o) => o.value === val);
-    if (!opt) return;
+    const templateItem = selectedOption.template as any;
+    const keyFromValue = String(selectedValue).split('#')[0].replace(prefix, '');
+    const ensuredKey = templateItem?.key ?? templateItem?.templateName ?? keyFromValue;
 
-    const tpl = opt.template as any;
-    const keyFromValue = String(val).split('#')[0].replace(prefix, '');
-    const ensuredKey = tpl?.key ?? tpl?.templateName ?? keyFromValue;
-
-    /** если raw уже объект — поднимаем как есть (и гарантируем key) */
-    if (tpl?.raw && typeof tpl.raw === 'object') {
-      const enriched = { ...tpl, key: ensuredKey } as Template;
-      setSelectedTemplate(enriched);
-      onChange?.(enriched);
+    if (templateItem?.raw && typeof templateItem.raw === 'object') {
+      const enrichedExisting = { ...templateItem, key: ensuredKey } as Template;
+      onChange?.(enrichedExisting);
       return;
     }
-
     /**  Читем YAML из MinIO по кандидатам ключей */
-    const candidates = resolveObjectKeyCandidates(tpl as Template, prefix);
+    const candidates = resolveObjectKeyCandidates(templateItem as Template, prefix);
     if (!candidates.length) {
       message.error('Не удалось определить путь до шаблона.');
       return;
     }
 
-    let parsed: any | undefined;
+    let parsedYaml: any | undefined;
     for (const objectKey of candidates) {
-      const text = await getObjectText(bucket, objectKey);
-      if (text && String(text).trim().length > 0) {
-        parsed = parseYamlToObject(String(text));
-        if (parsed && typeof parsed === 'object') {
-          tpl.objectKey = objectKey;
+      const fileText = await getObjectText(bucket, objectKey);
+      if (fileText && String(fileText).trim().length > 0) {
+        parsedYaml = parseYamlToObject(String(fileText));
+        if (parsedYaml && typeof parsedYaml === 'object') {
+          (templateItem as any).objectKey = objectKey;
           break;
         }
       }
     }
-    if (!parsed) {
+    if (!parsedYaml) {
       message.error('Не удалось загрузить файл шаблона.');
       return;
     }
 
-    const enriched: Template = { ...(tpl as Template), key: ensuredKey, raw: parsed } as Template;
-    setSelectedTemplate(enriched);
-    onChange?.(enriched);
+    const enrichedTemplate: Template = {
+      ...(templateItem as Template),
+      key: ensuredKey,
+      raw: parsedYaml,
+    } as Template;
+    onChange?.(enrichedTemplate);
   };
+
+  /**
+   * Подписка на изменения таймлайна: отслеживаем переносы блоков между строками
+   */
+  useEffect(() => {
+    const timelineApi = useTimelineStore as any;
+
+    const placementOf = (rows?: any[]) => {
+      const placementMap = new Map<number, number>();
+      (rows ?? []).forEach((row) =>
+        (row.blocks ?? []).forEach((block: any) => placementMap.set(block.id, row.id)),
+      );
+      return placementMap;
+    };
+
+    let lastPlacement = placementOf(timelineApi.getState()?.rows);
+    console.log('[YAML][SUB] init placement size:', lastPlacement.size);
+
+    const unsubscribe = timelineApi.subscribe((state: any) => {
+      const nextPlacement = placementOf(state?.rows);
+      const blockMoves: Array<{ blockId: number; fromRowId: number; toRowId: number }> = [];
+
+      for (const [blockId, fromRowId] of lastPlacement.entries()) {
+        const toRowIdNow = nextPlacement.get(blockId);
+        if (toRowIdNow != null && toRowIdNow !== fromRowId) {
+          blockMoves.push({ blockId, fromRowId, toRowId: toRowIdNow });
+        }
+      }
+
+      if (blockMoves.length) {
+        const uniquePairs = Array.from(
+          new Map(
+            blockMoves.map((move) => [
+              `${move.fromRowId}->${move.toRowId}`,
+              { from: move.fromRowId, to: move.toRowId },
+            ]),
+          ).values(),
+        );
+
+        const isNet = (executor: User) => normalizeRoleTitle(executor, roles) === ROLE_NET;
+
+        for (const { from, to } of uniquePairs) {
+          const indexFrom = executors.findIndex(
+            (executor) => toRow(executor.id) === from && isNet(executor),
+          );
+          if (indexFrom === -1) continue;
+
+          const byRow = (arr?: any[]) => (arr ?? []).find((user) => toRow(user.id) === to);
+          const toUser =
+            byRow(users as any[]) ||
+            byRow(tabCandidates as any[]) ||
+            (me && toRow(me.id) === to ? me : null);
+
+          if (!toUser) continue;
+
+          const alreadyExists = executors.some(
+            (executor) => isNet(executor) && toRow(executor.id) === to,
+          );
+          if (!alreadyExists) {
+            try {
+              addExecutor?.({
+                id: (toUser as any).id,
+                author: normalizeAuthor(toUser),
+                role: ROLE_NET,
+              } as User);
+            } catch (err) {}
+          }
+
+          try {
+            removeExecutor?.(executors[indexFrom].id as any);
+          } catch (err) {}
+        }
+      }
+
+      lastPlacement = nextPlacement;
+    });
+
+    return () => {
+      try {
+        unsubscribe?.();
+      } catch {}
+    };
+  }, [executors, roles, users, tabCandidates, me, addExecutor, removeExecutor, roleBuckets]);
 
   /** маппинг роли в класс цветного индикатора (те же цвета, что на таймлайне) */
   const roleChipClass = (roleTitle: (typeof ROLES_ORDER)[number]) => {
@@ -251,16 +324,16 @@ const YamlTemplateSelect: FC<Props> = ({
           </div>
         </div>
 
-        {list.map((exe) => (
-          <div key={`${roleTitle}-${exe.id}`} className="yaml-executor-row">
+        {list.map((executor) => (
+          <div key={`${roleTitle}-${executor.id}`} className="yaml-executor-row">
             <div className="yaml-executor-field">
-              <input className="yaml-executor-input" value={normalizeAuthor(exe)} readOnly />
+              <input className="yaml-executor-input" value={normalizeAuthor(executor)} readOnly />
             </div>
             <Button
               danger
               type="default"
               className="yaml-executor-remove-btn"
-              onClick={() => handleRemoveExecutor(exe.id)}
+              onClick={() => handleRemoveExecutor(executor.id as any)}
             >
               Удалить
             </Button>
@@ -301,24 +374,26 @@ const YamlTemplateSelect: FC<Props> = ({
             open={isModalOpen}
             onClose={() => setModalOpen(false)}
             candidates={modalCandidates}
-            onSelect={(id) => {
-              const picked =
-                (modalCandidates as any[]).find((u) => String(u.id) === String(id)) ||
-                (users as any[]).find((u) => String(u.id) === String(id));
+            onSelect={(selectedId) => {
+              const pickedUser =
+                (modalCandidates as any[]).find((u) => String(u.id) === String(selectedId)) ||
+                (users as any[]).find((u) => String(u.id) === String(selectedId));
 
-              if (!picked) {
+              if (!pickedUser) {
                 message.warning('Не удалось найти выбранного исполнителя.');
                 return;
               }
 
-              if (executors.some((e) => String(e.id) === String(picked.id))) {
+              if (
+                executors.some((executor) => String(executor.id) === String((pickedUser as any).id))
+              ) {
                 message.info('Этот исполнитель уже добавлен.');
                 return;
               }
 
-              const author = normalizeAuthor(picked);
-              const roleName = normalizeRole(picked, roles);
-              addExecutor?.({ id: (picked as any).id, author, role: roleName } as User);
+              const author = normalizeAuthor(pickedUser);
+              const roleName = normalizeRoleTitle(pickedUser, roles);
+              addExecutor?.({ id: (pickedUser as any).id, author, role: roleName } as User);
             }}
           />
         </>

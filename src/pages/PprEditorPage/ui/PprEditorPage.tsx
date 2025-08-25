@@ -91,10 +91,10 @@ const PprEditorPage: React.FC = () => {
    */
   const liveRowsCount = useTimelineStore((s) => s.rows?.length ?? 0);
   useEffect(() => {
-    if (step3Done && !paramsConfirmed && liveRowsCount > 0) {
+    if (liveRowsCount > 0) {
       setParamsConfirmed(true);
     }
-  }, [step3Done, paramsConfirmed, liveRowsCount, setParamsConfirmed]);
+  }, [liveRowsCount, setParamsConfirmed]);
 
   /**
    * Как только на шаге 3 появились блоки (liveRowsCount > 0) — подтверждаем параметры
@@ -154,7 +154,11 @@ const PprEditorPage: React.FC = () => {
   /**
    * Итоговый набор исполнителей для таймлайна (уникальный)
    */
-  const timelineExecutors = useMemo(() => pprExecutors as any, [pprExecutors]);
+  const timelineExecutors = useMemo(() => {
+    const list = (pprExecutors as any[]) ?? [];
+    if (list.length > 0) return list;
+    return (tabExecutors ?? []).map(normalizeExec);
+  }, [pprExecutors, tabExecutors]);
 
   return (
     <section className="ppr-editor-card">

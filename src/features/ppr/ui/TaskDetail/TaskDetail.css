@@ -19,7 +19,7 @@
 }
 .task-detail__title {
   font-size: 1.25rem;
-  font-weight: bold;
+  font-weight: 700;
   color: var(--task-text-primary, #1f2937);
   margin-bottom: 10px;
 }
@@ -142,7 +142,7 @@
 .yaml-executor-field {
   flex: 1;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
 }
 .executor-role {

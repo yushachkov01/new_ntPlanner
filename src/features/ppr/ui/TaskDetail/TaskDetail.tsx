@@ -1,30 +1,60 @@
 import { CheckOutlined, RollbackOutlined } from '@ant-design/icons';
-import { Button, Collapse, Typography } from 'antd';
+import { Collapse } from 'antd';
 import type { FC } from 'react';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 
 import type { StageField } from '@/entities/template/model/store/templateStore';
+import { normalizeRoleKey, type RoleKey } from '@/shared/utils/normalizeRoleKey';
 import {
   buildFullStageOrder,
   buildIncomingTypeMap,
   type IncomingType,
 } from '@/shared/utils/stageGraph';
+import useTimelineStore from '@entities/timeline/model/store/timelineStore';
+import { getStageMinutes } from '@entities/timeline/model/utils/time';
 import { userStore } from '@entities/user/model/store/UserStore';
 import { useUserStore } from '@entities/users/model/store/userStore';
-import { useSyncedOpenKeys } from '@features/ppr/model/hooks/useSyncedOpenKeys';
 import type { TaskDetailProps } from '@features/ppr/model/types';
-import type { ConfigFile as BaseConfigFile } from '@features/ppr/ui/ConfigUploader/ConfigUploader';
 import './TaskDetail.css';
-import type { ConfigFile, SimpleUser } from '@features/ppr/ui/StagePanel/StagePanel';
+import { useSyncedOpenKeys } from '@features/ppr/model/hooks/useSyncedOpenKeys';
+import type { SimpleUser } from '@features/ppr/ui/StagePanel/StagePanel';
 import { StagePanel } from '@features/ppr/ui/StagePanel/StagePanel';
 
-const { Text } = Typography;
-
 /** Цвета бейджа роли исполнителя справа в заголовке панели. */
-const ROLE_COLORS: Record<string, string> = {
+const ROLE_COLORS: Record<RoleKey, string> = {
   engineer: '#1e90ff',
   installer: '#f97316',
   auditor: '#ef4444',
+  system: '#9ca3af',
+};
+
+/** Нормализация ФИО/имени  */
+const normalizeAuthor = (raw: any): string => {
+  const candidate =
+    raw?.author ??
+    raw?.fio ??
+    raw?.name ??
+    `${raw?.last_name ?? ''} ${raw?.first_name ?? ''}`.trim();
+  return candidate && candidate.length > 0 ? candidate : `User ${raw?.id ?? ''}`;
+};
+
+const toCanonicalRole = (roleRaw?: string): RoleKey | undefined => {
+  const direct = normalizeRoleKey(roleRaw);
+  if (direct) return direct;
+  if (roleRaw === 'Сетевой инженер') return 'engineer';
+  if (roleRaw === 'Инженер СМР') return 'installer';
+  if (roleRaw === 'Представитель Заказчика') return 'auditor';
+  if (roleRaw === 'Система') return 'system';
+  return undefined;
+};
+
+/** прибавить минуты */
+const addMinutesToTime = (hhmm: string, minutes: number): string => {
+  const [h, m] = (hhmm ?? '00:00').split(':').map((x) => parseInt(x, 10) || 0);
+  const total = (((h * 60 + m + Math.max(0, minutes)) % (24 * 60)) + 24 * 60) % (24 * 60);
+  const hh = String(Math.floor(total / 60)).padStart(2, '0');
+  const mm = String(total % 60).padStart(2, '0');
+  return `${hh}:${mm}`;
 };
 
 /**
@@ -50,20 +80,23 @@ const TaskDetail: FC<Props> = ({
   onClose,
   onTimerChange,
 }) => {
-  /** Текущий пользователь. */
-  const currentUser = userStore((state) => state.user)!;
+  userStore((state) => state.user);
+  useUserStore((s: any) => s.users);
 
-  /**
-   * Исполнители из стора пользователей.
-   * Хук может вернуть массив или словарь — нормализуем к массиву.
-   */
-  const rawUsers = useUserStore((s: any) => s.users ?? s.executors ?? s.list ?? s);
-  const allExecutors: SimpleUser[] = useMemo(() => {
-    if (!rawUsers) return [];
-    return Array.isArray(rawUsers)
-      ? (rawUsers as SimpleUser[])
-      : (Object.values(rawUsers) as SimpleUser[]);
-  }, [rawUsers]);
+  /** актуальные строки таймлайна */
+  const rows = useTimelineStore((s) => s.rows ?? []);
+  /** справочник пользователей */
+  const allUsers = useUserStore((s: any) => s.users ?? []);
+  /** явно выбранные исполнители */
+  const addedExecutors = useUserStore((s: any) => s.addedExecutors ?? []) as Array<{
+    id: string | number;
+    author?: string;
+    fio?: string;
+    name?: string;
+    last_name?: string;
+    first_name?: string;
+    role?: string;
+  }>;
 
   /** Расчёт длительности задачи в минутах */
   const [startHour, startMinute] = startTime.split(':').map(Number);
@@ -84,112 +117,70 @@ const TaskDetail: FC<Props> = ({
    */
   const [openKeys, setOpenKeys] = useSyncedOpenKeys(fullStageOrder, stageKeys?.[0]);
 
-  /**
-   * Инициализация исполнительских списков на каждую стадию.
-   * По умолчанию назначаем текущего юзера.
-   */
-  const initialExecutorsByStage: Record<string, number[]> = useMemo(() => {
-    const init: Record<string, number[]> = {};
-    fullStageOrder.forEach((stageKey) => {
-      init[stageKey] = [currentUser.id];
+  const poolFromAdded: SimpleUser[] = useMemo(() => {
+    const normalized = addedExecutors
+      .map((e) => {
+        const roleKey = toCanonicalRole(e.role);
+        if (!roleKey) return null;
+        return {
+          id: String(e.id),
+          author: normalizeAuthor(e),
+          role: roleKey,
+        } as unknown as SimpleUser;
+      })
+      .filter((x): x is SimpleUser => !!x);
+
+    const uniq = new Map<string, SimpleUser>();
+    normalized.forEach((u) => {
+      const k = `${u.id}|${u.role}`;
+      if (!uniq.has(k)) uniq.set(k, u);
     });
-    return init;
-  }, [fullStageOrder, currentUser.id]);
-
-  const [executorsByStage, setExecutorsByStage] = useState(initialExecutorsByStage);
-
-  /** Системно чистим состояние при смене набора стадий */
-  useEffect(() => {
-    setExecutorsByStage((prev) => {
-      const next: Record<string, number[]> = {};
-      for (const k of fullStageOrder) {
-        next[k] = prev[k] ?? [currentUser.id];
-      }
-      return next;
-    });
-  }, [fullStageOrder, currentUser.id]);
-
-  /** Модалка добавления исполнителя — к какой стадии сейчас открыта. */
-  const [modalStageKey, setModalStageKey] = useState<string | null>(null);
-
-  /** Конфиги загруженных файлов (общие для формы). */
-  const [configs, setConfigs] = useState<ConfigFile[]>([]);
-
-  /** Колонки таблицы конфигов */
-  const columns = [
-    {
-      dataIndex: 'name',
-      key: 'name',
-      render: (fileName: string) => <span>{fileName}</span>,
-    },
-    {
-      key: 'info',
-      render: (_unused: any, record: ConfigFile) => (
-        <Text type="secondary">{`Загружено ${record.uploadedAt} (${record.uploadedBy})`}</Text>
-      ),
-    },
-    {
-      key: 'actions',
-      width: 140,
-      render: (_unused: any, record: ConfigFile) => (
-        <div style={{ display: 'flex', gap: 8 }}>
-          <Button
-            size="small"
-            danger
-            onClick={() =>
-              setConfigs((previousConfigs) =>
-                previousConfigs.filter((config) => config.uid !== record.uid),
-              )
-            }
-          >
-            Удалить
-          </Button>
-          <Button size="small" type="primary" onClick={() => window.open(record.url, '_blank')}>
-            Посмотреть
-          </Button>
-        </div>
-      ),
-    },
-  ];
+    return Array.from(uniq.values());
+  }, [addedExecutors]);
 
   /**
-   * Обработка изменения списка загруженных конфигов:
-   * добавляем дату и автора загрузки
+   * Дополняем пулом из базовых строк таймлайна
    */
-  const handleConfigChange = (files: BaseConfigFile[]) => {
-    const currentTimestamp = new Date().toLocaleString();
-    setConfigs((previousConfigs) => {
-      const updatedConfigs = [...previousConfigs];
-      files.forEach((file) => {
-        if (!updatedConfigs.find((cfg) => cfg.uid === file.uid)) {
-          updatedConfigs.push({
-            ...file,
-            uploadedAt: currentTimestamp,
-            uploadedBy: currentUser.author,
-          } as ConfigFile);
-        }
-      });
-      return updatedConfigs;
+  const poolFromRows: SimpleUser[] = useMemo(() => {
+    const collected: SimpleUser[] = [];
+
+    for (const row of rows) {
+      if (!row || row.id === 0 || row.isExtra) continue;
+      const author = String(row.author ?? '').trim();
+      if (!author) continue;
+
+      const found = (allUsers as any[]).find((u) => normalizeAuthor(u) === author);
+
+      const rawRole: string =
+        (found?.role?.name as string) ?? (found?.role as string) ?? (row.role as string) ?? '';
+
+      const roleKey = toCanonicalRole(rawRole);
+      if (!roleKey) continue;
+
+      const userId = String(found?.id ?? row.id);
+      collected.push({ id: userId, author, role: roleKey });
+    }
+
+    const uniq = new Map<string, SimpleUser>();
+    collected.forEach((u) => {
+      const k = `${u.id}|${u.role}`;
+      if (!uniq.has(k)) uniq.set(k, u);
     });
-  };
+    return Array.from(uniq.values());
+  }, [rows, allUsers]);
 
-  /** Удаление исполнителя из этапа */
-  const handleRemoveExecutor = (stageKey: string, executorId: number) => {
-    setExecutorsByStage((previousMap) => ({
-      ...previousMap,
-      [stageKey]: previousMap[stageKey].filter((id) => id !== executorId),
-    }));
-  };
-
-  /** Добавление исполнителя в этап после выбора в модале */
-  const handleSelectExecutor = (executorId: number) => {
-    if (!modalStageKey) return;
-    setExecutorsByStage((previousMap) => ({
-      ...previousMap,
-      [modalStageKey]: Array.from(new Set([...(previousMap[modalStageKey] || []), executorId])),
-    }));
-    setModalStageKey(null);
-  };
+  /**
+   * Итоговый список исполнителей
+   */
+  const selectedPool: SimpleUser[] = useMemo(() => {
+    const merged = [...poolFromAdded, ...poolFromRows];
+    const uniq = new Map<string, SimpleUser>();
+    for (const u of merged) {
+      const k = `${u.id}|${u.role}`;
+      if (!uniq.has(k)) uniq.set(k, u);
+    }
+    return Array.from(uniq.values());
+  }, [poolFromAdded, poolFromRows]);
 
   /**
    * Рендер заголовка панели: слева — иконка направления (success/failure),
@@ -198,8 +189,8 @@ const TaskDetail: FC<Props> = ({
   const makePanelLabel = (stageKey: string) => {
     const title = (stagesField[stageKey] as any)?.description ?? stageKey;
 
-    const role: string | undefined = (stagesField[stageKey] as any)?.executor;
-    const color = (role && ROLE_COLORS[role]) || '#9ca3af';
+    const roleRequiredKey = toCanonicalRole((stagesField[stageKey] as any)?.executor);
+    const color = roleRequiredKey ? ROLE_COLORS[roleRequiredKey] : '#9ca3af';
 
     /** стартовую стадию всегда маркируем как success */
     const inType: IncomingType = stageKey === startStageKey ? 'success' : incomingType[stageKey];
@@ -220,13 +211,30 @@ const TaskDetail: FC<Props> = ({
     );
   };
 
+  /** сумма минут только по этапам с входом success (отображаются на таймлайне) */
+  const successMinutes = useMemo(() => {
+    return fullStageOrder.reduce((sum, key) => {
+      const inType: IncomingType = key === startStageKey ? 'success' : incomingType[key];
+      if (inType === 'success') {
+        return sum + getStageMinutes(stagesField[key]);
+      }
+      return sum;
+    }, 0);
+  }, [fullStageOrder, stagesField, incomingType, startStageKey]);
+
+  /** корректный конец интервала в шапке: start + successMinutes */
+  const endTimeBySuccess = useMemo(
+    () => addMinutesToTime(startTime, successMinutes),
+    [startTime, successMinutes],
+  );
+
   return (
     <div className="task-detail">
       <div className="task-detail__header">
         <div className="task-detail__title">{label}</div>
         <div className="task-detail__controls">
           <div className="task-detail__time-text">
-            ⏱ {startTime}–{endTime} | {durationMinutes} мин
+            ⏱ {startTime}–{endTimeBySuccess} | {successMinutes} мин
           </div>
           <button className="task-detail__close" onClick={onClose}>
             ✕
@@ -243,13 +251,11 @@ const TaskDetail: FC<Props> = ({
         destroyInactivePanel={false}
         items={fullStageOrder.map((stageKey) => {
           const meta = stagesField[stageKey]!;
-          const roleRequired = (meta as any)?.executor;
+          const roleRequiredKey = toCanonicalRole((meta as any)?.executor);
 
-          const assignedExecutors: SimpleUser[] = (executorsByStage[stageKey] || [])
-            .map((id) =>
-              id === currentUser.id ? currentUser : allExecutors.find((e) => e.id === id),
-            )
-            .filter((u): u is any => !!u && u.role === roleRequired);
+          const assignedExecutors: SimpleUser[] = roleRequiredKey
+            ? selectedPool.filter((u) => u.role === roleRequiredKey)
+            : [];
 
           return {
             key: stageKey,
@@ -260,16 +266,10 @@ const TaskDetail: FC<Props> = ({
                 meta={meta}
                 durationMinutes={durationMinutes}
                 assignedExecutors={assignedExecutors}
-                onOpenAddExecutor={(k) => setModalStageKey(k)}
-                onRemoveExecutor={handleRemoveExecutor}
                 onTimerChange={onTimerChange}
-                columns={columns}
-                configs={configs}
-                onConfigsChange={handleConfigChange}
-                modalStageKey={modalStageKey}
-                onCloseModal={() => setModalStageKey(null)}
-                onSelectExecutor={handleSelectExecutor}
-                filterRole={roleRequired}
+                columns={[]}
+                configs={[]}
+                onConfigsChange={() => {}}
               />
             ),
           };

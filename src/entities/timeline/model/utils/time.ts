@@ -112,3 +112,20 @@ export const toRowId = (id: unknown): number => {
  */
 export const absEnd = (startMin: number, endMin: number): number =>
   endMin <= startMin ? endMin + 24 * 60 : endMin;
+
+/**
+ * Извлекает длительность стадии
+ */
+export const getStageMinutes = (
+  meta?: Partial<{ time: unknown; duration: unknown; timer_default: unknown }>,
+  fallback = 0,
+): number => {
+  if (!meta) return fallback;
+
+  const minutesTime = parseDurationToMinutes(meta.time);
+  const minutesDuration = parseDurationToMinutes(meta.duration);
+  const minutesTimerDefault = parseDurationToMinutes(meta.timer_default);
+
+  const minutes = minutesTime || minutesDuration || minutesTimerDefault || 0;
+  return minutes > 0 ? minutes : fallback;
+};
