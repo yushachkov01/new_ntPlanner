@@ -1,7 +1,7 @@
 import { UploadOutlined } from '@ant-design/icons';
 import { Button, Upload, message } from 'antd';
 import type { UploadFile } from 'antd/es/upload/interface';
-import React, { useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { FC } from 'react';
 
 export interface ConfigFile {
@@ -13,18 +13,80 @@ export interface ConfigFile {
   url: string;
 }
 
+/**
+ * Пропсы загрузчика конфигураций.
+ */
 interface Props {
   /** Колбэк при изменении списка загруженных файлов */
   onChange?: (files: ConfigFile[]) => void;
+  /**
+   * Разрешённые форматы (передаются в Upload.accept).
+   * Если не задано — используется безопасный дефолт.
+   */
+  accept?: string;
+  /**
+   * Список разрешённых расширений без точки.
+   * Нужен для жёсткой валидации в beforeUpload. Если не задан,
+   * берётся из accept или используется дефолтный набор.
+   */
+  allowedExtensions?: string[];
 }
 
 /**
  * Компонент загрузчика конфигураций.
  * Позволяет прикрепить один конфиг-файл и выводит уведомление об успешной загрузке.
  */
-const ConfigUploader: FC<Props> = ({ onChange }) => {
-  /**  список загруженных конфигураций */
+const ConfigUploader: FC<Props> = ({ onChange, accept, allowedExtensions }) => {
+  /** Список загруженных конфигураций */
   const [configs, setConfigs] = useState<ConfigFile[]>([]);
+
+  /** Нормализованный список допустимых расширений без точки, в нижнем регистре */
+  const normalizedAllowed = useMemo<string[]>(() => {
+    if (allowedExtensions && allowedExtensions.length) {
+      return allowedExtensions.map((x) => x.replace(/^\./, '').toLowerCase());
+    }
+    if (accept && accept.length) {
+      return accept
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .map((s) => s.replace(/^\./, '').toLowerCase());
+    }
+    /** дефолтный набор */
+    return ['cfg', 'conf', 'txt'];
+  }, [allowedExtensions, accept]);
+
+  /** Итоговое значение для Upload.accept */
+  const effectiveAccept = useMemo(() => {
+    if (accept && accept.length) return accept;
+    if (normalizedAllowed.length) {
+      return normalizedAllowed.map((x) => `.${x}`).join(',');
+    }
+    return '.cfg,.conf,.txt';
+  }, [accept, normalizedAllowed]);
+
+  /** Проверка расширения файла */
+  const checkExtension = (fileName: string): { ok: boolean; ext: string } => {
+    const ext = (fileName.split('.').pop() || '').toLowerCase();
+    const ok = ext !== '' && normalizedAllowed.includes(ext);
+    return { ok, ext };
+  };
+
+  /**
+   * Перед добавлением в список валидируем расширение.
+   */
+  const beforeUpload = (file: File) => {
+    const { ok, ext } = checkExtension(file.name);
+    if (!ok) {
+      message.error(
+        `Формат ".${ext || '?'}" не поддерживается. Допустимо: ${normalizedAllowed
+          .map((x) => `.${x}`)
+          .join(', ')}`,
+      );
+      return Upload.LIST_IGNORE;
+    }
+    return false;
+  };
 
   /**
    * Обрабатывает изменение списка загруженных файлов.
@@ -36,6 +98,16 @@ const ConfigUploader: FC<Props> = ({ onChange }) => {
 
     const originalFile = latestUpload.originFileObj as File;
     if (!originalFile) return;
+
+    const { ok, ext } = checkExtension(originalFile.name);
+    if (!ok) {
+      message.error(
+        `Формат ".${ext || '?'}" не поддерживается. Допустимо: ${normalizedAllowed
+          .map((x) => `.${x}`)
+          .join(', ')}`,
+      );
+      return;
+    }
 
     const newConfig: ConfigFile = {
       uid: latestUpload.uid,
@@ -58,8 +130,8 @@ const ConfigUploader: FC<Props> = ({ onChange }) => {
   return (
     <div style={{ marginBottom: 24 }}>
       <Upload
-        accept=".cfg,.conf,.txt"
-        beforeUpload={() => false}
+        accept={effectiveAccept}
+        beforeUpload={beforeUpload}
         onChange={handleChange}
         showUploadList={false}
       >
