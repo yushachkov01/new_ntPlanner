@@ -1,8 +1,10 @@
+import { CheckOutlined, RollbackOutlined } from '@ant-design/icons';
 import { Collapse } from 'antd';
 import type { FC } from 'react';
 import { useMemo } from 'react';
 
 import type { StageField } from '@/entities/template/model/store/templateStore';
+import Tag from '@/shared/ui/Tag/Tag';
 import { normalizeRoleKey, type RoleKey } from '@/shared/utils/normalizeRoleKey';
 import {
   buildFullStageOrder,
@@ -182,8 +184,8 @@ const TaskDetail: FC<Props> = ({
   }, [poolFromAdded, poolFromRows]);
 
   /**
-   * Рендер заголовка панели: слева — бейдж направления (ПДС/Rollback),
-   * по центру — название, справа — бейдж роли (цвет зависит от исполнителя).
+   * Рендер заголовка панели: слева — бэйджи направления (ПДС/Rollback),
+   * по центру — название, справа — бейдж роли.
    */
   const makePanelLabel = (stageKey: string) => {
     const title = (stagesField[stageKey] as any)?.description ?? stageKey;
@@ -208,33 +210,11 @@ const TaskDetail: FC<Props> = ({
     const showPds = hasExplicit ? explicitPds : inType === 'success';
     const showRollback = hasExplicit ? explicitRollback : inType === 'failure';
 
-    /** Если одновременно есть оба тега — оба красные; если только ПДС — зелёный */
-    const bothTags = showPds && showRollback;
-
-    const badgeBase: React.CSSProperties = {
-      display: 'inline-block',
-      padding: '2px 8px',
-      borderRadius: 4,
-      fontSize: 12,
-      fontWeight: 600,
-      lineHeight: '16px',
-    };
-
-    const pdsStyle: React.CSSProperties = bothTags
-      ? { ...badgeBase, background: '#7f1d1d', color: '#fee2e2' } // красный, когда вместе с rollback
-      : { ...badgeBase, background: '#0f5132', color: '#e6fffa' }; // зелёный, когда один
-
-    const rollbackStyle: React.CSSProperties = {
-      ...badgeBase,
-      background: '#7f1d1d',
-      color: '#fee2e2',
-    };
-
     return (
       <div className="td-collapse-title">
         <span className="td-collapse-title__left" style={{ display: 'inline-flex', gap: 8 }}>
-          {showRollback && <span style={rollbackStyle}>Rollback</span>}
-          {showPds && <span style={pdsStyle}>ПДС</span>}
+          {showRollback && <Tag thin>Rollback</Tag>}
+          {showPds && <Tag thin>ПДС</Tag>}
         </span>
 
         <span className="td-collapse-title__text">{title}</span>

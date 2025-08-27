@@ -1,0 +1,40 @@
+.tag {
+  display: inline-flex;
+  align-items: center;
+  line-height: 1;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 6px;
+  padding: 3px 10px;
+  user-select: none;
+  white-space: nowrap;
+  margin-right: 8px;
+}
+
+.tag--thin {
+  padding: 2px 8px;
+  font-size: 11px;
+  border-radius: 6px;
+}
+
+.tag--default {
+  color: #d9d9d9;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.tag--success {
+  color: #e6fffa;
+  background: #0f5132;
+  border: 1px solid rgba(82, 196, 26, 0.45);
+}
+
+.tag--danger {
+  color: #fee2e2;
+  background: #7f1d1d;
+  border: 1px solid rgba(245, 34, 45, 0.45);
+}
+
+.tag:last-child {
+  margin-right: 0;
+}

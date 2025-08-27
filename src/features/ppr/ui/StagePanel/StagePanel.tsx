@@ -4,11 +4,14 @@ import type { FC } from 'react';
 import { useMemo, useEffect, useState, useCallback } from 'react';
 
 import type { StageField } from '@/entities/template/model/store/templateStore';
+import { useTypesStore } from '@/entities/types/model/store/typesStore';
 import type { RoleKey } from '@/shared/utils/normalizeRoleKey';
 import { getStageMinutes } from '@entities/timeline/model/utils/time';
 import { userStore } from '@entities/user/model/store/UserStore';
 import type { ConfigFile as BaseConfigFile } from '@features/ppr/ui/ConfigUploader/ConfigUploader';
 import ConfigUploader from '@features/ppr/ui/ConfigUploader/ConfigUploader';
+
+import './StagePanel.css';
 
 const { Text } = Typography;
 
@@ -104,11 +107,60 @@ export const StagePanel: FC<StagePanelProps> = ({
       .sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
   }, [meta]);
 
-  /** Начальные значения формы */
+  /** ДОПУСТИМЫЕ ФОРМАТЫ ИЗ types.yaml */
+
+  const types = useTypesStore((s) => s.types);
+  const loadTypes = useTypesStore((s) => s.load);
+  useEffect(() => {
+    loadTypes?.();
+  }, []);
+  /** Находим описание поля */
+  const logsField = useMemo(() => {
+    return stageFields.find((f) => String(f.type ?? '').toLowerCase() === 'logs');
+  }, [stageFields]);
+
+  /** Является ли обязательным (required: true) */
+  const isLogsRequired = Boolean(logsField?.required);
+
+  /** Форматы для поля (например ["txt","pdf"]) */
+  const allowedFormats: string[] = useMemo(() => {
+    try {
+      if (!logsField) return [];
+      const t: any = types;
+      const def = t?.[String(logsField.type)];
+      const fmt = def?.format;
+      const arr = Array.isArray(fmt) ? fmt : fmt ? [fmt] : [];
+      return arr.map((x: any) => String(x).trim()).filter(Boolean);
+    } catch {
+      return [];
+    }
+  }, [logsField, types]);
+
+  /** Для Upload.accept — ".txt,.pdf" */
+  const uploadAccept = useMemo(
+    () =>
+      allowedFormats.length
+        ? allowedFormats.map((x) => (x.startsWith('.') ? x : `.${x}`)).join(',')
+        : undefined,
+    [allowedFormats],
+  );
+
+  /** Для жёсткой валидации — ["txt","pdf"] */
+  const allowedExtensions = useMemo(
+    () => allowedFormats.map((x) => x.replace(/^\./, '').toLowerCase()),
+    [allowedFormats],
+  );
+
+  /** Подсказка справа от кнопки */
+  const formatsHint = useMemo(
+    () => (allowedFormats.length ? `допустимо: ${allowedFormats.join(', ')}` : null),
+    [allowedFormats],
+  );
+
   const initialFormValues = useMemo(() => {
     const defaultsFromFields: Record<string, any> = {};
     stageFields.forEach((field) => {
-      if (field.default !== undefined) defaultsFromFields[field.key] = field.default;
+      if (field.default !== undefined) defaultsFromFields[field.key!] = field.default;
     });
     return {
       timer: timerInitial,
@@ -222,11 +274,9 @@ export const StagePanel: FC<StagePanelProps> = ({
 
   /** Показывать секцию конфигов, если есть поле с type: logs или уже есть загруженные файлы */
   const shouldShowConfigsSection = useMemo(() => {
-    const hasLogsField = stageFields.some(
-      (field) => String(field.type ?? '').toLowerCase() === 'logs',
-    );
+    const hasLogsField = Boolean(logsField);
     return hasLogsField || (visibleConfigs?.length ?? 0) > 0;
-  }, [stageFields, visibleConfigs]);
+  }, [logsField, visibleConfigs]);
 
   /** Вернуть читаемое имя файла из записи. */
   const getDisplayName = useCallback((record: any): string => {
@@ -265,9 +315,7 @@ export const StagePanel: FC<StagePanelProps> = ({
       );
 
       const uniqueMap = new Map<string, ConfigFile>();
-      for (const rec of filteredByRemoved) {
-        uniqueMap.set(getRecordKey(rec), rec);
-      }
+      for (const rec of filteredByRemoved) uniqueMap.set(getRecordKey(rec), rec);
       const uniqueList = Array.from(uniqueMap.values());
 
       setVisibleConfigs(uniqueList);
@@ -342,7 +390,7 @@ export const StagePanel: FC<StagePanelProps> = ({
         dataIndex: 'uploadedAt',
         render: (_: any, record: any) => {
           const when = record?.uploadedAt ? formatDateTime(record.uploadedAt) : '';
-          const who = record?.uploadedBy ? ` (${record.uploadedBy})` : '';
+          const who = record?.uploadedBy ? ` (${record?.uploadedBy})` : '';
           return when ? `Загружено ${when}${who}` : who || '—';
         },
       },
@@ -352,7 +400,7 @@ export const StagePanel: FC<StagePanelProps> = ({
         align: 'right',
         width: 220,
         render: (_: any, record: any) => (
-          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <div className="stage-panel__actions">
             <Button danger size="small" onClick={() => handleRemoveFile(record)}>
               Удалить
             </Button>
@@ -379,8 +427,8 @@ export const StagePanel: FC<StagePanelProps> = ({
         </div>
       ))}
 
-      <div style={{ display: 'flex', gap: 20 }}>
-        <div style={{ flex: '0 0 360px' }}>
+      <div className="stage-panel__layout">
+        <div className="stage-panel__form">
           <Form
             layout="vertical"
             initialValues={initialFormValues}
@@ -404,11 +452,24 @@ export const StagePanel: FC<StagePanelProps> = ({
         </div>
 
         {shouldShowConfigsSection && (
-          <div style={{ flex: 1 }}>
-            <div style={{ textAlign: 'center', marginBottom: 8 }}>
+          <div className="stage-panel__configs">
+            <div className="stage-panel__configs-header">
               <b>Конфигурации</b>
+              {isLogsRequired && <span className="stage-panel__required-asterisk">*</span>}
             </div>
-            <ConfigUploader onChange={handleConfigsChange} />
+            <div className="stage-panel__uploader-row">
+              <ConfigUploader
+                onChange={handleConfigsChange}
+                accept={uploadAccept}
+                allowedExtensions={allowedExtensions}
+              />
+              {formatsHint && (
+                <Text className="stage-panel__formats-hint stage-panel__formats-hint--danger">
+                  * {formatsHint}
+                </Text>
+              )}
+            </div>
+
             <Table
               dataSource={visibleConfigs}
               columns={effectiveColumns}
