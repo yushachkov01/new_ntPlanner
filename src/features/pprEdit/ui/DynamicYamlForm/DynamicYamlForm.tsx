@@ -5,20 +5,18 @@
  *
  */
 
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import { Form, Typography, Button, message, Skeleton, Alert } from 'antd';
-import React, { useEffect, useMemo, useState } from 'react';
-
 import './DynamicYamlForm.css';
-import { templateStore } from '@/entities/template/model/store/templateStore';
 import type { FieldCfg } from '@/features/pprEdit/model/types';
+import { toArray } from './helpers/toArray';
+import { FieldsTable } from '../FieldsTable/FieldsTable';
+import { templateStore } from '@/entities/template/model/store/templateStore';
+import type { User } from '@entities/users/model/mapping/mapping';
+import useTimelineStore from '@entities/timeline/model/store/timelineStore';
 import { buildFieldTree } from '@/features/pprEdit/model/typeSystem/FieldTreeBuilder';
 import { DeclarativeFormRenderer } from '@/features/pprEdit/ui/DeclarativeFormRenderer/DeclarativeFormRenderer';
-import useTimelineStore from '@entities/timeline/model/store/timelineStore';
 import { useTypesStore } from '@entities/types/model/store/typesStore';
-import type { User } from '@entities/users/model/mapping/mapping';
-
-import { FieldsTable } from '../FieldsTable/FieldsTable';
-import { toArray } from './helpers/toArray';
 
 const { Title } = Typography;
 
@@ -33,6 +31,12 @@ interface Props {
   executors?: Array<Pick<User, 'id'> & { author?: string; role?: string }>;
   templateKey?: string;
   onRowCountChange?: (count: number) => void;
+  onDisplayTableChange?: (
+    headers: string[],
+    rows: string[][],
+    sources: (string | undefined)[],
+    colKeys: string[],
+  ) => void;
 }
 
 type RowWithSource = Record<string, any> & { __sourceKey?: string };
@@ -49,8 +53,7 @@ const isEmptyValue = (value: unknown): boolean => {
   if (value instanceof Date) return Number.isNaN(+value);
   if (Array.isArray(value)) return value.length === 0 || value.every(isEmptyValue);
   if (typeof value === 'object') {
-    const obj = value as Record<string, unknown>;
-    const vals = Object.values(obj);
+    const vals = Object.values(value as Record<string, unknown>);
     return vals.length === 0 || vals.every(isEmptyValue);
   }
   return false;
@@ -66,6 +69,7 @@ export default function DynamicYamlForm({
   executors = [],
   templateKey,
   onRowCountChange,
+  onDisplayTableChange,
 }: Props) {
   /** Управление формой Ant Design */
   const [form] = Form.useForm();
@@ -132,11 +136,9 @@ export default function DynamicYamlForm({
    * Исходные параметры для формы (верхний уровень),
    */
   const rawParams = useMemo(() => {
-    const params =
-      Array.isArray(schema?.params) && schema.params.length
-        ? (schema.params as FieldCfg[])
-        : (toArray({ fields: schema?.settings }) as FieldCfg[]);
-    return params;
+    return Array.isArray(schema?.params) && schema.params.length
+      ? (schema.params as FieldCfg[])
+      : (toArray({ fields: schema?.settings }) as FieldCfg[]);
   }, [schema?.params, schema?.settings]);
 
   /**
@@ -403,13 +405,18 @@ export default function DynamicYamlForm({
   const fieldTree = useMemo(() => {
     if (!typesReady) return { nodes: [] };
     try {
-      const tree = buildFieldTree(uiParams ?? [], types);
-      return tree;
+      return buildFieldTree(uiParams ?? [], types);
     } catch {
       return { nodes: [] };
     }
   }, [uiParams, typesReady, types]);
 
+  const handleDisplayTableChange = useCallback(
+    (headers: string[], rows: string[][], sources: (string | undefined)[], colKeys: string[]) => {
+      onDisplayTableChange?.(headers, rows, sources, colKeys);
+    },
+    [onDisplayTableChange],
+  );
   return (
     <section className="dyf__root">
       <Title level={4}>{schema?.headline}</Title>
@@ -453,6 +460,7 @@ export default function DynamicYamlForm({
             data={localData}
             onEdit={handleEdit}
             onDelete={handleDelete}
+            onDisplayTableChange={handleDisplayTableChange}
           />
         </div>
       </div>

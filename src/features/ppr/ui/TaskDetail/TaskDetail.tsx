@@ -1,4 +1,3 @@
-import { CheckOutlined, RollbackOutlined } from '@ant-design/icons';
 import { Collapse } from 'antd';
 import type { FC } from 'react';
 import { useMemo } from 'react';
@@ -13,13 +12,61 @@ import {
 } from '@/shared/utils/stageGraph';
 import useTimelineStore from '@entities/timeline/model/store/timelineStore';
 import { getStageMinutes } from '@entities/timeline/model/utils/time';
-import { userStore } from '@entities/user/model/store/UserStore';
 import { useUserStore } from '@entities/users/model/store/userStore';
 import type { TaskDetailProps } from '@features/ppr/model/types';
 import './TaskDetail.css';
 import { useSyncedOpenKeys } from '@features/ppr/model/hooks/useSyncedOpenKeys';
 import type { SimpleUser } from '@features/ppr/ui/StagePanel/StagePanel';
 import { StagePanel } from '@features/ppr/ui/StagePanel/StagePanel';
+
+const getByPath = (obj: any, path: string) =>
+  !obj || !path ? undefined : path.split('.').reduce((acc, k) => (acc == null ? acc : acc[k]), obj);
+
+function interpolate(tpl: string, ctx: Record<string, any>) {
+  if (!tpl || typeof tpl !== 'string') return '';
+  return tpl.replace(/\{\{\s*([^}]+?)\s*\}\}/g, (_, expr: string) => {
+    const raw = getByPath(ctx, expr.trim());
+    return raw == null ? '' : String(raw);
+  });
+}
+
+function extractPlaceholderRoots(stagesField: Record<string, any>): string[] {
+  const set = new Set<string>();
+  const rx = /\{\{\s*([^}]+?)\s*\}\}/g;
+  Object.values(stagesField ?? {}).forEach((meta: any) => {
+    const text = String(meta?.description ?? '');
+    let m: RegExpExecArray | null;
+    while ((m = rx.exec(text))) {
+      const expr = String(m[1]).trim();
+      const path = expr.replace(/^params\./, '');
+      const root = path.split('.')[0];
+      if (root) set.add(root);
+    }
+  });
+  return Array.from(set);
+}
+
+/** контекст по ОДНОЙ строке: матчим сначала по colKeys, потом по header */
+function buildParamsFromSingleRow(
+  roots: string[],
+  colKeys: string[],
+  headers: string[],
+  row: string[],
+): Record<string, any> {
+  const ctx: Record<string, any> = {};
+  if (!roots.length || !row?.length) return ctx;
+
+  roots.forEach((root) => {
+    let idx = -1;
+    if (colKeys?.length) idx = colKeys.findIndex((k) => String(k).trim() === String(root).trim());
+    if (idx < 0 && headers?.length)
+      idx = headers.findIndex((h) => String(h).trim() === String(root).trim());
+    if (idx < 0) idx = row.findIndex((cell) => String(cell ?? '').trim().length > 0);
+    if (idx >= 0 && idx < row.length) ctx[root] = row[idx] ?? '';
+  });
+
+  return ctx;
+}
 
 /** Цвета бейджа роли исполнителя справа в заголовке панели. */
 const ROLE_COLORS: Record<RoleKey, string> = {
@@ -65,6 +112,11 @@ interface Props extends TaskDetailProps {
   stageKeys?: string[];
   stagesField?: Record<string, StageField>;
   onTimerChange?: (stageKey: string, newTimer: number) => void;
+
+  /** ОДНА строка, принадлежащая текущему блоку */
+  displayHeaders?: string[];
+  displayRow?: string[];
+  displayColKeys?: string[];
 }
 
 /**
@@ -75,15 +127,14 @@ interface Props extends TaskDetailProps {
 const TaskDetail: FC<Props> = ({
   label,
   startTime,
-  endTime,
   stageKeys = [],
   stagesField = {},
   onClose,
   onTimerChange,
+  displayHeaders = [],
+  displayRow = [],
+  displayColKeys = [],
 }) => {
-  userStore((state) => state.user);
-  useUserStore((s: any) => s.users);
-
   /** актуальные строки таймлайна */
   const rows = useTimelineStore((s) => s.rows ?? []);
   /** справочник пользователей */
@@ -101,6 +152,7 @@ const TaskDetail: FC<Props> = ({
 
   /** Расчёт длительности задачи в минутах */
   const [startHour, startMinute] = startTime.split(':').map(Number);
+  const endTime = '00:00';
   const [endHour, endMinute] = endTime.split(':').map(Number);
   const durationMinutes = endHour * 60 + endMinute - (startHour * 60 + startMinute);
 
@@ -118,6 +170,17 @@ const TaskDetail: FC<Props> = ({
    */
   const [openKeys, setOpenKeys] = useSyncedOpenKeys(fullStageOrder, stageKeys?.[0]);
 
+  /**  контекст подстановки для текущего блока  */
+  const placeholderRoots = useMemo(() => extractPlaceholderRoots(stagesField), [stagesField]);
+
+  const paramsContext = useMemo(
+    () => buildParamsFromSingleRow(placeholderRoots, displayColKeys, displayHeaders, displayRow),
+    [placeholderRoots, displayColKeys, displayHeaders, displayRow],
+  );
+
+  const interpCtx = useMemo(() => ({ ...paramsContext, params: paramsContext }), [paramsContext]);
+
+  /** исполнители: добавленные вручную */
   const poolFromAdded: SimpleUser[] = useMemo(() => {
     const normalized = addedExecutors
       .map((e) => {
@@ -127,7 +190,7 @@ const TaskDetail: FC<Props> = ({
           id: String(e.id),
           author: normalizeAuthor(e),
           role: roleKey,
-        } as unknown as SimpleUser;
+        } as SimpleUser;
       })
       .filter((x): x is SimpleUser => !!x);
 
@@ -184,11 +247,12 @@ const TaskDetail: FC<Props> = ({
   }, [poolFromAdded, poolFromRows]);
 
   /**
-   * Рендер заголовка панели: слева — бэйджи направления (ПДС/Rollback),
+   * Рендер заголовка панели: слева — бейджи направления (ПДС/Rollback),
    * по центру — название, справа — бейдж роли.
    */
   const makePanelLabel = (stageKey: string) => {
-    const title = (stagesField[stageKey] as any)?.description ?? stageKey;
+    const rawTitle = (stagesField[stageKey] as any)?.description ?? stageKey;
+    const title = interpolate(String(rawTitle), interpCtx);
 
     const roleRequiredKey = toCanonicalRole((stagesField[stageKey] as any)?.executor);
     const color = roleRequiredKey ? ROLE_COLORS[roleRequiredKey] : '#9ca3af';
@@ -199,11 +263,19 @@ const TaskDetail: FC<Props> = ({
     const rawTags = Array.isArray((stagesField[stageKey] as any)?.tags)
       ? ((stagesField[stageKey] as any).tags as unknown[])
       : [];
-
+    /**
+     * Чтобы сопоставление работало надёжно независимо от регистра и лишних пробелов,
+     *  приводим каждый тег к строке, обрезаем пробелы по краям и делаем нижний регистр.
+     */
     const normalizedTags = rawTags.map((t) => String(t).trim().toLowerCase());
+    /**
+     * Проверяем, есть ли среди тегов явное указание на ПДС. Поддерживаем два варианта
+     */
     const explicitPds = normalizedTags.includes('пдс') || normalizedTags.includes('pds');
-    const explicitRollback =
-      normalizedTags.includes('rollback') || normalizedTags.includes('rallback');
+    /**
+     * проверяем наличие тега "rollback" для явного помечания откатной стадии.
+     */
+    const explicitRollback = normalizedTags.includes('rollback');
 
     const hasExplicit = normalizedTags.length > 0;
 
@@ -230,10 +302,7 @@ const TaskDetail: FC<Props> = ({
   const successMinutes = useMemo(() => {
     return fullStageOrder.reduce((sum, key) => {
       const inType: IncomingType = key === startStageKey ? 'success' : incomingType[key];
-      if (inType === 'success') {
-        return sum + getStageMinutes(stagesField[key]);
-      }
-      return sum;
+      return inType === 'success' ? sum + getStageMinutes(stagesField[key]) : sum;
     }, 0);
   }, [fullStageOrder, stagesField, incomingType, startStageKey]);
 

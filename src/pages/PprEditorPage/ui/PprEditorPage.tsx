@@ -160,6 +160,9 @@ const PprEditorPage: React.FC = () => {
     return (tabExecutors ?? []).map(normalizeExec);
   }, [pprExecutors, tabExecutors]);
 
+  const [rowDisplayBySource, setRowDisplayBySource] = useState<
+    Record<string, { headers: string[]; row: string[]; colKeys: string[] }>
+  >({});
   return (
     <section className="ppr-editor-card">
       <div style={{ padding: '8px 16px 0 16px' }}>
@@ -286,6 +289,17 @@ const PprEditorPage: React.FC = () => {
               onRowCountChange={(cnt) => {
                 if (!paramsConfirmed && cnt > 0) setParamsConfirmed(true);
               }}
+              onDisplayTableChange={(headers, rows, sources, colKeys) => {
+                setRowDisplayBySource((prev) => {
+                  const next = { ...prev };
+                  rows.forEach((row, idx) => {
+                    const src = sources[idx];
+                    if (!src) return;
+                    next[src] = { headers, row, colKeys: colKeys ?? [] };
+                  });
+                  return next;
+                });
+              }}
             />
           )}
         </div>
@@ -324,6 +338,17 @@ const PprEditorPage: React.FC = () => {
                 templateKey={(template as any)?.key}
                 executors={(executorsByTemplate[idx + 1] ?? []).map(normalizeExec)}
                 onRowCountChange={() => {}}
+                onDisplayTableChange={(headers, rows, sources, colKeys) => {
+                  setRowDisplayBySource((prev) => {
+                    const next = { ...prev };
+                    rows.forEach((row, i) => {
+                      const src = sources[i];
+                      if (!src) return;
+                      next[src] = { headers, row, colKeys: colKeys ?? [] };
+                    });
+                    return next;
+                  });
+                }}
               />
             )}
           </React.Fragment>
@@ -349,6 +374,7 @@ const PprEditorPage: React.FC = () => {
                 });
               }}
               onMoveBetweenExecutors={handleMoveBetweenExecutors}
+              rowDisplayBySource={rowDisplayBySource}
             />
           </div>
         </>
