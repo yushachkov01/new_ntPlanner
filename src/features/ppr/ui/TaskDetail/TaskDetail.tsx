@@ -3,13 +3,22 @@ import type { FC } from 'react';
 import { useMemo } from 'react';
 
 import type { StageField } from '@/entities/template/model/store/templateStore';
+import { ROLE_COLORS, ROLE_SWATCH_DEFAULT_COLOR } from '@/shared/constants';
 import Tag from '@/shared/ui/Tag/Tag';
-import { normalizeRoleKey, type RoleKey } from '@/shared/utils/normalizeRoleKey';
 import {
   buildFullStageOrder,
   buildIncomingTypeMap,
   type IncomingType,
 } from '@/shared/utils/stageGraph';
+import {
+  getByPath,
+  interpolate,
+  extractPlaceholderRoots,
+  buildParamsFromSingleRow,
+  addMinutesToTime,
+  normalizeAuthor,
+  toCanonicalRole,
+} from '@/shared/utils/TaskDetailUtils';
 import useTimelineStore from '@entities/timeline/model/store/timelineStore';
 import { getStageMinutes } from '@entities/timeline/model/utils/time';
 import { useUserStore } from '@entities/users/model/store/userStore';
@@ -18,92 +27,6 @@ import './TaskDetail.css';
 import { useSyncedOpenKeys } from '@features/ppr/model/hooks/useSyncedOpenKeys';
 import type { SimpleUser } from '@features/ppr/ui/StagePanel/StagePanel';
 import { StagePanel } from '@features/ppr/ui/StagePanel/StagePanel';
-
-const getByPath = (obj: any, path: string) =>
-  !obj || !path ? undefined : path.split('.').reduce((acc, k) => (acc == null ? acc : acc[k]), obj);
-
-function interpolate(tpl: string, ctx: Record<string, any>) {
-  if (!tpl || typeof tpl !== 'string') return '';
-  return tpl.replace(/\{\{\s*([^}]+?)\s*\}\}/g, (_, expr: string) => {
-    const raw = getByPath(ctx, expr.trim());
-    return raw == null ? '' : String(raw);
-  });
-}
-
-function extractPlaceholderRoots(stagesField: Record<string, any>): string[] {
-  const set = new Set<string>();
-  const rx = /\{\{\s*([^}]+?)\s*\}\}/g;
-  Object.values(stagesField ?? {}).forEach((meta: any) => {
-    const text = String(meta?.description ?? '');
-    let m: RegExpExecArray | null;
-    while ((m = rx.exec(text))) {
-      const expr = String(m[1]).trim();
-      const path = expr.replace(/^params\./, '');
-      const root = path.split('.')[0];
-      if (root) set.add(root);
-    }
-  });
-  return Array.from(set);
-}
-
-/** контекст по ОДНОЙ строке: матчим сначала по colKeys, потом по header */
-function buildParamsFromSingleRow(
-  roots: string[],
-  colKeys: string[],
-  headers: string[],
-  row: string[],
-): Record<string, any> {
-  const ctx: Record<string, any> = {};
-  if (!roots.length || !row?.length) return ctx;
-
-  roots.forEach((root) => {
-    let idx = -1;
-    if (colKeys?.length) idx = colKeys.findIndex((k) => String(k).trim() === String(root).trim());
-    if (idx < 0 && headers?.length)
-      idx = headers.findIndex((h) => String(h).trim() === String(root).trim());
-    if (idx < 0) idx = row.findIndex((cell) => String(cell ?? '').trim().length > 0);
-    if (idx >= 0 && idx < row.length) ctx[root] = row[idx] ?? '';
-  });
-
-  return ctx;
-}
-
-/** Цвета бейджа роли исполнителя справа в заголовке панели. */
-const ROLE_COLORS: Record<RoleKey, string> = {
-  engineer: '#1e90ff',
-  installer: '#f97316',
-  auditor: '#ef4444',
-  system: '#9ca3af',
-};
-
-/** Нормализация ФИО/имени  */
-const normalizeAuthor = (raw: any): string => {
-  const candidate =
-    raw?.author ??
-    raw?.fio ??
-    raw?.name ??
-    `${raw?.last_name ?? ''} ${raw?.first_name ?? ''}`.trim();
-  return candidate && candidate.length > 0 ? candidate : `User ${raw?.id ?? ''}`;
-};
-
-const toCanonicalRole = (roleRaw?: string): RoleKey | undefined => {
-  const direct = normalizeRoleKey(roleRaw);
-  if (direct) return direct;
-  if (roleRaw === 'Сетевой инженер') return 'engineer';
-  if (roleRaw === 'Инженер СМР') return 'installer';
-  if (roleRaw === 'Представитель Заказчика') return 'auditor';
-  if (roleRaw === 'Система') return 'system';
-  return undefined;
-};
-
-/** прибавить минуты */
-const addMinutesToTime = (hhmm: string, minutes: number): string => {
-  const [h, m] = (hhmm ?? '00:00').split(':').map((x) => parseInt(x, 10) || 0);
-  const total = (((h * 60 + m + Math.max(0, minutes)) % (24 * 60)) + 24 * 60) % (24 * 60);
-  const hh = String(Math.floor(total / 60)).padStart(2, '0');
-  const mm = String(total % 60).padStart(2, '0');
-  return `${hh}:${mm}`;
-};
 
 /**
  * Свойства компонента TaskDetail
@@ -255,38 +178,28 @@ const TaskDetail: FC<Props> = ({
     const title = interpolate(String(rawTitle), interpCtx);
 
     const roleRequiredKey = toCanonicalRole((stagesField[stageKey] as any)?.executor);
-    const color = roleRequiredKey ? ROLE_COLORS[roleRequiredKey] : '#9ca3af';
+    const color = roleRequiredKey ? ROLE_COLORS[roleRequiredKey] : ROLE_SWATCH_DEFAULT_COLOR;
 
     /** стартовую стадию всегда маркируем как success */
     const inType: IncomingType = stageKey === startStageKey ? 'success' : incomingType[stageKey];
 
+    /** все теги этапа, которые заданы в YAML */
     const rawTags = Array.isArray((stagesField[stageKey] as any)?.tags)
       ? ((stagesField[stageKey] as any).tags as unknown[])
       : [];
-    /**
-     * Чтобы сопоставление работало надёжно независимо от регистра и лишних пробелов,
-     *  приводим каждый тег к строке, обрезаем пробелы по краям и делаем нижний регистр.
-     */
-    const normalizedTags = rawTags.map((t) => String(t).trim().toLowerCase());
-    /**
-     * Проверяем, есть ли среди тегов явное указание на ПДС. Поддерживаем два варианта
-     */
-    const explicitPds = normalizedTags.includes('пдс') || normalizedTags.includes('pds');
-    /**
-     * проверяем наличие тега "rollback" для явного помечания откатной стадии.
-     */
-    const explicitRollback = normalizedTags.includes('rollback');
+    const tags: string[] = rawTags.map((t) => String(t).trim()).filter(Boolean);
 
-    const hasExplicit = normalizedTags.length > 0;
-
-    const showPds = hasExplicit ? explicitPds : inType === 'success';
-    const showRollback = hasExplicit ? explicitRollback : inType === 'failure';
+    /** единый цвет для всех тегов текущего этапа */
+    const tagVariant = inType === 'failure' ? 'danger' : 'success';
 
     return (
       <div className="td-collapse-title">
         <span className="td-collapse-title__left" style={{ display: 'inline-flex', gap: 8 }}>
-          {showRollback && <Tag thin>Rollback</Tag>}
-          {showPds && <Tag thin>ПДС</Tag>}
+          {tags.map((tag, idx) => (
+            <Tag key={`${tag}-${idx}`} thin variant={tagVariant}>
+              {tag}
+            </Tag>
+          ))}
         </span>
 
         <span className="td-collapse-title__text">{title}</span>

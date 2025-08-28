@@ -35,3 +35,14 @@ export const STAGE_PANEL_TEXT = {
     { value: 'false', label: 'false' },
   ] as const,
 };
+
+/** Цвета бейджа роли исполнителя (справа в заголовке панели) */
+export const ROLE_COLORS: Record<RoleKey, string> = {
+  engineer: '#1e90ff',
+  installer: '#f97316',
+  auditor: '#ef4444',
+  system: '#9ca3af',
+};
+
+/** Цвет бейджа роли по умолчанию */
+export const ROLE_SWATCH_DEFAULT_COLOR = '#9ca3af';

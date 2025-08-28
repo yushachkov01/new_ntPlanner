@@ -5,18 +5,20 @@
  *
  */
 
-import { useEffect, useMemo, useState, useCallback } from 'react';
 import { Form, Typography, Button, message, Skeleton, Alert } from 'antd';
+import { useEffect, useMemo, useState, useCallback } from 'react';
+
 import './DynamicYamlForm.css';
-import type { FieldCfg } from '@/features/pprEdit/model/types';
-import { toArray } from './helpers/toArray';
-import { FieldsTable } from '../FieldsTable/FieldsTable';
 import { templateStore } from '@/entities/template/model/store/templateStore';
-import type { User } from '@entities/users/model/mapping/mapping';
-import useTimelineStore from '@entities/timeline/model/store/timelineStore';
+import type { FieldCfg } from '@/features/pprEdit/model/types';
 import { buildFieldTree } from '@/features/pprEdit/model/typeSystem/FieldTreeBuilder';
 import { DeclarativeFormRenderer } from '@/features/pprEdit/ui/DeclarativeFormRenderer/DeclarativeFormRenderer';
+import useTimelineStore from '@entities/timeline/model/store/timelineStore';
 import { useTypesStore } from '@entities/types/model/store/typesStore';
+import type { User } from '@entities/users/model/mapping/mapping';
+
+import { FieldsTable } from '../FieldsTable/FieldsTable';
+import { toArray } from './helpers/toArray';
 
 const { Title } = Typography;
 
