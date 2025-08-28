@@ -5,10 +5,14 @@ import { useMemo, useEffect, useState, useCallback } from 'react';
 
 import type { StageField } from '@/entities/template/model/store/templateStore';
 import { useTypesStore } from '@/entities/types/model/store/typesStore';
-import { ROLE_TITLES_RU, STAGE_PANEL_TEXT } from '@/shared/constants';
+import {
+  ROLE_TITLES_RU,
+  STAGE_PANEL_TEXT as STAGE_PANEL,
+  STAGE_PANEL_UI,
+} from '@/shared/constants';
 import type { StageFieldDef } from '@/shared/types/fieldRenderer/types';
-import { normalizeType, renderFormItem } from '@/shared/utils/fieldRenderer';
 import type { RoleKey } from '@/shared/utils/normalizeRoleKey';
+import { normalizeType, renderField } from '@/shared/utils/stagePanelUtils';
 import { getStageMinutes } from '@entities/timeline/model/utils/time';
 import { userStore } from '@entities/user/model/store/UserStore';
 import type { ConfigFile as BaseConfigFile } from '@features/ppr/ui/ConfigUploader/ConfigUploader';
@@ -99,48 +103,52 @@ export const StagePanel: FC<StagePanelProps> = ({
     loadTypes?.();
   }, [loadTypes]);
   /** Находим описание поля */
-  const logsField = useMemo(() => {
-    return stageFields.find((f) => normalizeType(f.type) === 'logs');
-  }, [stageFields]);
+  const fileField = useMemo(() => {
+    const fields = stageFields ?? [];
+    for (const field of fields) {
+      const isLogs = normalizeType(field.type) === 'logs';
+      const def: any = (types as any)?.[String(field.type ?? '').trim()];
+      const fmt = def?.format;
+      const hasFormats = Array.isArray(fmt) ? fmt.length > 0 : Boolean(fmt);
+      if (isLogs || hasFormats) return field;
+    }
+    return undefined;
+  }, [stageFields, types]);
 
-  /** Является ли обязательным (required: true) */
-  const isLogsRequired = Boolean(logsField?.required);
+  /** Заголовок секции — поля из YAML, иначе дефолт */
+  const configsTitle = useMemo(
+    () => String(fileField?.label || STAGE_PANEL.logs.title),
+    [fileField],
+  );
 
-  /** Форматы для поля (например ["txt","pdf"]) */
-  const allowedFormats: string[] = useMemo(() => {
+  const isFileRequired = Boolean(fileField?.required);
+
+  /** Приводим formats из types.yaml к массиву расширений без точки: (например: ['txt','log']) */
+  const allowedFormats = useMemo<string[]>(() => {
+    if (!fileField) return [];
     try {
-      if (!logsField) return [];
-      const t: any = types;
-      const def = t?.[String(logsField.type)];
+      const def: any = (types as any)?.[String(fileField.type ?? '').trim()];
       const fmt = def?.format;
       const arr = Array.isArray(fmt) ? fmt : fmt ? [fmt] : [];
-      return arr.map((x: any) => String(x).trim()).filter(Boolean);
+      return arr.map((x: any) => String(x).trim().replace(/^\./, '').toLowerCase()).filter(Boolean);
     } catch {
       return [];
     }
-  }, [logsField, types]);
+  }, [fileField, types]);
 
   /** Для Upload.accept — ".txt,.pdf" */
   const uploadAccept = useMemo(
-    () =>
-      allowedFormats.length
-        ? allowedFormats.map((x) => (x.startsWith('.') ? x : `.${x}`)).join(',')
-        : undefined,
+    () => (allowedFormats.length ? allowedFormats.map((x) => `.${x}`).join(',') : undefined),
     [allowedFormats],
   );
 
-  /** Для жёсткой валидации — ["txt","pdf"] */
-  const allowedExtensions = useMemo(
-    () => allowedFormats.map((x) => x.replace(/^\./, '').toLowerCase()),
-    [allowedFormats],
-  );
+  /** Для валидации */
+  const allowedExtensions = allowedFormats;
 
   /** Подсказка справа от кнопки */
   const formatsHint = useMemo(
     () =>
-      allowedFormats.length
-        ? `${STAGE_PANEL_TEXT.logs.formatsHintPrefix}${allowedFormats.join(', ')}`
-        : null,
+        allowedFormats.length ? `${STAGE_PANEL.logs.formatsHintPrefix}${allowedFormats.join(', ')}` : null,
     [allowedFormats],
   );
   /** отображаемые конфиги (мгновенно после загрузки) */
@@ -161,9 +169,8 @@ export const StagePanel: FC<StagePanelProps> = ({
 
   /** Показывать секцию конфигов, если есть поле с type: logs или уже есть загруженные файлы */
   const shouldShowConfigsSection = useMemo(() => {
-    const hasLogsField = Boolean(logsField);
-    return hasLogsField || (visibleConfigs?.length ?? 0) > 0;
-  }, [logsField, visibleConfigs]);
+    return Boolean(fileField) || (visibleConfigs?.length ?? 0) > 0;
+  }, [fileField, visibleConfigs]);
 
   /** Вернуть читаемое имя файла из записи. */
   const getDisplayName = useCallback((record: any): string => {
@@ -173,7 +180,7 @@ export const StagePanel: FC<StagePanelProps> = ({
       record?.fileName ||
       record?.title ||
       record?.path ||
-      `${STAGE_PANEL_TEXT.files.fallbackFilePrefix} ${record?.uid ?? ''}`
+      `${STAGE_PANEL.files.fallbackFilePrefix} ${record?.uid ?? ''}`
     );
   }, []);
 
@@ -277,24 +284,24 @@ export const StagePanel: FC<StagePanelProps> = ({
         dataIndex: 'uploadedAt',
         render: (_: any, record: any) => {
           const when = record?.uploadedAt ? formatDateTime(record.uploadedAt) : '';
-          const who = record?.uploadedBy ? STAGE_PANEL_TEXT.files.byParen(record.uploadedBy) : '';
+          const who = record?.uploadedBy ? STAGE_PANEL.files.byParen(record.uploadedBy) : '';
           return when
-            ? `${STAGE_PANEL_TEXT.files.uploadedPrefix}${when}${who}`
-            : who || STAGE_PANEL_TEXT.common.emDash;
+            ? `${STAGE_PANEL.files.uploadedPrefix}${when}${who}`
+            : who || STAGE_PANEL.common.emDash;
         },
       },
       {
         key: 'actions',
         dataIndex: '__actions__',
         align: 'right',
-        width: 220,
+        width: STAGE_PANEL_UI.TABLE_ACTIONS_WIDTH,
         render: (_: any, record: any) => (
           <div className="stage-panel__actions">
             <Button danger size="small" onClick={() => handleRemoveFile(record)}>
-              {STAGE_PANEL_TEXT.files.deleteBtn}
+              {STAGE_PANEL.files.deleteBtn}
             </Button>
             <Button type="primary" size="small" onClick={() => handlePreviewFile(record)}>
-              {STAGE_PANEL_TEXT.files.previewBtn}
+              {STAGE_PANEL.files.previewBtn}
             </Button>
           </div>
         ),
@@ -335,23 +342,16 @@ export const StagePanel: FC<StagePanelProps> = ({
             }}
             preserve
           >
-            <Form.Item
-              key="__timer__"
-              label={STAGE_PANEL_TEXT.form.timerLabel}
-              name="timer"
-              rules={[{ required: true, type: 'number', min: 1 }]}
-            >
-              <InputNumber style={{ width: '100%' }} />
-            </Form.Item>
-            {stageFields.map((fd) => renderFormItem(fd))}
+            {wrapTimer()}
+            {stageFields.map((fd) => renderField(fd))}
           </Form>
         </div>
 
         {shouldShowConfigsSection && (
           <div className="stage-panel__configs">
             <div className="stage-panel__configs-header">
-              <b>{STAGE_PANEL_TEXT.logs.title}</b>
-              {isLogsRequired && <span className="stage-panel__required-asterisk">*</span>}
+              <b>{configsTitle}</b>
+              {isFileRequired && <span className="stage-panel__required-asterisk">*</span>}
             </div>
             <div className="stage-panel__uploader-row">
               <ConfigUploader
@@ -374,13 +374,29 @@ export const StagePanel: FC<StagePanelProps> = ({
               pagination={false}
               size="small"
               bordered
-              locale={{ emptyText: STAGE_PANEL_TEXT.files.emptyText }}
+              locale={{ emptyText: STAGE_PANEL.files.emptyText }}
             />
           </div>
         )}
       </div>
     </section>
   );
+
+  /**
+   * Рендерит поле Таймер (мин)
+   */
+  function wrapTimer() {
+    return (
+      <Form.Item
+        key="__timer__"
+        label={STAGE_PANEL.form.timerLabel}
+        name="timer"
+        rules={[{ required: true, type: 'number', min: 1 }]}
+      >
+        <InputNumber style={STAGE_PANEL_UI.INPUT_NUMBER_STYLE} />
+      </Form.Item>
+    );
+  }
 };
 
 export default StagePanel;

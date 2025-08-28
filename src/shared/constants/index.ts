@@ -46,3 +46,12 @@ export const ROLE_COLORS: Record<RoleKey, string> = {
 
 /** Цвет бейджа роли по умолчанию */
 export const ROLE_SWATCH_DEFAULT_COLOR = '#9ca3af';
+/** UI-константы StagePanel  */
+export const STAGE_PANEL_UI = {
+  /** InputNumber во всю ширину */
+  INPUT_NUMBER_STYLE: { width: '100%' } as const,
+  /** Автовысота для textarea */
+  TEXTAREA_AUTOSIZE: { minRows: 4, maxRows: 12 } as const,
+  /** Ширина колонки с действиями в таблице файлов */
+  TABLE_ACTIONS_WIDTH: 220,
+} as const;

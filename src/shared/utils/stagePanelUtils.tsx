@@ -47,14 +47,6 @@ const INPUTS_BY_KIND: Record<FieldKind, (fd: StageFieldDef) => ReactNode> = {
   text: () => <Input />,
 };
 
-/** дать возможность расширять */
-export function registerFieldKind(
-  kind: FieldKind | string,
-  renderer: (fd: StageFieldDef) => ReactNode,
-) {
-  INPUTS_BY_KIND[kind as FieldKind] = renderer;
-}
-
 /** единая обвязка Form.Item */
 export function wrapFormItem(name: string, label: string, isRequired: boolean, node: ReactNode) {
   return (
@@ -74,12 +66,12 @@ export function wrapFormItem(name: string, label: string, isRequired: boolean, n
 }
 
 /** финальный унифицированный рендер одного поля */
-export function renderFormItem(fd: StageFieldDef): ReactNode {
+export function renderField(fd: StageFieldDef): ReactNode {
   const name = fd.key ?? '';
   if (!name) return null;
   const label = fd.label ?? name;
   const isRequired = Boolean(fd.required);
   const kind = resolveFieldKind(fd);
-  const inputNode = (INPUTS_BY_KIND[kind] ?? INPUTS_BY_KIND.text)(fd);
+  const inputNode = INPUTS_BY_KIND[kind](fd);
   return wrapFormItem(name, label, isRequired, inputNode);
 }

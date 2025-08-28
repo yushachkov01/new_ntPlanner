@@ -3,6 +3,7 @@ import { Button, Upload, message } from 'antd';
 import type { UploadFile } from 'antd/es/upload/interface';
 import { useMemo, useState } from 'react';
 import type { FC } from 'react';
+import './ConfigUploader.css';
 
 export interface ConfigFile {
   /** Уникальный идентификатор файла */
@@ -30,15 +31,19 @@ interface Props {
    * берётся из accept или используется дефолтный набор.
    */
   allowedExtensions?: string[];
+  /** Сообщить родителю, есть ли сейчас ошибка у загрузчика */
+  onErrorChange?: (hasError: boolean) => void;
 }
 
+const withDots = (arr: string[]) => arr.map((x) => (x.startsWith('.') ? x : `.${x}`));
 /**
  * Компонент загрузчика конфигураций.
  * Позволяет прикрепить один конфиг-файл и выводит уведомление об успешной загрузке.
  */
-const ConfigUploader: FC<Props> = ({ onChange, accept, allowedExtensions }) => {
+const ConfigUploader: FC<Props> = ({ onChange, accept, allowedExtensions, onErrorChange }) => {
   /** Список загруженных конфигураций */
   const [configs, setConfigs] = useState<ConfigFile[]>([]);
+  const [lastError, setLastError] = useState<string>('');
 
   /** Нормализованный список допустимых расширений без точки, в нижнем регистре */
   const normalizedAllowed = useMemo<string[]>(() => {
@@ -59,9 +64,7 @@ const ConfigUploader: FC<Props> = ({ onChange, accept, allowedExtensions }) => {
   /** Итоговое значение для Upload.accept */
   const effectiveAccept = useMemo(() => {
     if (accept && accept.length) return accept;
-    if (normalizedAllowed.length) {
-      return normalizedAllowed.map((x) => `.${x}`).join(',');
-    }
+    if (normalizedAllowed.length) return withDots(normalizedAllowed).join(',');
     return '.cfg,.conf,.txt';
   }, [accept, normalizedAllowed]);
 
@@ -72,19 +75,29 @@ const ConfigUploader: FC<Props> = ({ onChange, accept, allowedExtensions }) => {
     return { ok, ext };
   };
 
+  const showError = (msg: string) => {
+    setLastError(msg);
+    onErrorChange?.(true);
+    try {
+      message.error(msg);
+    } catch {}
+  };
+
+  const clearError = () => {
+    if (lastError) setLastError('');
+    onErrorChange?.(false);
+  };
   /**
    * Перед добавлением в список валидируем расширение.
    */
   const beforeUpload = (file: File) => {
     const { ok, ext } = checkExtension(file.name);
     if (!ok) {
-      message.error(
-        `Формат ".${ext || '?'}" не поддерживается. Допустимо: ${normalizedAllowed
-          .map((x) => `.${x}`)
-          .join(', ')}`,
-      );
+      const msg = `Формат ".${ext || '?'}" не поддерживается. Допустимо: ${withDots(normalizedAllowed).join(', ')}`;
+      showError(msg);
       return Upload.LIST_IGNORE;
     }
+    clearError();
     return false;
   };
 
@@ -101,11 +114,8 @@ const ConfigUploader: FC<Props> = ({ onChange, accept, allowedExtensions }) => {
 
     const { ok, ext } = checkExtension(originalFile.name);
     if (!ok) {
-      message.error(
-        `Формат ".${ext || '?'}" не поддерживается. Допустимо: ${normalizedAllowed
-          .map((x) => `.${x}`)
-          .join(', ')}`,
-      );
+      const msg = `Формат ".${ext || '?'}" не поддерживается. Допустимо: ${withDots(normalizedAllowed).join(', ')}`;
+      showError(msg);
       return;
     }
 
@@ -116,27 +126,35 @@ const ConfigUploader: FC<Props> = ({ onChange, accept, allowedExtensions }) => {
     };
 
     setConfigs((previousConfigs) => {
-      /** Если такой UID уже есть — не добавляем */
-      if (previousConfigs.find((cfg) => cfg.uid === newConfig.uid)) {
-        return previousConfigs;
-      }
-      const updatedConfigs = [...previousConfigs, newConfig];
-      onChange?.(updatedConfigs);
-      message.success('Конфигурация добавлена');
-      return updatedConfigs;
+      if (previousConfigs.find((cfg) => cfg.uid === newConfig.uid)) return previousConfigs;
+      const updated = [...previousConfigs, newConfig];
+      onChange?.(updated);
+      clearError();
+      try {
+        message.success('Конфигурация добавлена');
+      } catch {}
+      return updated;
     });
   };
 
   return (
-    <div style={{ marginBottom: 24 }}>
+    <div className="config-uploader">
       <Upload
         accept={effectiveAccept}
         beforeUpload={beforeUpload}
         onChange={handleChange}
         showUploadList={false}
+        multiple={false}
+        maxCount={1}
       >
-        <Button icon={<UploadOutlined />}>Приложить конфигурацию</Button>
+        <Button icon={<UploadOutlined />}>Загрузить файл</Button>
       </Upload>
+
+      {lastError && (
+        <div className="config-uploader__error" role="alert" aria-live="polite">
+          {lastError}
+        </div>
+      )}
     </div>
   );
 };
