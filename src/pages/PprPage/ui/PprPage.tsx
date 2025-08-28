@@ -34,6 +34,7 @@ interface Props {
     targetRowId: number;
     sourceEmptyAfter: boolean;
   }) => void;
+  rowDisplayBySource?: Record<string, { headers: string[]; row: string[]; colKeys: string[] }>;
 }
 
 /**
@@ -51,11 +52,12 @@ const PprPage: FC<Props> = ({
   onBlockClick,
   onTimerChange,
   onMoveBetweenExecutors,
+  rowDisplayBySource = {},
 }) => {
   /** значения и хелперы таймлайна из хука */
   const {
     /** снимок всех строк таймлайна из стора */
-    data: { rowsState, rowsToRender, allBlocks, rowsForUi },
+    data: { rowsToRender, allBlocks, rowsForUi },
 
     /** параметры разметки и геометрии таймлайна */
     layout: {
@@ -187,7 +189,7 @@ const PprPage: FC<Props> = ({
                   spanMin={windowSpanMin}
                   startMin={windowStartMin}
                   coverageMap={coverageMap}
-                  openBlockId={activeBlock?.id ?? null}
+                  openBlockId={null}
                   setOpenBlockId={setActiveBlockId}
                   onBlockClick={onBlockClick}
                   onTimerChange={onTimerChange}
@@ -204,51 +206,64 @@ const PprPage: FC<Props> = ({
 
         {showingAllTasks && (
           <div className="all-tasks-container">
-            {allBlocks.map((block) => (
-              <TaskDetail
-                key={block.id}
-                id={block.id}
-                label={block.label}
-                startTime={block.startTime}
-                endTime={block.endTime}
-                performer={`РТК-С, ${findOwnerName(block.id)}`}
-                status={block.status}
-                subSteps={block.subSteps}
-                allExecutors={allExecutorsList}
-                executorsByStage={{}}
-                onExecutorAdd={() => {}}
-                onExecutorRemove={() => {}}
-                onTimerChange={(stageKey, newTimer) =>
-                  onTimerChange(block.tplIdx, stageKey, newTimer)
-                }
-                stageKeys={block.stageKeys}
-                stagesField={block.stagesField}
-                onClose={() => setShowingAllTasks(false)}
-              />
-            ))}
+            {allBlocks.map((block) => {
+              const src = String((block as any)?.sourceKey ?? '');
+              const display = src ? rowDisplayBySource[src] : undefined;
+              return (
+                <TaskDetail
+                  key={block.id}
+                  id={block.id}
+                  label={block.label}
+                  startTime={block.startTime}
+                  endTime={block.endTime}
+                  performer={`РТК-С, ${findOwnerName(block.id)}`}
+                  status={block.status}
+                  subSteps={block.subSteps}
+                  allExecutors={allExecutorsList}
+                  executorsByStage={{}}
+                  onTimerChange={(stageKey, newTimer) =>
+                    onTimerChange(block.tplIdx, stageKey, newTimer)
+                  }
+                  stageKeys={block.stageKeys}
+                  stagesField={block.stagesField}
+                  onClose={() => setShowingAllTasks(false)}
+                  displayHeaders={display?.headers ?? []}
+                  displayRow={display?.row ?? []}
+                  displayColKeys={display?.colKeys ?? []}
+                />
+              );
+            })}
           </div>
         )}
 
-        {activeBlock && (
-          <TaskDetail
-            key={activeBlock.id}
-            id={activeBlock.id}
-            label={activeBlock.label}
-            startTime={activeBlock.startTime}
-            endTime={activeBlock.endTime}
-            performer={`РТК-С, ${findOwnerName(activeBlock.id)}`}
-            status={activeBlock.status}
-            subSteps={activeBlock.subSteps}
-            allExecutors={allExecutorsList}
-            executorsByStage={{}}
-            onTimerChange={(stageKey, newTimer) =>
-              onTimerChange(activeBlock.tplIdx, stageKey, newTimer)
-            }
-            stageKeys={activeBlock.stageKeys}
-            stagesField={activeBlock.stagesField}
-            onClose={() => setActiveBlockId(null)}
-          />
-        )}
+        {activeBlock &&
+          (() => {
+            const src = String((activeBlock as any)?.sourceKey ?? '');
+            const display = src ? rowDisplayBySource[src] : undefined;
+            return (
+              <TaskDetail
+                key={activeBlock.id}
+                id={activeBlock.id}
+                label={activeBlock.label}
+                startTime={activeBlock.startTime}
+                endTime={activeBlock.endTime}
+                performer={`РТК-С, ${findOwnerName(activeBlock.id)}`}
+                status={activeBlock.status}
+                subSteps={activeBlock.subSteps}
+                allExecutors={allExecutorsList}
+                executorsByStage={{}}
+                onTimerChange={(stageKey, newTimer) =>
+                  onTimerChange(activeBlock.tplIdx, stageKey, newTimer)
+                }
+                stageKeys={activeBlock.stageKeys}
+                stagesField={activeBlock.stagesField}
+                onClose={() => setActiveBlockId(null)}
+                displayHeaders={display?.headers ?? []}
+                displayRow={display?.row ?? []}
+                displayColKeys={display?.colKeys ?? []}
+              />
+            );
+          })()}
       </div>
     </DndContext>
   );

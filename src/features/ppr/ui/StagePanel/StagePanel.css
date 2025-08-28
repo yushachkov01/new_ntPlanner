@@ -1,0 +1,46 @@
+.stage-panel__layout {
+  display: flex;
+  gap: 20px;
+}
+
+.stage-panel__form {
+  flex: 0 0 360px;
+}
+
+.stage-panel__configs {
+  flex: 1;
+}
+
+.stage-panel__configs-header {
+  text-align: center;
+  margin-bottom: 8px;
+}
+
+.stage-panel__required-asterisk {
+  color: #ff4d4f;
+  margin-left: 4px;
+  font-weight: 600;
+}
+
+.stage-panel__uploader-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 8px;
+  flex-direction: column;
+}
+
+.stage-panel__formats-hint {
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.stage-panel__formats-hint--danger {
+  color: #ff4d4f;
+  font-weight: 500;
+}
+
+.stage-panel__actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}

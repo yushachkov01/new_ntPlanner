@@ -16,6 +16,12 @@ interface Props {
   onEdit: (rowIndex: number) => void;
   /** Передаём и индекс, и __sourceKey, чтобы удалить */
   onDelete: (rowIndex: number, sourceKey?: string) => void;
+  onDisplayTableChange?: (
+    headers: string[],
+    rows: string[][],
+    sources: (string | undefined)[],
+    colKeys: string[],
+  ) => void;
 }
 
 /**
@@ -131,6 +137,9 @@ function useCellFormatter(resolveDeviceLabel: (v: any) => string) {
   );
 }
 
+function getColumnLabel(c: Partial<FieldCfg>): string {
+  return String((c as any).label ?? (c as any).name ?? c.key ?? '').trim();
+}
 /**
  *
  * @param rootFields  — массив конфигураций полей, по которым строятся колонки таблицы
@@ -138,7 +147,13 @@ function useCellFormatter(resolveDeviceLabel: (v: any) => string) {
  * @param onEdit      — колбэк, вызываемый при нажатии на иконку «редактировать»
  * @param onDelete    — колбэк, вызываемый при нажатии на иконку «удалить»
  */
-export const FieldsTable: React.FC<Props> = ({ rootFields, data, onEdit, onDelete }) => {
+export const FieldsTable: React.FC<Props> = ({
+  rootFields,
+  data,
+  onEdit,
+  onDelete,
+  onDisplayTableChange,
+}) => {
   /**
    * Формирует уникальный и отсортированный список колонок для таблицы.
    *  Сортирует поля по значению `position` (возрастание).
@@ -164,6 +179,32 @@ export const FieldsTable: React.FC<Props> = ({ rootFields, data, onEdit, onDelet
   /** Форматтер значения ячейки под разные типы колонок */
   const formatCellValue = useCellFormatter(resolveDeviceLabel);
 
+  const displayHeaders = React.useMemo(
+    () => sortedRootColumns.map((c) => getColumnLabel(c)),
+    [sortedRootColumns],
+  );
+  const displayColKeys = React.useMemo(
+    () => sortedRootColumns.map((c) => String(c.key)),
+    [sortedRootColumns],
+  );
+  const displaySources = React.useMemo(
+    () => (data ?? []).map((row) => (row as any)?.__sourceKey as string | undefined),
+    [data],
+  );
+  const displayRows = React.useMemo(() => {
+    return (data ?? []).map((rowObj) =>
+      sortedRootColumns.map((c) => formatCellValue((rowObj as any)[c.key], c)),
+    );
+  }, [data, sortedRootColumns, formatCellValue]);
+
+  const cbRef = React.useRef<typeof onDisplayTableChange>();
+  React.useEffect(() => {
+    cbRef.current = onDisplayTableChange;
+  }, [onDisplayTableChange]);
+
+  React.useEffect(() => {
+    cbRef.current?.(displayHeaders, displayRows, displaySources, displayColKeys);
+  }, [displayHeaders, displayRows, displaySources, displayColKeys]);
   /** Стиль для иконок действий (редактировать/удалить) */
   const actionIconStyle: React.CSSProperties = { cursor: 'pointer', marginRight: 10 };
 
@@ -175,13 +216,13 @@ export const FieldsTable: React.FC<Props> = ({ rootFields, data, onEdit, onDelet
             <tr>
               <th>#</th>
               {sortedRootColumns.map((column) => (
-                <th key={column.key}>{(column as any).label ?? column.name ?? column.key}</th>
+                <th key={column.key}>{getColumnLabel(column)}</th>
               ))}
               <th>Действия</th>
             </tr>
           </thead>
           <tbody>
-            {data.length === 0 && (
+            {(data?.length ?? 0) === 0 && (
               <tr>
                 <td colSpan={sortedRootColumns.length + 2} style={{ textAlign: 'center' }}>
                   Нет записей
@@ -195,9 +236,8 @@ export const FieldsTable: React.FC<Props> = ({ rootFields, data, onEdit, onDelet
                   <td>{rowIndex + 1}</td>
 
                   {sortedRootColumns.map((column) => {
-                    const rawValue = (row as any)[column.key];
-                    const formattedText = formatCellValue(rawValue, column);
-                    return <td key={column.key}>{formattedText}</td>;
+                    const rawValue = formatCellValue((row as any)[column.key], column);
+                    return <td key={column.key}>{rawValue}</td>;
                   })}
                   <td className="dyf-cell-actions">
                     <span
