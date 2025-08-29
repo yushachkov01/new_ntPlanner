@@ -1,0 +1,86 @@
+.config-uploader {
+  width: 100%;
+}
+
+.config-uploader .ant-upload.ant-upload-drag {
+  background: transparent;
+  border: 1px dashed rgba(255, 255, 255, 0.25);
+  border-radius: 10px;
+}
+
+.config-uploader__error {
+  margin-top: 8px;
+  color: #ff4d4f;
+  font-size: 12px;
+}
+
+.config-uploader__list {
+  margin-top: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.config-uploader__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 8px;
+  padding: 8px 12px;
+}
+
+.config-uploader__clip {
+  font-size: 16px;
+  color: #ff7875;
+}
+
+.config-uploader__name {
+  border: none;
+  background: transparent;
+  color: #69b1ff;
+  cursor: pointer;
+  padding: 0;
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 40%;
+}
+
+.config-uploader__name:hover {
+  text-decoration: underline;
+}
+
+.config-uploader__actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.config-uploader__view {
+  border: none;
+  background: transparent;
+  color: #c0c6d4;
+  cursor: pointer;
+  padding: 0 6px 0 0;
+  font-size: 13px;
+}
+
+.config-uploader__view:hover {
+  color: #ffffff;
+  text-decoration: underline;
+}
+
+.config-uploader__delete {
+  border: none;
+  background: transparent;
+  color: #ff7875;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.config-uploader__delete:hover {
+  color: #ff4d4f;
+}

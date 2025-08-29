@@ -1,4 +1,6 @@
+import type { StageFieldDef } from '@/shared/types/fieldRenderer/types';
 import { normalizeRoleKey, type RoleKey } from '@/shared/utils/normalizeRoleKey';
+import { normalizeType } from '@/shared/utils/stagePanelUtils';
 
 /** Безопасное обращение к свойству по пути "a.b.c" */
 export const getByPath = (obj: any, path: string) =>
@@ -13,7 +15,7 @@ export function interpolate(tpl: string, ctx: Record<string, any>) {
   });
 }
 
-/** Достаём корневые плейсхолдеры (params.*) */
+/** Достаём корневые плейсхолдеры (params.*) из descriptions всех стадий */
 export function extractPlaceholderRoots(stagesField: Record<string, any>): string[] {
   const set = new Set<string>();
   const rx = /\{\{\s*([^}]+?)\s*\}\}/g;
@@ -84,3 +86,65 @@ export const toCanonicalRole = (roleRaw?: string): RoleKey | undefined => {
   if (roleRaw === 'Система') return 'system';
   return undefined;
 };
+
+/**
+ *  Единый механизм для типов полей
+ */
+
+export type TypesDictionary = Record<string, any>;
+
+export type FieldTypeMeta = {
+  normalizedType: string;
+  isFile: boolean;
+  formats: string[];
+  accept: string | undefined;
+};
+
+/** Нормализованное извлечение typeDef из словаря типов */
+const getTypeDefSafe = (types: TypesDictionary | undefined, typeKey: unknown) => {
+  const key = String(typeKey ?? '').trim();
+  return key ? (types as any)?.[key] : undefined;
+};
+
+/**
+ * Единая функция определения поведения поля:
+ * - нормализованный тип
+ * - является ли файловым
+ * - список расширений/accept
+ */
+export function deriveFieldTypeMeta(
+  fieldDef: StageFieldDef,
+  typesDict?: TypesDictionary,
+): FieldTypeMeta {
+  const normalizedType = normalizeType(fieldDef?.type);
+  const def = getTypeDefSafe(typesDict, fieldDef?.type);
+
+  /** format может быть строкой или массивом — приводим к массиву без точек */
+  const rawFmt = def?.format;
+  const formats: string[] = (Array.isArray(rawFmt) ? rawFmt : rawFmt ? [rawFmt] : [])
+    .map((x: any) => String(x).trim().replace(/^\./, '').toLowerCase())
+    .filter(Boolean);
+
+  const finalFormats = normalizedType === 'logs' && formats.length === 0 ? ['txt', 'log'] : formats;
+
+  const isFile =
+    normalizedType === 'logs' ||
+    String(def?.type ?? '')
+      .trim()
+      .toLowerCase() === 'file' ||
+    finalFormats.length > 0;
+
+  const accept = finalFormats.length ? finalFormats.map((e) => `.${e}`).join(',') : undefined;
+
+  return { normalizedType, isFile, formats: finalFormats, accept };
+}
+
+/** Универсальные обёртки — чтобы использовать прямо в компонентах */
+export const isFileFieldGeneric = (fd: StageFieldDef, typesDict?: TypesDictionary) =>
+  deriveFieldTypeMeta(fd, typesDict).isFile;
+
+export const getFormatsGeneric = (fd: StageFieldDef, typesDict?: TypesDictionary) =>
+  deriveFieldTypeMeta(fd, typesDict).formats;
+
+export const getAcceptGeneric = (fd: StageFieldDef, typesDict?: TypesDictionary) =>
+  deriveFieldTypeMeta(fd, typesDict).accept;

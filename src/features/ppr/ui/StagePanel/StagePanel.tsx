@@ -5,20 +5,25 @@ import { useMemo, useEffect, useState, useCallback } from 'react';
 
 import type { StageField } from '@/entities/template/model/store/templateStore';
 import { useTypesStore } from '@/entities/types/model/store/typesStore';
+import './StagePanel.css';
 import {
   ROLE_TITLES_RU,
   STAGE_PANEL_TEXT as STAGE_PANEL,
   STAGE_PANEL_UI,
+  STAGE_PANEL_KEYS,
 } from '@/shared/constants';
 import type { StageFieldDef } from '@/shared/types/fieldRenderer/types';
 import type { RoleKey } from '@/shared/utils/normalizeRoleKey';
-import { normalizeType, renderField } from '@/shared/utils/stagePanelUtils';
+import { renderField } from '@/shared/utils/stagePanelUtils';
+import {
+  isFileFieldGeneric,
+  getFormatsGeneric,
+  getAcceptGeneric,
+} from '@/shared/utils/TaskDetailUtils';
 import { getStageMinutes } from '@entities/timeline/model/utils/time';
 import { userStore } from '@entities/user/model/store/UserStore';
 import type { ConfigFile as BaseConfigFile } from '@features/ppr/ui/ConfigUploader/ConfigUploader';
 import ConfigUploader from '@features/ppr/ui/ConfigUploader/ConfigUploader';
-
-import './StagePanel.css';
 
 const { Text } = Typography;
 
@@ -85,104 +90,73 @@ export const StagePanel: FC<StagePanelProps> = ({
     return Math.max(1, yamlMinutes || durationMinutes || 1);
   }, [meta, durationMinutes]);
 
+  const types = useTypesStore((store) => store.types);
+  const loadTypes = useTypesStore((store) => store.load);
+  useEffect(() => {
+    loadTypes?.();
+  }, [loadTypes]);
   /** Плоский список динамических полей, отсортированный по position */
   const stageFields = useMemo(() => {
     const rawFields = (meta as any)?.fields ?? {};
     const entries = Object.entries(rawFields) as [string, StageFieldDef][];
     return entries
-      .map(([fieldKey, fieldDef], index) => ({ key: fieldKey, ...(fieldDef || {}), __idx: index }))
+      .map(([fieldKey, fieldDef], index) => {
+        const def: any = (types as any)?.[String(fieldDef?.type ?? '').trim()];
+        const merged: StageFieldDef & { __idx: number } = {
+          key: fieldKey,
+          ...(fieldDef || {}),
+          __idx: index,
+        };
+        const typeEnum = def?.enum;
+        if ((!merged.enum || merged.enum.length === 0) && typeEnum) {
+          merged.enum = Array.isArray(typeEnum) ? typeEnum : [typeEnum];
+        }
+        const typeOptions = def?.options;
+        if ((!merged.options || merged.options.length === 0) && typeOptions) {
+          merged.options = typeOptions;
+        }
+        if (!merged.type && def?.type) {
+          merged.type = def.type;
+        }
+        return merged;
+      })
       .sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
-  }, [meta]);
+  }, [meta, types]);
 
-  const [uploaderHasError, setUploaderHasError] = useState(false);
-  /** ДОПУСТИМЫЕ ФОРМАТЫ ИЗ types.yaml */
-
-  const types = useTypesStore((s) => s.types);
-  const loadTypes = useTypesStore((s) => s.load);
-  useEffect(() => {
-    loadTypes?.();
-  }, [loadTypes]);
-  /** Находим описание поля */
-  const fileField = useMemo(() => {
-    const fields = stageFields ?? [];
-    for (const field of fields) {
-      const isLogs = normalizeType(field.type) === 'logs';
-      const def: any = (types as any)?.[String(field.type ?? '').trim()];
-      const fmt = def?.format;
-      const hasFormats = Array.isArray(fmt) ? fmt.length > 0 : Boolean(fmt);
-      if (isLogs || hasFormats) return field;
-    }
-    return undefined;
-  }, [stageFields, types]);
-
-  /** Заголовок секции — поля из YAML, иначе дефолт */
-  const configsTitle = useMemo(
-    () => String(fileField?.label || STAGE_PANEL.logs.title),
-    [fileField],
+  /** поддержка нескольких файловых полей — единынй механизм из TaskDetailUtils */
+  const isFileField = useCallback(
+    (fd: StageFieldDef): boolean => isFileFieldGeneric(fd, types as any),
+    [types],
   );
 
-  const isFileRequired = Boolean(fileField?.required);
-
-  /** Приводим formats из types.yaml к массиву расширений без точки: (например: ['txt','log']) */
-  const allowedFormats = useMemo<string[]>(() => {
-    if (!fileField) return [];
-    try {
-      const def: any = (types as any)?.[String(fileField.type ?? '').trim()];
-      const fmt = def?.format;
-      const arr = Array.isArray(fmt) ? fmt : fmt ? [fmt] : [];
-      return arr.map((x: any) => String(x).trim().replace(/^\./, '').toLowerCase()).filter(Boolean);
-    } catch {
-      return [];
-    }
-  }, [fileField, types]);
-
-  /** Для Upload.accept — ".txt,.pdf" */
-  const uploadAccept = useMemo(
-    () => (allowedFormats.length ? allowedFormats.map((x) => `.${x}`).join(',') : undefined),
-    [allowedFormats],
+  const getFormats = useCallback(
+    (fd: StageFieldDef): string[] => getFormatsGeneric(fd, types as any),
+    [types],
   );
 
-  /** Для валидации */
-  const allowedExtensions = allowedFormats;
-
-  /** Подсказка справа от кнопки */
-  const formatsHint = useMemo(
-    () =>
-        allowedFormats.length ? `${STAGE_PANEL.logs.formatsHintPrefix}${allowedFormats.join(', ')}` : null,
-    [allowedFormats],
+  const getAccept = useCallback(
+    (fd: StageFieldDef): string | undefined => getAcceptGeneric(fd, types as any),
+    [types],
   );
-  /** отображаемые конфиги (мгновенно после загрузки) */
-  const [visibleConfigs, setVisibleConfigs] = useState<ConfigFile[]>(configs ?? []);
 
-  /** Ключи записей, которые пользователь удалил (не показывать даже если загрузчик пришлёт их снова) */
-  const [removedKeys, setRemovedKeys] = useState<Set<string>>(new Set());
+  const fileFields = useMemo(
+    () => (stageFields ?? []).filter(isFileField),
+    [stageFields, isFileField],
+  );
+  const nonFileFields = useMemo(
+    () => (stageFields ?? []).filter((fd) => !isFileField(fd)),
+    [stageFields, isFileField],
+  );
 
-  /** Синхронизируем список при изменении пропса configs */
-  useEffect(() => {
-    const normalized = (configs ?? []).map((rec: any) => ({
-      uploadedAt: rec?.uploadedAt ?? new Date().toISOString(),
-      uploadedBy: rec?.uploadedBy ?? currentUserDisplayName ?? '',
-      ...rec,
-    })) as ConfigFile[];
-    setVisibleConfigs(normalized);
-  }, [configs, currentUserDisplayName]);
+  /** По каждому файловому полю храним свой список видимых файлов и ошибки валидатора */
+  const [visibleByField, setVisibleByField] = useState<Record<string, ConfigFile[]>>({});
+  const [removedByField, setRemovedByField] = useState<Record<string, Set<string>>>({});
+  const [uploaderErrorByField, setUploaderErrorByField] = useState<Record<string, boolean>>({});
 
   /** Показывать секцию конфигов, если есть поле с type: logs или уже есть загруженные файлы */
   const shouldShowConfigsSection = useMemo(() => {
-    return Boolean(fileField) || (visibleConfigs?.length ?? 0) > 0;
-  }, [fileField, visibleConfigs]);
-
-  /** Вернуть читаемое имя файла из записи. */
-  const getDisplayName = useCallback((record: any): string => {
-    return (
-      record?.name ||
-      record?.filename ||
-      record?.fileName ||
-      record?.title ||
-      record?.path ||
-      `${STAGE_PANEL.files.fallbackFilePrefix} ${record?.uid ?? ''}`
-    );
-  }, []);
+    return fileFields.length > 0 || Object.values(visibleByField).some((l) => (l?.length ?? 0) > 0);
+  }, [fileFields, visibleByField]);
 
   /** Вернуть строковый ключ записи (для удаления/поиска). */
   const getRecordKey = useCallback((record: any): string => {
@@ -191,123 +165,42 @@ export const StagePanel: FC<StagePanelProps> = ({
     );
   }, []);
 
-  /**
-   * Обработчик изменения (загрузки) конфигов.
-   * params
-   *  - files: исходные записи из загрузчика
-   */
-  const handleConfigsChange = useCallback(
-    (files: BaseConfigFile[]) => {
+  /** onChange для конкретного файлового поля */
+  const handleConfigsChangeFor = useCallback(
+    (fieldKey: string) => (files: BaseConfigFile[]) => {
       const normalizedFiles: ConfigFile[] = files.map((file) => ({
         uploadedAt: (file as any).uploadedAt ?? new Date().toISOString(),
         uploadedBy: (file as any).uploadedBy ?? currentUserDisplayName ?? '',
         ...(file as any),
       }));
 
-      const filteredByRemoved = normalizedFiles.filter(
-        (rec) => !removedKeys.has(getRecordKey(rec)),
-      );
+      setVisibleByField((prev) => {
+        const removedSet = removedByField[fieldKey] ?? new Set<string>();
+        const filtered = normalizedFiles.filter((rec) => !removedSet.has(getRecordKey(rec)));
+        const uniqueMap = new Map<string, ConfigFile>();
+        for (const rec of filtered) uniqueMap.set(getRecordKey(rec), rec);
+        const uniqueList = Array.from(uniqueMap.values());
 
-      const uniqueMap = new Map<string, ConfigFile>();
-      for (const rec of filteredByRemoved) uniqueMap.set(getRecordKey(rec), rec);
-      const uniqueList = Array.from(uniqueMap.values());
+        const next: Record<string, ConfigFile[]> = { ...prev, [fieldKey]: uniqueList };
 
-      setVisibleConfigs(uniqueList);
+        const flattened = Object.entries(next).flatMap(([, value]) => value ?? []);
+        const baseList: BaseConfigFile[] = flattened.map(
+          ({ uploadedAt, uploadedBy, ...rest }: any) => rest as BaseConfigFile,
+        );
+        onConfigsChange?.(baseList);
 
-      const baseList: BaseConfigFile[] = uniqueList.map(
-        ({ uploadedAt, uploadedBy, ...rest }: any) => rest as BaseConfigFile,
-      );
-      onConfigsChange?.(baseList);
-    },
-    [onConfigsChange, removedKeys, getRecordKey, currentUserDisplayName],
-  );
-
-  /**
-   * Удалить файл из списка
-   * params
-   *  - record: запись файла
-   */
-  const handleRemoveFile = useCallback(
-    (record: any) => {
-      const keyToRemove = getRecordKey(record);
-
-      const nextVisible = visibleConfigs.filter((item) => getRecordKey(item) !== keyToRemove);
-      setVisibleConfigs(nextVisible);
-
-      setRemovedKeys((prev) => {
-        const next = new Set(prev);
-        next.add(keyToRemove);
         return next;
       });
-
-      const nextBase: BaseConfigFile[] = nextVisible.map(
-        ({ uploadedAt, uploadedBy, ...rest }: any) => rest as BaseConfigFile,
-      );
-      onConfigsChange?.(nextBase);
     },
-    [visibleConfigs, onConfigsChange, getRecordKey],
+    [currentUserDisplayName, getRecordKey, onConfigsChange, removedByField],
   );
 
-  /** Открыть предпросмотр файла в новой вкладке. */
-  const handlePreviewFile = useCallback((record: any) => {
-    const directUrl = record?.url || record?.href || record?.link;
-    if (directUrl) {
-      window.open(String(directUrl), '_blank', 'noopener,noreferrer');
-      return;
-    }
-    const blobLike: Blob | undefined = record?.file || record?.blob;
-    if (blobLike) {
-      const objectUrl = URL.createObjectURL(blobLike);
-      window.open(objectUrl, '_blank', 'noopener,noreferrer');
-    }
-  }, []);
-
-  /** колонки, если снаружи ничего не передали */
-  const effectiveColumns: ColumnsType<ConfigFile> = useMemo(() => {
-    if (columns && columns.length > 0) return columns;
-
-    const formatDateTime = (isoOrDate: any): string => {
-      const date = isoOrDate instanceof Date ? isoOrDate : new Date(isoOrDate);
-      if (Number.isNaN(date.getTime())) return '';
-      const pad = (n: number) => String(n).padStart(2, '0');
-      return `${pad(date.getDate())}.${pad(date.getMonth() + 1)}.${date.getFullYear()}, ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
-    };
-
-    return [
-      {
-        key: 'name',
-        dataIndex: 'name',
-        render: (_: any, record: any) => getDisplayName(record),
-      },
-      {
-        key: 'meta',
-        dataIndex: 'uploadedAt',
-        render: (_: any, record: any) => {
-          const when = record?.uploadedAt ? formatDateTime(record.uploadedAt) : '';
-          const who = record?.uploadedBy ? STAGE_PANEL.files.byParen(record.uploadedBy) : '';
-          return when
-            ? `${STAGE_PANEL.files.uploadedPrefix}${when}${who}`
-            : who || STAGE_PANEL.common.emDash;
-        },
-      },
-      {
-        key: 'actions',
-        dataIndex: '__actions__',
-        align: 'right',
-        width: STAGE_PANEL_UI.TABLE_ACTIONS_WIDTH,
-        render: (_: any, record: any) => (
-          <div className="stage-panel__actions">
-            <Button danger size="small" onClick={() => handleRemoveFile(record)}>
-              {STAGE_PANEL.files.deleteBtn}
-            </Button>
-            <Button type="primary" size="small" onClick={() => handlePreviewFile(record)}>
-              {STAGE_PANEL.files.previewBtn}
-            </Button>
-          </div>
-        ),
-      },
-    ];
-  }, [columns, getDisplayName, handleRemoveFile, handlePreviewFile]);
+  const handleUploaderErrorFor = useCallback(
+    (fieldKey: string) => (hasError: boolean) => {
+      setUploaderErrorByField((prev) => ({ ...prev, [fieldKey]: hasError }));
+    },
+    [],
+  );
 
   return (
     <section className="task-detail__stage">
@@ -343,39 +236,48 @@ export const StagePanel: FC<StagePanelProps> = ({
             preserve
           >
             {wrapTimer()}
-            {stageFields.map((fd) => renderField(fd))}
+            {nonFileFields.map((fd) => renderField(fd))}
           </Form>
         </div>
 
         {shouldShowConfigsSection && (
           <div className="stage-panel__configs">
-            <div className="stage-panel__configs-header">
-              <b>{configsTitle}</b>
-              {isFileRequired && <span className="stage-panel__required-asterisk">*</span>}
-            </div>
-            <div className="stage-panel__uploader-row">
-              <ConfigUploader
-                onChange={handleConfigsChange}
-                accept={uploadAccept}
-                allowedExtensions={allowedExtensions}
-                onErrorChange={setUploaderHasError}
-              />
-              {!uploaderHasError && formatsHint && (
-                <Text className="stage-panel__formats-hint stage-panel__formats-hint--danger">
-                  * {formatsHint}
-                </Text>
-              )}
-            </div>
+            {fileFields.map((fd) => {
+              const fieldKey = String(fd.key);
+              const exts = getFormats(fd);
+              const accept = getAccept(fd);
+              const isRequired = Boolean(fd.required);
+              const title = String(fd.label || STAGE_PANEL.logs.title);
+              const hint = exts.length
+                ? `${STAGE_PANEL.logs.formatsHintPrefix}${exts.join(', ')}`
+                : null;
 
-            <Table
-              dataSource={visibleConfigs}
-              columns={effectiveColumns}
-              rowKey={(record: any) => record?.uid ?? record?.id ?? record?.name ?? String(record)}
-              pagination={false}
-              size="small"
-              bordered
-              locale={{ emptyText: STAGE_PANEL.files.emptyText }}
-            />
+              const visible = visibleByField[fieldKey] ?? [];
+              const hasError = uploaderErrorByField[fieldKey];
+
+              return (
+                <div key={fieldKey} className="stage-panel__configs-block">
+                  <div className="stage-panel__configs-header">
+                    <b>{title}</b>
+                    {isRequired && <span className="stage-panel__required-asterisk">*</span>}
+                  </div>
+                  <div className="stage-panel__uploader-row">
+                    <ConfigUploader
+                      value={visible}
+                      onChange={handleConfigsChangeFor(fieldKey)}
+                      accept={accept}
+                      allowedExtensions={exts}
+                      onErrorChange={handleUploaderErrorFor(fieldKey)}
+                    />
+                    {!hasError && hint && (
+                      <Text className="stage-panel__formats-hint stage-panel__formats-hint--danger">
+                        * {hint}
+                      </Text>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
@@ -388,7 +290,7 @@ export const StagePanel: FC<StagePanelProps> = ({
   function wrapTimer() {
     return (
       <Form.Item
-        key="__timer__"
+        key={STAGE_PANEL_KEYS.TIMER_ITEM_NAME}
         label={STAGE_PANEL.form.timerLabel}
         name="timer"
         rules={[{ required: true, type: 'number', min: 1 }]}
