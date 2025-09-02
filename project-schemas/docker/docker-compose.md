@@ -213,3 +213,10 @@ INSERT INTO public.executor (role, author) VALUES
 ```
 project-schemas/docker/yaml
 ```
+----
+
+При сборке проекта важно указать .env
+
+
+VITE_HASURA_GRAPHQL_URL=http://localhost:8080/v1/graphql
+VITE_HASURA_ADMIN_SECRET=myadminsecretkey
