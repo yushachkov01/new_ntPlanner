@@ -11,7 +11,6 @@ import {
   type IncomingType,
 } from '@/shared/utils/stageGraph';
 import {
-  getByPath,
   interpolate,
   extractPlaceholderRoots,
   buildParamsFromSingleRow,
@@ -32,6 +31,9 @@ import { StagePanel } from '@features/ppr/ui/StagePanel/StagePanel';
  * Свойства компонента TaskDetail
  */
 interface Props extends TaskDetailProps {
+  /**  индекс шаблона (чтобы StagePanel писал правки в нужный tplIdx) */
+  tplIdx?: number;
+
   stageKeys?: string[];
   stagesField?: Record<string, StageField>;
   onTimerChange?: (stageKey: string, newTimer: number) => void;
@@ -48,6 +50,7 @@ interface Props extends TaskDetailProps {
  * - управление открытыми панелями Collapse,
  */
 const TaskDetail: FC<Props> = ({
+  tplIdx = 0,
   label,
   startTime,
   stageKeys = [],
@@ -79,7 +82,7 @@ const TaskDetail: FC<Props> = ({
   const [endHour, endMinute] = endTime.split(':').map(Number);
   const durationMinutes = endHour * 60 + endMinute - (startHour * 60 + startMinute);
 
-  /** Порядок стадий для отображения (детерминированный). */
+  /** Порядок стадий для отображения  */
   const fullStageOrder = useMemo(() => buildFullStageOrder(stagesField), [stagesField]);
   /** Тип «входа» в каждую стадию (success/failure) — для иконки слева. */
   const incomingType = useMemo(() => buildIncomingTypeMap(stagesField), [stagesField]);
@@ -259,6 +262,7 @@ const TaskDetail: FC<Props> = ({
             label: makePanelLabel(stageKey),
             children: (
               <StagePanel
+                tplIdx={tplIdx}
                 stageKey={stageKey}
                 meta={meta}
                 durationMinutes={durationMinutes}

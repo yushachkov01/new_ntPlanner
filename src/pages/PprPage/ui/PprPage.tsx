@@ -150,7 +150,6 @@ const PprPage: FC<Props> = ({
             /** не показываем кнопки на агрегаторе «Все задачи» (id === 0) и на доп. строках */
             const isParentRow = row.id !== 0 && !row.isExtra;
             const hasExtra = isParentRow && hasExtraRow(row.id);
-            const extraEmpty = isParentRow ? isExtraEmpty(row.id) : true;
             /** «+» показываем, если доп. строки нет; «−» — только если доп. строка есть и она пуста */
             const showAdd = isParentRow && !hasExtra;
             const showMinus = isParentRow && hasExtra && !extraHasBlocks(row.id);
@@ -212,6 +211,7 @@ const PprPage: FC<Props> = ({
               return (
                 <TaskDetail
                   key={block.id}
+                  tplIdx={block.tplIdx}
                   id={block.id}
                   label={block.label}
                   startTime={block.startTime}
@@ -243,6 +243,7 @@ const PprPage: FC<Props> = ({
             return (
               <TaskDetail
                 key={activeBlock.id}
+                tplIdx={activeBlock.tplIdx}
                 id={activeBlock.id}
                 label={activeBlock.label}
                 startTime={activeBlock.startTime}

@@ -8,12 +8,6 @@ import express from 'express';
 import { WebSocketServer } from 'ws';
 import { z } from 'zod';
 
-const HTTP_PORT = Number(process.env.HTTP_PORT ?? 3001);
-const WS_PORT = Number(process.env.WS_PORT ?? 4000);
-
-//  секрет для вебхука Hasura
-const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET;
-
 /**
  * Схема таблицы из Hasura Event Trigger
  * @property schema - схема таблицы  (public7)
@@ -39,7 +33,7 @@ const HasuraHookBody = z.object({ table: HasuraTable, event: HasuraEvent });
 /**
  * WebSocket-сервер для трансляции событий Hasura клиентам
  */
-const wss = new WebSocketServer({ port: WS_PORT });
+const wss = new WebSocketServer({ port: 4000 });
 
 /**
  * Широковещательная рассылка сообщения всем подключённым клиентам.
@@ -52,7 +46,8 @@ const broadcast = (message: unknown) => {
   });
 };
 
-setInterval(() => broadcast({ type: 'ping', t: Date.now() }), 15_000);
+setInterval(() => broadcast({ type: 'ping', t: Date.now() }), 15000);
+
 /**
  * Логируем количество клиентов при подключении/отключении.
  */
@@ -67,53 +62,80 @@ wss.on('connection', (socket) => {
 const app = express();
 app.use(bodyParser.json());
 
-/** Healthcheck */
-app.get('/health', (_req, res) => res.status(200).json({ ok: true }));
-
 /**
  * Обработчик запроса от Hasura Event Trigger.
  * Преобразует входящие данные в события WebSocket.
  */
 app.post('/hasura-hook', (req, res) => {
   try {
-    // проверка секрета
-    if (WEBHOOK_SECRET && req.get('x-webhook-secret') !== WEBHOOK_SECRET) {
-      console.warn('[/hasura-hook] invalid secret');
-      return res.status(401).end();
+    const parsed = HasuraHookBody.safeParse(req.body);
+    if (!parsed.success) {
+      console.error('[/hasura-hook] zod parse failed:', parsed.error.flatten());
+      return res.status(400).end();
     }
 
-    const { table, event } = HasuraHookBody.parse(req.body);
-    const fqn = `${table.schema}.${table.name}`;
+    const { table, event } = parsed.data;
+    const fullQualifiedTableName = `${table.schema}.${table.name}`;
+
+    // Общее логирование — один раз, чтобы видеть, что хук вообще приходит
+    console.log(
+      `[HOOK] ${event.op} ${fullQualifiedTableName} old=${!!event.data.old} new=${!!event.data.new}`,
+    );
 
     /**
      * Реалтайм для интерфейсов (public7.query)
      */
-    if (fqn === 'public7.query') {
+    if (table.name === 'query') {
       if (event.op === 'DELETE') {
-        broadcast({ type: 'iface.ping', table: fqn, op: event.op, t: Date.now() });
+        broadcast({
+          type: 'iface.ping',
+          table: fullQualifiedTableName,
+          op: event.op,
+          t: Date.now(),
+        });
       } else {
-        const row = (event.data as any).new;
+        const newRow: any = event.data.new ?? {};
         broadcast({
           type: 'iface.data',
-          table: fqn,
-          deviceId: row.device,
-          requestType: row.request_type,
-          interfaces: row?.result?.interfaces ?? [],
+          table: fullQualifiedTableName,
+          deviceId: newRow.device,
+          requestType: newRow.request_type,
+          interfaces: newRow?.result?.interfaces ?? [],
           t: Date.now(),
         });
       }
     }
 
-    if (fqn === 'public7.devices') {
+    /**
+     * Реалтайм для устройств (public7.devices)
+     */
+    if (table.name === 'devices') {
       if (event.op === 'DELETE') {
-        const oldRow = (event.data as any).old;
-        broadcast({ type: 'device.delete', table: fqn, id: oldRow?.id, t: Date.now() });
+        const or: any = event.data.old ?? {};
+        broadcast({
+          type: 'device.delete',
+          table: fullQualifiedTableName,
+          id: or?.id,
+          t: Date.now(),
+        });
       } else {
-        const newRow = (event.data as any).new;
+        const nr: any = event.data.new ?? {};
         broadcast({
           type: 'device.patch',
-          table: fqn,
-          device: { id: newRow?.id, hostname: newRow?.hostname },
+          table: fullQualifiedTableName,
+          device: { id: nr?.id, hostname: nr?.hostname },
+          t: Date.now(),
+        });
+      }
+    }
+    if (table.name === 'planned_tasks') {
+      if (event.op === 'INSERT' || event.op === 'UPDATE') {
+        const nr: any = event.data.new ?? {};
+        broadcast({
+          type: 'planned_tasks.status',
+          table: fullQualifiedTableName,
+          id: nr?.id,
+          status: nr?.status ?? null,
           t: Date.now(),
         });
       }
@@ -121,13 +143,13 @@ app.post('/hasura-hook', (req, res) => {
 
     res.sendStatus(200);
   } catch (err) {
-    console.error('[/hasura-hook] parse error:', err);
-    res.status(400).end();
+    console.error('[/hasura-hook] unhandled error:', err);
+    res.status(500).end();
   }
 });
 
 /** Запуск */
-app.listen(HTTP_PORT, () => {
-  console.log(`HTTP  :${HTTP_PORT}  /hasura-hook /health`);
-  console.log(`WS    :${WS_PORT}`);
+app.listen(3001, () => {
+  console.log('HTTP  :3001  /hasura-hook');
+  console.log('WS    :4000');
 });

@@ -1,14 +1,19 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 
 import './PprEditorPage.css';
+import { usePlannedTaskStore } from '@/entities/PlannedTask/model/store/plannedTaskStore';
+import { YAML_BUCKET } from '@/shared/constants';
 import LocationOverview from '@/widgets/layout/LocationOverview/ui/LocationOverview';
-import type { Template } from '@entities/template/model/store/templateStore.ts';
+import type { Template } from '@entities/template/model/store/templateStore';
 import useTimelineStore from '@entities/timeline/model/store/timelineStore';
 import { userStore } from '@entities/user/model/store/UserStore';
+import { useUserStore } from '@entities/users/model/store/userStore';
 import { WorkTimeStore } from '@entities/workTimeStore/model/store/workTimeStore';
+import { isUuid, pickUuid } from '@features/pprEdit/lib/utils/utils';
 import { usePprExecutors } from '@features/pprEdit/model/hooks/usePprExecutors';
 import { usePprWizard } from '@features/pprEdit/model/hooks/usePprWizard';
 import { useTimelineMove } from '@features/pprEdit/model/hooks/useTimelineMove';
+import { savePlannedTask } from '@features/pprEdit/model/services/savePlannedTask';
 import ConfirmDeleteDialog from '@features/pprEdit/ui/ConfirmDeleteDialog/ConfirmDeleteDialog';
 import DynamicYamlForm from '@features/pprEdit/ui/DynamicYamlForm/DynamicYamlForm';
 import { PlannedTaskDropdown } from '@features/pprEdit/ui/PlannedTaskDropdown/PlannedTaskDropdown';
@@ -18,13 +23,7 @@ import { resolveTemplateWithRaw } from '@features/pprEdit/ui/utils/templateRaw/t
 import YamlTemplateSelect from '@features/pprEdit/ui/yamlTemplate/YamlTemplateSelect';
 import PprPage from '@pages/PprPage';
 
-import { Button, Steps, message } from 'antd';
-
-/**
- * Бакет и префикс для загрузки YAML-шаблонов
- */
-const BUCKET = 'yamls';
-const PREFIX = '';
+import { Button, Steps, message, Tooltip, Switch, Modal, Tag } from 'antd';
 
 const PprEditorPage: React.FC = () => {
   /**
@@ -48,7 +47,19 @@ const PprEditorPage: React.FC = () => {
    * Пользователь и окно таймлайна (старт/финиш сетки)
    */
   const currentUser = userStore((s) => s.user)!;
-  const { timelineWindow, setTimelineWindow } = WorkTimeStore();
+  const wt = WorkTimeStore() as any;
+  const { timelineWindow, setTimelineWindow } = wt;
+  const selectedTimeWorkId: string | undefined = wt?.selectedTimeWorkId;
+
+  // Исполнители
+  const addedExecutors = useUserStore((state) => state.addedExecutors);
+
+  // Задачи и выбранная
+  const tasks = usePlannedTaskStore((state) => state.tasks);
+  const selectedTask = useMemo(
+    () => tasks.find((task) => task.id === selectedTaskId),
+    [tasks, selectedTaskId],
+  );
 
   /**
    * Исполнители и слоты (по основному и дополнительным шаблонам)
@@ -66,8 +77,12 @@ const PprEditorPage: React.FC = () => {
   } = usePprExecutors(currentUser, mainTemplate);
 
   /** используем «точечное» удаление блоков по префиксу sourceKey (templateKey) */
-  const removeBySourcePrefix = useTimelineStore((s) => (s as any).removeBySourcePrefix);
-  const updateTplStageDuration = useTimelineStore((s) => (s as any).updateTplStageDuration);
+  const removeBySourcePrefix = useTimelineStore((state) => (state as any).removeBySourcePrefix);
+  const updateTplStageDuration = useTimelineStore((state) => (state as any).updateTplStageDuration);
+  const getMergedStageOverrides = useTimelineStore(
+    (state) => (state as any).getMergedStageOverrides,
+  );
+  const getTimelineState = (useTimelineStore as any).getState;
 
   /**
    * Список дополнительных (вторичных) шаблонов, добавленных пользователем
@@ -103,9 +118,11 @@ const PprEditorPage: React.FC = () => {
   const [tplReadyTick, setTplReadyTick] = useState(0);
 
   useEffect(() => {
-    if (!mainTemplate) return;
-    if ((mainTemplate as any).raw) setTplReadyTick((t) => t + 1);
+    if ((mainTemplate as any)?.raw) setTplReadyTick((t) => t + 1);
   }, [mainTemplate]);
+
+  /** Значения параметров формы */
+  const mainFormValuesRef = useRef<any>(null);
 
   /**
    * Добавляет новый пустой шаблон:
@@ -133,7 +150,7 @@ const PprEditorPage: React.FC = () => {
       /** удаляем только блоки, созданные «старым» шаблоном этой вкладки */
       removeBySourcePrefix?.({ execIds, prefix: String(prevKey) });
     }
-    const resolved = await resolveTemplateWithRaw(newTemplate as Template, BUCKET, PREFIX);
+    const resolved = await resolveTemplateWithRaw(newTemplate as Template, YAML_BUCKET);
     if (!resolved) {
       message.error('Не удалось загрузить YAML шаблона.');
       return;
@@ -160,9 +177,68 @@ const PprEditorPage: React.FC = () => {
     return (tabExecutors ?? []).map(normalizeExec);
   }, [pprExecutors, tabExecutors]);
 
-  const [rowDisplayBySource, setRowDisplayBySource] = useState<
-    Record<string, { headers: string[]; row: string[]; colKeys: string[] }>
-  >({});
+  const authorUuid =
+    pickUuid((currentUser as any)?.id, (currentUser as any)?.uuid) ??
+    pickUuid(...(addedExecutors ?? []).map((value) => value.id)) ??
+    pickUuid((selectedTask as any)?.authorId, (selectedTask as any)?.author_id);
+
+  const timeWorkUuid =
+    (selectedTimeWorkId && isUuid(selectedTimeWorkId) ? selectedTimeWorkId : undefined) ??
+    pickUuid((selectedTask as any)?.timeWorkId, (selectedTask as any)?.time_work_id);
+
+  /**  Сохранение  */
+  const [saving, setSaving] = useState(false);
+  const [createNew, setCreateNew] = useState(false);
+  const templateChosen = Boolean((mainTemplate as any)?.key);
+
+  const canSave =
+    templateChosen && (createNew ? Boolean(authorUuid && timeWorkUuid) : Boolean(selectedTaskId));
+
+  const saveTooltip = !templateChosen
+    ? 'Выберите шаблон YAML'
+    : createNew && !authorUuid
+      ? 'Нет author_id (UUID пользователя/исполнителя)'
+      : createNew && !timeWorkUuid
+        ? 'Нет time_work_id (выберите смену/интервал)'
+        : !createNew && !selectedTaskId
+          ? 'Выберите задачу или включите «Создать как новую запись»'
+          : undefined;
+
+  const handleSave = async () => {
+    if (saving) return;
+    if (!templateChosen) return message.error('Не выбран YAML-шаблон (шаг «Шаблон»).');
+    setSaving(true);
+    try {
+      const result = await savePlannedTask({
+        mainTemplate,
+        selectedTask,
+        executorsByTemplate,
+        getMergedStageOverrides,
+        getTimelineState,
+        mainFormValues: mainFormValuesRef.current,
+        createNew,
+        selectedTaskId: selectedTaskId ?? undefined,
+        authorUuid: authorUuid ?? undefined,
+        timeWorkUuid: timeWorkUuid ?? undefined,
+      });
+      if (result?.createdId) {
+        setReviewForId(result.createdId);
+        setReviewOpen(true);
+      }
+      if (result?.updatedId) {
+        setReviewForId(result.updatedId);
+        setReviewOpen(true);
+      }
+    } catch (e: any) {
+      console.error('[PprEditorPage] save error:', e);
+      message.error(
+        `Не удалось сохранить: ${e?.response?.errors?.[0]?.message ?? e?.message ?? 'unknown error'}`,
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <section className="ppr-editor-card">
       <div style={{ padding: '8px 16px 0 16px' }}>
@@ -183,7 +259,10 @@ const PprEditorPage: React.FC = () => {
         <LocationOverview />
         <div className="ppr-location-divider" />
       </header>
-      <div className="ppr-editor-card__controls">
+      <div
+        className="ppr-editor-card__controls"
+        style={{ display: 'flex', gap: 12, alignItems: 'center' }}
+      >
         <div className="ppr-editor-card__controls-left" style={{ width: '100%' }}>
           <PlannedTaskDropdown
             className="ppr-editor-card__select"
@@ -197,6 +276,17 @@ const PprEditorPage: React.FC = () => {
             }}
           />
         </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Switch checked={createNew} onChange={setCreateNew} />
+          <span style={{ userSelect: 'none' }}>Создать как новую запись</span>
+        </div>
+
+        <Tooltip title={saveTooltip}>
+          <Button type="primary" onClick={handleSave} loading={saving} disabled={!canSave}>
+            Сохранить
+          </Button>
+        </Tooltip>
       </div>
       {!!selectedTaskId && (
         <div style={{ marginTop: 12 }}>
@@ -231,7 +321,7 @@ const PprEditorPage: React.FC = () => {
       {tabsConfirmed && (
         <div className="ppr-template-wrap" style={{ marginTop: 16 }}>
           <YamlTemplateSelect
-            bucket={BUCKET}
+            bucket={YAML_BUCKET}
             value={(mainTemplate as any)?.key}
             onChange={async (tpl) => {
               const prevMainKey = (mainTemplate as any)?.key;
@@ -252,7 +342,7 @@ const PprEditorPage: React.FC = () => {
               }
 
               // подгрузим raw при необходимости
-              const resolved = await resolveTemplateWithRaw(tpl as Template, BUCKET, PREFIX);
+              const resolved = await resolveTemplateWithRaw(tpl as Template, YAML_BUCKET);
               if (!resolved) {
                 message.error('Не удалось загрузить YAML шаблона.');
                 return;
@@ -286,19 +376,11 @@ const PprEditorPage: React.FC = () => {
               schema={(mainTemplate as any)?.raw}
               templateKey={(mainTemplate as any)?.key}
               executors={(executorsByTemplate[0] ?? []).map(normalizeExec)}
-              onRowCountChange={(cnt) => {
+              onRowCountChange={(cnt: number) => {
                 if (!paramsConfirmed && cnt > 0) setParamsConfirmed(true);
               }}
-              onDisplayTableChange={(headers, rows, sources, colKeys) => {
-                setRowDisplayBySource((prev) => {
-                  const next = { ...prev };
-                  rows.forEach((row, idx) => {
-                    const src = sources[idx];
-                    if (!src) return;
-                    next[src] = { headers, row, colKeys: colKeys ?? [] };
-                  });
-                  return next;
-                });
+              onValuesChange={(vals: any) => {
+                mainFormValuesRef.current = vals;
               }}
             />
           )}
@@ -311,7 +393,7 @@ const PprEditorPage: React.FC = () => {
           <React.Fragment key={idx}>
             <div className="ppr-template-wrap" style={{ marginTop: 12 }}>
               <YamlTemplateSelect
-                bucket={BUCKET}
+                bucket={YAML_BUCKET}
                 value={(template as any).key}
                 onChange={(newTpl) => changeTemplate(idx, newTpl)}
                 executors={(executorsByTemplate[idx + 1] ?? []).map(normalizeExec)}
@@ -338,17 +420,6 @@ const PprEditorPage: React.FC = () => {
                 templateKey={(template as any)?.key}
                 executors={(executorsByTemplate[idx + 1] ?? []).map(normalizeExec)}
                 onRowCountChange={() => {}}
-                onDisplayTableChange={(headers, rows, sources, colKeys) => {
-                  setRowDisplayBySource((prev) => {
-                    const next = { ...prev };
-                    rows.forEach((row, i) => {
-                      const src = sources[i];
-                      if (!src) return;
-                      next[src] = { headers, row, colKeys: colKeys ?? [] };
-                    });
-                    return next;
-                  });
-                }}
               />
             )}
           </React.Fragment>
@@ -365,6 +436,7 @@ const PprEditorPage: React.FC = () => {
               gridStart={timelineWindow.start}
               gridEnd={timelineWindow.end}
               executors={timelineExecutors}
+              executorsByTemplate={executorsByTemplate}
               onBlockClick={() => {}}
               onTimerChange={(tplIdx, stageKey, newTimer) => {
                 updateTplStageDuration?.({
@@ -374,7 +446,6 @@ const PprEditorPage: React.FC = () => {
                 });
               }}
               onMoveBetweenExecutors={handleMoveBetweenExecutors}
-              rowDisplayBySource={rowDisplayBySource}
             />
           </div>
         </>

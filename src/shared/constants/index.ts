@@ -1,5 +1,15 @@
 import type { RoleKey } from '@/shared/utils/normalizeRoleKey';
 
+/** Бакет для YAML в MinIO */
+export const YAML_BUCKET = 'yamls' as const;
+
+/** Значения по умолчанию для planned_tasks */
+export const PLANNED_TASKS_KIND = 'planned_tasks' as const;
+export const DEFAULT_TASK_NAME = 'Без названия' as const;
+export const PLANNED_TASK_STATUS = {
+  ON_REVIEW: 'on_review' as const,
+} as const;
+
 /** Заголовки ролей для бейджа исполнителя */
 export const ROLE_TITLES_RU: Record<RoleKey, string> = {
   engineer: 'Сетевой инженер',
@@ -7,6 +17,17 @@ export const ROLE_TITLES_RU: Record<RoleKey, string> = {
   auditor: 'Представитель Заказчика',
   system: 'Система',
 };
+
+/** Цвета бейджа роли исполнителя (справа в заголовке панели) */
+export const ROLE_COLORS: Record<RoleKey, string> = {
+  engineer: '#1e90ff',
+  installer: '#f97316',
+  auditor: '#ef4444',
+  system: '#9ca3af',
+};
+
+/** Цвет бейджа роли по умолчанию */
+export const ROLE_SWATCH_DEFAULT_COLOR = '#9ca3af';
 
 /** Текстовые константы и подписи StagePanel */
 export const STAGE_PANEL_TEXT = {
@@ -29,23 +50,20 @@ export const STAGE_PANEL_TEXT = {
     uploadedPrefix: 'Загружено ',
     byParen: (who: string) => ` (${who})`,
     fallbackFilePrefix: 'Файл ',
+    uploadError: 'Не удалось загрузить файл',
+    /** добавлено для ConfigUploader: подсказка, когда превью ещё недоступно */
+    availableAfterUpload: 'Доступно сразу после загрузки',
+  },
+  errors: {
+    noBucket:
+      'Bucket не найден в MinIO. Убедитесь, что существует bucket ppr-files и у него есть политика на запись.',
   },
   booleanOptions: [
     { value: 'true', label: 'true' },
     { value: 'false', label: 'false' },
   ] as const,
-};
+} as const;
 
-/** Цвета бейджа роли исполнителя (справа в заголовке панели) */
-export const ROLE_COLORS: Record<RoleKey, string> = {
-  engineer: '#1e90ff',
-  installer: '#f97316',
-  auditor: '#ef4444',
-  system: '#9ca3af',
-};
-
-/** Цвет бейджа роли по умолчанию */
-export const ROLE_SWATCH_DEFAULT_COLOR = '#9ca3af';
 /** UI-константы StagePanel  */
 export const STAGE_PANEL_UI = {
   /** InputNumber во всю ширину */
@@ -59,7 +77,7 @@ export const STAGE_PANEL_UI = {
 /** Ключи/имена, используемые в StagePanel */
 export const STAGE_PANEL_KEYS = {
   /** Имя/ключ элемента формы таймера */
-  TIMER_ITEM_NAME: '__timer__',
+  TIMER_ITEM_NAME: 'timer',
   /** dataIndex для колонки с действиями */
   ACTIONS_DATA_INDEX: '__actions__',
 } as const;
@@ -90,3 +108,15 @@ export const CONFIG_UPLOADER_DEFAULTS = {
   /** Дефолтное значение accept */
   accept: '.cfg,.conf,.txt',
 } as const;
+
+/** Значения по умолчанию для клиентского хранилища конфигов */
+export const CONFIG_STORAGE_DEFAULTS = {
+  bucket: 'ppr-files',
+  prefixManualConfig: 'config/manual_config',
+} as const;
+
+/** Доп. константы для ссылок/контента */
+export const DEFAULT_CONTENT_TYPE = 'application/octet-stream' as const;
+export const LINK_TARGET_BLANK = '_blank' as const;
+export const WINDOW_FEATURES_NOOPENER = 'noopener,noreferrer' as const;
+export const DEFAULT_DOWNLOAD_NAME = 'file' as const;

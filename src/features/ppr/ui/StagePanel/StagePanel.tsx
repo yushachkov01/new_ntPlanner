@@ -20,6 +20,7 @@ import {
   getFormatsGeneric,
   getAcceptGeneric,
 } from '@/shared/utils/TaskDetailUtils';
+import useTimelineStore from '@entities/timeline/model/store/timelineStore';
 import { getStageMinutes } from '@entities/timeline/model/utils/time';
 import { userStore } from '@entities/user/model/store/UserStore';
 import type { ConfigFile as BaseConfigFile } from '@features/ppr/ui/ConfigUploader/ConfigUploader';
@@ -41,6 +42,7 @@ export interface SimpleUser {
 }
 
 export interface StagePanelProps {
+  tplIdx?: number;
   /** Ключ текущей стадии. */
   stageKey: string;
   /** Мета-описание стадии из шаблона. */
@@ -66,6 +68,7 @@ export interface StagePanelProps {
  *  - props: StagePanelProps
  */
 export const StagePanel: FC<StagePanelProps> = ({
+  tplIdx,
   stageKey,
   meta,
   durationMinutes,
@@ -84,7 +87,22 @@ export const StagePanel: FC<StagePanelProps> = ({
     return candidate && candidate.length > 0 ? candidate : '';
   }, [currentUser]);
 
-  /** Начальное значение таймера */
+  const setStageFieldValue = useTimelineStore((store) => (store as any).setStageFieldValue);
+
+  //  ids исполнителей
+  const getTplExecutorIds = useTimelineStore((s) => s.getTplExecutorIds);
+  const tplExecIds = useMemo(
+    () => (tplIdx != null && getTplExecutorIds ? getTplExecutorIds(tplIdx) : []),
+    [getTplExecutorIds, tplIdx],
+  );
+
+  //  фильтрация «глобального» списка по tplExecIds
+  const filteredExecutors = useMemo(() => {
+    if (tplIdx == null || !tplExecIds.length) return assignedExecutors;
+    const idSet = new Set(tplExecIds.map(String));
+    return (assignedExecutors ?? []).filter((u) => idSet.has(String(u.id)));
+  }, [assignedExecutors, tplExecIds, tplIdx]);
+  /** Начальное значение таймера с учётом возможных источников в yaml */
   const timerInitial = useMemo(() => {
     const yamlMinutes = getStageMinutes(meta);
     return Math.max(1, yamlMinutes || durationMinutes || 1);
@@ -123,7 +141,7 @@ export const StagePanel: FC<StagePanelProps> = ({
       .sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
   }, [meta, types]);
 
-  /** поддержка нескольких файловых полей — единынй механизм из TaskDetailUtils */
+  /** поддержка нескольких файловых полей */
   const isFileField = useCallback(
     (fd: StageFieldDef): boolean => isFileFieldGeneric(fd, types as any),
     [types],
@@ -189,10 +207,21 @@ export const StagePanel: FC<StagePanelProps> = ({
         );
         onConfigsChange?.(baseList);
 
+        try {
+          setStageFieldValue?.({ stageKey, fieldKey, value: baseList });
+        } catch {}
+
         return next;
       });
     },
-    [currentUserDisplayName, getRecordKey, onConfigsChange, removedByField],
+    [
+      currentUserDisplayName,
+      getRecordKey,
+      onConfigsChange,
+      removedByField,
+      setStageFieldValue,
+      stageKey,
+    ],
   );
 
   const handleUploaderErrorFor = useCallback(
@@ -205,8 +234,8 @@ export const StagePanel: FC<StagePanelProps> = ({
   return (
     <section className="task-detail__stage">
       <p className="task-detail__header">{meta?.description}</p>
-      {assignedExecutors.map((user) => (
-        <div key={user.id} className="yaml-executor-row">
+      {filteredExecutors.map((user) => (
+        <div key={`${user.id}`} className="yaml-executor-row">
           <div className="yaml-executor-field">
             <Text className="executor-role">
               {ROLE_TITLES_RU[user.role as RoleKey] ?? user.role}
@@ -232,6 +261,12 @@ export const StagePanel: FC<StagePanelProps> = ({
               if (changedValues.timer != null) {
                 onTimerChange?.(stageKey, changedValues.timer as number);
               }
+              Object.entries(changedValues).forEach(([changedKey, changedValue]) => {
+                if (changedKey === 'timer') return;
+                try {
+                  setStageFieldValue?.({ stageKey, fieldKey: changedKey, value: changedValue });
+                } catch {}
+              });
             }}
             preserve
           >
@@ -265,8 +300,8 @@ export const StagePanel: FC<StagePanelProps> = ({
                     <ConfigUploader
                       value={visible}
                       onChange={handleConfigsChangeFor(fieldKey)}
-                      accept={accept}
                       allowedExtensions={exts}
+                      accept={accept}
                       onErrorChange={handleUploaderErrorFor(fieldKey)}
                     />
                     {!hasError && hint && (

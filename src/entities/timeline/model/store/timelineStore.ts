@@ -6,6 +6,7 @@ import { create } from 'zustand';
 import type { StageField } from '@/entities/template/model/store/templateStore';
 import { parseTimeToMinutes, toTime } from '@/shared/ui/time/toTime';
 import type { BlockExt, Executor } from '@entities/timeline/model/types/types';
+import { min1, orderStagesByIfSuccess } from '@entities/timeline/model/utils/timelineBaseUtils';
 
 import { repackRowLeft } from '../logic/pack';
 import { normSource, parseDurationToMinutes, toRowId, absEnd } from '../utils/time';
@@ -111,70 +112,24 @@ interface TimelineState {
    * Используется при ручном изменении «Таймер (мин)» в карточке задачи.
    */
   updateTplStageDuration?: (params: { tplIdx: number; stageKey: string; minutes: number }) => void;
-}
 
-/**
- * Минимальное значение минут (гарантия что > 0)
- * @param numberValue - исходное число
- * @returns округлённое значение (>= 1)
- */
-const min1 = (numberValue: number) => (numberValue > 0 ? Math.floor(numberValue) : 1);
+  stageFieldEdits: Record<number, Record<string, Record<string, any>>>;
+  setStageFieldValue: (params: {
+    tplIdx?: number;
+    stageKey: string;
+    fieldKey: string;
+    value: any;
+  }) => void;
+  /**  правка таймера этапа (используется для rollback, которых нет на таймлайне) */
+  setStageTime?: (params: { tplIdx?: number; stageKey: string; minutes: number }) => void;
 
-/**
- * Построение последовательности стадий по цепочке if_success,
- * начиная со стартового ключа
- */
-function orderStagesByIfSuccess(
-  stageKeys: string[],
-  stagesField: Record<string, StageField>,
-): string[] {
-  const out: string[] = [];
-  if (!stageKeys || stageKeys.length === 0) return out;
+  clearStageFieldValuesFor: (tplIdx: number) => void;
+  getMergedStageOverrides: (
+    tplIdx: number,
+  ) => Record<string, { time?: number; fields?: Record<string, any> }>;
 
-  let current = stageKeys[0];
-  const visited = new Set<string>();
-  let guard = 0;
-
-  while (current && !visited.has(current) && guard++ < 1000) {
-    const meta: any = (stagesField as any)[current];
-    if (!meta) break;
-
-    out.push(current);
-    visited.add(current);
-
-    let next: any = meta?.if_success;
-    if (Array.isArray(next)) next = next[0];
-
-    // конец ветки
-    if (!next || typeof next !== 'string' || next === 'exit') break;
-
-    // если следующая стадия не определена в stages — останавливаемся
-    if (!(next in stagesField)) break;
-    current = next;
-  }
-  return out;
-}
-
-/**
- * стартовая стадия цепочки if_success:
- */
-function guessStartStageKey(
-  stageSet: Set<string>,
-  stagesField: Record<string, StageField>,
-): string | undefined {
-  const hasIncoming = new Set<string>();
-  for (const key of stageSet) {
-    const meta: any = (stagesField as any)[key];
-    let next: any = meta?.if_success;
-    if (Array.isArray(next)) next = next[0];
-    if (typeof next === 'string' && next !== 'exit' && stageSet.has(next)) {
-      hasIncoming.add(next);
-    }
-  }
-  for (const key of stageSet) {
-    if (!hasIncoming.has(key)) return key;
-  }
-  return [...stageSet][0];
+  /** собрать id исполнителей, реально присутствующих в блоках данного шаблона */
+  getTplExecutorIds?: (tplIdx: number) => string[];
 }
 
 /**
@@ -213,6 +168,7 @@ const useTimelineStore = create<TimelineState>((set, get) => ({
         blocks: [...(row.blocks ?? [])],
       }));
 
+      const execIdsRaw: string[] | undefined = execIds?.map((value) => String(value));
       /**
        * Целевые исполнители: либо те, что передали, либо все строки.
        * Преобразуем идентификаторы в стабильные числовые rowId.
@@ -288,7 +244,8 @@ const useTimelineStore = create<TimelineState>((set, get) => ({
             stageKeys: [stageKey],
             stagesField,
             sourceKey: normSource(sourceKey ?? `${label}::${stageKey}`),
-          });
+            execIds: execIdsRaw,
+          } as any);
 
           cursor = stageEndAbsMin;
         }
@@ -353,7 +310,10 @@ const useTimelineStore = create<TimelineState>((set, get) => ({
    */
   resetExecutors: ({ execIds }: ResetParams = {}) => {
     set((state) => {
-      if (!execIds || execIds.length === 0) return { rows: [] as Executor[] };
+      if (!execIds?.length) {
+        if (state.rows.length === 0) return state;
+        return { rows: [] as Executor[] };
+      }
       const ids = new Set(execIds.map(toRowId));
       const rows = (state.rows ?? []).filter((r) => !ids.has(r.id));
       return { rows };
@@ -394,21 +354,6 @@ const useTimelineStore = create<TimelineState>((set, get) => ({
 
       rows[fromIdx] = fromRow;
       rows[toIdx] = toRow;
-      return { rows };
-    });
-  },
-
-  /**
-   * Сжимает блоки в строке
-   */
-  compactRowLeft: (rowId, startRefMin = 0) => {
-    set((state) => {
-      const rows = Array.isArray(state.rows) ? [...state.rows] : [];
-      const idx = rows.findIndex((r) => r.id === rowId);
-      if (idx < 0) return state;
-      const row = { ...rows[idx], blocks: [...(rows[idx].blocks ?? [])] };
-      repackRowLeft(row, startRefMin);
-      rows[idx] = row;
       return { rows };
     });
   },
@@ -490,12 +435,15 @@ const useTimelineStore = create<TimelineState>((set, get) => ({
   isSamePersonRow: (rowA: number, rowB: number) => {
     if (rowA === rowB) return true;
     const rows = get().rows ?? [];
-    const a = rows.find((r) => r.id === rowA);
-    const b = rows.find((r) => r.id === rowB);
-    if (!a || !b) return false;
-    const aRoot = a.isExtra ? (a.parentId ?? a.id) : a.id;
-    const bRoot = b.isExtra ? (b.parentId ?? b.id) : b.id;
-    return aRoot === bRoot;
+    const firstRow = rows.find((row) => row.id === rowA);
+    const secondRow = rows.find((row) => row.id === rowB);
+
+    if (!firstRow || !secondRow) return false;
+
+    const firstBaseRowId = firstRow.isExtra ? (firstRow.parentId ?? firstRow.id) : firstRow.id;
+    const secondBaseRowId = secondRow.isExtra ? (secondRow.parentId ?? secondRow.id) : secondRow.id;
+
+    return firstBaseRowId === secondBaseRowId;
   },
 
   /** удалить доп. строку владельца, если она пустая (возврат «+») */
@@ -534,44 +482,17 @@ const useTimelineStore = create<TimelineState>((set, get) => ({
   updateTplStageDuration: ({ tplIdx, stageKey, minutes }) => {
     const safeMinutes = min1(Number(minutes) || 0);
 
+    get().setStageTime?.({ tplIdx, stageKey, minutes: safeMinutes });
     set((state) => {
       const rows = (state.rows ?? []).map((row) => ({ ...row, blocks: [...(row.blocks ?? [])] }));
       for (const row of rows) {
         const blocks = row.blocks ?? [];
         const blocksInTemplate = blocks.filter((block) => block.tplIdx === tplIdx);
         if (blocksInTemplate.length === 0) continue;
-        /**
-         * пересобираем СТРОГО по цепочке if_success,
-         */
-        const stageSet = new Set<string>();
-        for (const block of blocksInTemplate) {
-          for (const stageKeyCandidate of block.stageKeys ?? []) {
-            stageSet.add(stageKeyCandidate);
-          }
-        }
-        const anyStagesField = (blocksInTemplate[0]?.stagesField ?? {}) as Record<
-          string,
-          StageField
-        >;
 
-        /** находим стартовую стадию по графу if_success */
-        const startKey = guessStartStageKey(stageSet, anyStagesField);
-
-        /** строим цепочку от старта */
-        const chain = startKey ? orderStagesByIfSuccess([startKey], anyStagesField) : [];
-
-        /** сопоставляем ключам цепочки реальные блоки */
-        const sortedBlocks: BlockExt[] = [];
-        for (const chainKey of chain) {
-          const block = blocksInTemplate.find(
-            (blockCandidate) =>
-              Array.isArray(blockCandidate.stageKeys) &&
-              blockCandidate.stageKeys.includes(chainKey),
-          );
-          if (block) sortedBlocks.push(block);
-        }
-
-        if (sortedBlocks.length === 0) continue;
+        const sortedBlocks: BlockExt[] = [...blocksInTemplate].sort(
+          (a, b) => parseTimeToMinutes(a.startTime) - parseTimeToMinutes(b.startTime),
+        );
 
         /** старт бандла */
         const firstStart = Math.min(
@@ -597,10 +518,8 @@ const useTimelineStore = create<TimelineState>((set, get) => ({
         let cursor = firstStart;
         for (let stageIndex = 0; stageIndex < sortedBlocks.length; stageIndex++) {
           const block = sortedBlocks[stageIndex];
-          const duration = Math.max(1, durations[stageIndex]);
           const newStart = cursor;
-          const newEnd = cursor + duration;
-
+          const newEnd = cursor + Math.max(1, durations[stageIndex]);
           /** переписываем исходный объект в row.blocks */
           const idxInRow = blocks.findIndex((blockCandidate) => blockCandidate.id === block.id);
           if (idxInRow >= 0) {
@@ -618,6 +537,114 @@ const useTimelineStore = create<TimelineState>((set, get) => ({
 
       return { rows };
     });
+  },
+  stageFieldEdits: {},
+
+  /**
+   * Сохранить значение произвольного поля этапа (fields).
+   */
+  setStageFieldValue: ({ tplIdx = 0, stageKey, fieldKey, value }) => {
+    set((state) => {
+      const stageEditsMap = { ...(state.stageFieldEdits ?? {}) };
+      const editsByTemplate = { ...(stageEditsMap[tplIdx] ?? {}) };
+      const editsByStage = { ...(editsByTemplate[stageKey] ?? {}) };
+      const nextStageEdits = { ...editsByStage, [fieldKey]: value };
+      stageEditsMap[tplIdx] = { ...editsByTemplate, [stageKey]: nextStageEdits };
+      return { stageFieldEdits: stageEditsMap };
+    });
+  },
+
+  /**
+   * Установить явное время этапа (override) для последующего сохранения в YAML.
+   */
+  setStageTime: ({ tplIdx = 0, stageKey, minutes }) => {
+    set((state) => {
+      const stageEditsMap = { ...(state.stageFieldEdits ?? {}) };
+      const editsByTemplate = { ...(stageEditsMap[tplIdx] ?? {}) };
+      const editsByStage = { ...(editsByTemplate[stageKey] ?? {}) };
+      const nextStageEdits = { ...editsByStage, __time: min1(minutes) };
+      stageEditsMap[tplIdx] = { ...editsByTemplate, [stageKey]: nextStageEdits };
+      return { stageFieldEdits: stageEditsMap };
+    });
+  },
+  /**
+   * Очистить все правки (поля/время) для конкретного шаблона.
+   */
+  clearStageFieldValuesFor: (tplIdx: number) => {
+    set((state) => {
+      const stageEditsMap = { ...(state.stageFieldEdits ?? {}) };
+      if (!(tplIdx in stageEditsMap)) return state;
+      delete stageEditsMap[tplIdx];
+      return { stageFieldEdits: stageEditsMap };
+    });
+  },
+
+  /**
+   * Собираем overrides для YAML.
+   */
+  getMergedStageOverrides: (tplIdx: number) => {
+    const rows = get().rows ?? [];
+    const blocksInTemplate: BlockExt[] = [];
+
+    for (const row of rows) {
+      const blocksForTemplate = (row.blocks ?? []).filter((block) => block.tplIdx === tplIdx);
+      if (blocksForTemplate.length) blocksInTemplate.push(...blocksForTemplate);
+    }
+
+    const overrides: Record<string, { time?: number; fields?: Record<string, any> }> = {};
+
+    // время из таймлайна (success)
+    if (blocksInTemplate.length > 0) {
+      for (const block of blocksInTemplate) {
+        const startMinutes = parseTimeToMinutes(block.startTime);
+        const endMinutes = parseTimeToMinutes(block.endTime);
+        const durationMinutes = Math.max(1, absEnd(startMinutes, endMinutes) - startMinutes);
+
+        for (const sk of block.stageKeys ?? []) {
+          const prev = overrides[sk] ?? {};
+          if (prev.time == null) overrides[sk] = { ...prev, time: durationMinutes };
+          else overrides[sk] = { ...prev };
+        }
+      }
+    }
+
+    const stageEditsMap = get().stageFieldEdits ?? {};
+    const editsByTemplate = stageEditsMap[tplIdx] ?? {};
+    for (const [sk, rawFields] of Object.entries(editsByTemplate)) {
+      const stageFields = rawFields as any;
+      const explicitTime = Number.isFinite(stageFields?.__time)
+        ? Number(stageFields.__time)
+        : Number.isFinite(stageFields?.time)
+          ? Number(stageFields.time)
+          : undefined;
+
+      const prev = overrides[sk] ?? {};
+      const nextFields = { ...(prev.fields ?? {}) };
+
+      // выносим time из полей, чтобы они попали в корневой overrides[sk].time
+      const { __time, time, ...rest } = stageFields ?? {};
+      if (explicitTime && explicitTime > 0) {
+        overrides[sk] = { ...prev, time: min1(explicitTime), fields: { ...nextFields, ...rest } };
+      } else {
+        overrides[sk] = { ...prev, fields: { ...nextFields, ...rest } };
+      }
+    }
+
+    return overrides;
+  },
+
+  /** собрать id исполнителей, реально присутствующих в блоках данного шаблона */
+  getTplExecutorIds: (tplIdx: number) => {
+    const rows = get().rows ?? [];
+    const ids = new Set<string>();
+    for (const row of rows) {
+      for (const block of row.blocks ?? []) {
+        if (block.tplIdx === tplIdx && Array.isArray(block.execIds)) {
+          for (const id of block.execIds) ids.add(String(id));
+        }
+      }
+    }
+    return [...ids];
   },
 }));
 

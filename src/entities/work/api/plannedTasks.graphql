@@ -1,0 +1,38 @@
+query plannedTaskByPk($id: uuid!) {
+  public7_planned_tasks_by_pk(id: $id) {
+    id
+    name
+    description
+    rm_task_id
+    yaml_url
+    time_work_id
+    author_id
+    status
+  }
+}
+
+query namesLike($pattern: String!) {
+  public7_planned_tasks(where: { name: { _ilike: $pattern } }) {
+    name
+  }
+}
+
+# mutations
+mutation updatePlannedTask($id: uuid!, $_set: public7_planned_tasks_set_input!) {
+  update_public7_planned_tasks(where: { id: { _eq: $id } }, _set: $_set) {
+    affected_rows
+  }
+}
+
+mutation insertPlannedTaskOne($object: public7_planned_tasks_insert_input!) {
+  insert_public7_planned_tasks_one(object: $object) {
+    id
+    name
+    description
+    rm_task_id
+    yaml_url
+    time_work_id
+    author_id
+    status
+  }
+}

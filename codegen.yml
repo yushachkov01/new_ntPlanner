@@ -1,7 +1,7 @@
 schema:
   - ${VITE_HASURA_GRAPHQL_URL}:
       headers:
-        x-hasura-admin-secret: ${HASURA_ADMIN_SECRET}
+        x-hasura-admin-secret: ${VITE_HASURA_ADMIN_SECRET}
 
 documents: 'src/entities/work/api/*.graphql'
 

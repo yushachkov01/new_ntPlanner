@@ -2,6 +2,10 @@ import type { FetchPlannedTasksQuery } from '@/entities/work/api/fetchPlannedTas
 import type { FetchRmProjectsQuery } from '@/entities/work/api/fetchRmProjects.generated';
 import type { FetchRmTasksQuery } from '@/entities/work/api/fetchRmTasks.generated';
 import type { FetchTimeWorksQuery } from '@/entities/work/api/fetchTimeWorks.generated';
+import type {
+  Public7_Planned_Tasks_Insert_Input,
+  Public7_Planned_Tasks_Set_Input,
+} from '@/shared/api/graphql';
 import type { FetchDevicesQuery } from '@entities/work/api/fetchDevices.generated';
 
 /** Сырые данные задачи из public7_planned_tasks (snake_case) */
@@ -61,6 +65,28 @@ export interface Device {
   modelId: string;
 }
 
+/** helpers  */
+export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Проверяет, что значение является валидным UUID.
+ * @param value строка или null
+ * @returns строка UUID или undefined
+ */
+const asUuid = (value?: string | null): string | undefined =>
+  typeof value === 'string' && UUID_RE.test(value) ? value : undefined;
+
+/**
+ * Очищает строку от пробелов и пустых значений.
+ * @param rawValue строка или null
+ * @returns строка без пробелов или undefined, если пусто
+ */
+const clean = (rawValue?: string | null): string | undefined => {
+  if (rawValue == null) return undefined;
+  const trimmedValue = String(rawValue).trim();
+  return trimmedValue.length ? trimmedValue : undefined;
+};
+
 /** raw → domain для PlannedTask */
 export function toDomainTask(r: RawTask): PlannedTask {
   return {
@@ -103,21 +129,6 @@ export function toDomainRmTask(r: RawRmTask): RmTask {
   };
 }
 
-/** Тип для input-объекта вставки / обновления задачи */
-export type RawTaskInput = Omit<RawTask, 'id'>;
-
-/** domain → raw для PlannedTask */
-export function toRawTask(t: PlannedTask): RawTaskInput {
-  return {
-    name: t.name,
-    description: t.description,
-    rm_task_id: t.rmTaskId,
-    yaml_url: t.yamlUrl,
-    time_work_id: t.timeWorkId,
-    author_id: t.authorId,
-  };
-}
-/** raw → domain для Device */
 export function toDomainDevice(r: RawDevice): Device {
   return {
     id: r.id,
@@ -125,5 +136,35 @@ export function toDomainDevice(r: RawDevice): Device {
     nodeId: r.node_id,
     roleId: r.role_id,
     modelId: r.model_id,
+  };
+}
+
+/** domain → raw (GraphQL inputs)
+ *   Используем именно сгенерированные типы Hasura:
+ *     - Public7_Planned_Tasks_Insert_Input
+ *     - Public7_Planned_Tasks_Set_Input
+ *  Это убирает расхождения между типами выборки (query) и типами записи (insert/update).
+ */
+
+/** Полный объект для INSERT (все поля опциональные)*/
+export function toRawTaskInsert(plannedTask: PlannedTask): Public7_Planned_Tasks_Insert_Input {
+  return {
+    name: clean(plannedTask.name),
+    description: clean(plannedTask.description),
+    rm_task_id: asUuid(plannedTask.rmTaskId),
+    yaml_url: clean(plannedTask.yamlUrl),
+    time_work_id: asUuid(plannedTask.timeWorkId),
+    author_id: asUuid(plannedTask.authorId),
+  };
+}
+
+export function toRawTaskSet(partialTask: Partial<PlannedTask>): Public7_Planned_Tasks_Set_Input {
+  return {
+    name: partialTask.name !== undefined ? clean(partialTask.name) : undefined,
+    description: partialTask.description !== undefined ? clean(partialTask.description) : undefined,
+    rm_task_id: partialTask.rmTaskId !== undefined ? asUuid(partialTask.rmTaskId) : undefined,
+    yaml_url: partialTask.yamlUrl !== undefined ? clean(partialTask.yamlUrl) : undefined,
+    time_work_id: partialTask.timeWorkId !== undefined ? asUuid(partialTask.timeWorkId) : undefined,
+    author_id: partialTask.authorId !== undefined ? asUuid(partialTask.authorId) : undefined,
   };
 }

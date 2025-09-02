@@ -10,7 +10,27 @@ import {
   CONFIG_UPLOADER_TEXT,
   CONFIG_UPLOADER_DEFAULTS,
   STAGE_PANEL_TEXT,
+  CONFIG_STORAGE_DEFAULTS,
+  DEFAULT_CONTENT_TYPE,
+  LINK_TARGET_BLANK,
+  WINDOW_FEATURES_NOOPENER,
+  DEFAULT_DOWNLOAD_NAME,
 } from '@/shared/constants';
+import { putObjectBytes } from '@/shared/minio/MinioClient';
+import {
+  resolveNormalizedAllowed,
+  resolveEffectiveAccept,
+  beforeUploadGuardReturn,
+  handleConfigUploaderChangeFlow,
+  previewRecord,
+  downloadRecord,
+  removeFlow,
+  hrefOrPlaceholder,
+  previewButtonProps,
+  sanitizeName,
+  yyyymmdd,
+  rnd,
+} from '@/shared/utils/baseUtils';
 
 const { Dragger } = Upload;
 
@@ -19,10 +39,9 @@ export interface ConfigFile {
   uid: string;
   /** Оригинальное имя файла */
   name: string;
-  /** URL для предпросмотра/скачивания */
-  url: string;
 }
 
+type RenderItem = ConfigFile & { previewUrl?: string };
 /**
  * Пропсы загрузчика конфигураций.
  */
@@ -44,9 +63,11 @@ interface Props {
   allowedExtensions?: string[];
   /** Сообщить родителю, есть ли сейчас ошибка у загрузчика */
   onErrorChange?: (hasError: boolean) => void;
+  /** параметры хранилища (могут быть переопределены снаружи) */
+  bucket?: string;
+  prefix?: string;
 }
 
-const withDots = (arr: string[]) => arr.map((x) => (x.startsWith('.') ? x : `.${x}`));
 /**
  * Компонент загрузчика конфигураций.
  * Позволяет прикрепить один конфиг-файл и выводит уведомление об успешной загрузке.
@@ -57,41 +78,28 @@ const ConfigUploader: FC<Props> = ({
   accept,
   allowedExtensions,
   onErrorChange,
+  bucket = CONFIG_STORAGE_DEFAULTS.bucket,
+  prefix = CONFIG_STORAGE_DEFAULTS.prefixManualConfig,
 }) => {
   const [inner, setInner] = useState<ConfigFile[]>([]);
   const files = value ?? inner;
 
-  const [lastError, setLastError] = useState<string>('');
+  const [lastError, setLastError] = useState('');
+  const [previewByUid, setPreviewByUid] = useState<Record<string, string>>({});
 
   /** Нормализованный список допустимых расширений без точки, в нижнем регистре */
   const normalizedAllowed = useMemo<string[]>(() => {
-    if (allowedExtensions && allowedExtensions.length) {
-      return allowedExtensions.map((x) => x.replace(/^\./, '').toLowerCase());
-    }
-    if (accept && accept.length) {
-      return accept
-        .split(',')
-        .map((s) => s.trim())
-        .filter(Boolean)
-        .map((s) => s.replace(/^\./, '').toLowerCase());
-    }
-    /** дефолтный набор */
-    return [...CONFIG_UPLOADER_DEFAULTS.allowedExtensions];
+    return resolveNormalizedAllowed(
+      allowedExtensions,
+      accept,
+      CONFIG_UPLOADER_DEFAULTS.allowedExtensions,
+    );
   }, [allowedExtensions, accept]);
 
   /** Итоговое значение для Upload.accept */
   const effectiveAccept = useMemo(() => {
-    if (accept && accept.length) return accept;
-    if (normalizedAllowed.length) return withDots(normalizedAllowed).join(',');
-    return CONFIG_UPLOADER_DEFAULTS.accept;
+    return resolveEffectiveAccept(accept, normalizedAllowed, CONFIG_UPLOADER_DEFAULTS.accept);
   }, [accept, normalizedAllowed]);
-
-  /** Проверка расширения файла */
-  const checkExtension = (fileName: string): { ok: boolean; ext: string } => {
-    const ext = (fileName.split('.').pop() || '').toLowerCase();
-    const ok = ext !== '' && normalizedAllowed.includes(ext);
-    return { ok, ext };
-  };
 
   const showError = (msg: string) => {
     setLastError(msg);
@@ -105,87 +113,66 @@ const ConfigUploader: FC<Props> = ({
     if (lastError) setLastError('');
     onErrorChange?.(false);
   };
+
   /**
    * Перед добавлением в список валидируем расширение.
    */
   const beforeUpload = (file: File) => {
-    const { ok, ext } = checkExtension(file.name);
-    if (!ok) {
-      const msg = `${CONFIG_UPLOADER_TEXT.unsupportedPrefix}.${ext || '?'}${CONFIG_UPLOADER_TEXT.unsupportedSuffix}${withDots(
-        normalizedAllowed,
-      ).join(', ')}`;
-      showError(msg);
-      return Upload.LIST_IGNORE;
-    }
-    clearError();
-    return false;
+    return beforeUploadGuardReturn(file.name, normalizedAllowed, CONFIG_UPLOADER_TEXT, showError);
+  };
+
+  /** Сохранение в MinIO -> { uid, name } */
+  const persistToMinio = async (file: File): Promise<ConfigFile & { key: string }> => {
+    const safeName = sanitizeName(file.name);
+    const key = `${prefix}/${yyyymmdd()}/${Date.now()}-${rnd()}-${safeName}`;
+    await putObjectBytes(bucket, key, file, file.type || DEFAULT_CONTENT_TYPE);
+
+    const uid =
+      (globalThis.crypto as any)?.randomUUID?.() ??
+      `${Date.now().toString(16)}-${Math.random().toString(16).slice(2, 10)}`;
+
+    return { uid, name: file.name, key };
   };
 
   /**
    * Обрабатывает изменение списка загруженных файлов.
    * Берёт только последний файл, создаёт объект ConfigFile и добавляет его в список.
    */
-  const handleChange = (arg: UploadChangeParam<UploadFile> | { fileList: UploadFile[] }) => {
-    const anyArg: any = arg as any;
-    const fromList: UploadFile[] | undefined = anyArg?.fileList;
-    const candidate: UploadFile | undefined =
-      anyArg?.file ?? (fromList && fromList[fromList.length - 1]);
-    if (!candidate) return;
-
-    const originalFile: File | undefined =
-      (candidate as any).originFileObj || (candidate as unknown as File | undefined);
-    if (!originalFile || typeof originalFile.name !== 'string') return;
-
-    const { ok, ext } = checkExtension(originalFile.name);
-    if (!ok) {
-      const msg = `${CONFIG_UPLOADER_TEXT.unsupportedPrefix}.${ext || '?'}${CONFIG_UPLOADER_TEXT.unsupportedSuffix}${withDots(
-        normalizedAllowed,
-      ).join(', ')}`;
-      showError(msg);
-      return;
-    }
-
-    const newConfig: ConfigFile = {
-      uid: candidate.uid,
-      name: originalFile.name,
-      url: URL.createObjectURL(originalFile),
-    };
-
-    const next = files.find((f) => f.uid === newConfig.uid) ? files : [...files, newConfig];
-
-    if (onChange) onChange(next);
-    else setInner(next);
-
-    clearError();
-    try {
-      message.success(CONFIG_UPLOADER_TEXT.addedMessage);
-    } catch {}
+  const handleChange = async (arg: UploadChangeParam<UploadFile> | { fileList: UploadFile[] }) => {
+    await handleConfigUploaderChangeFlow<ConfigFile, ConfigFile & { key: string }>(
+      arg,
+      normalizedAllowed,
+      files,
+      onChange,
+      (next) => setInner(next),
+      setPreviewByUid,
+      showError,
+      persistToMinio,
+      CONFIG_UPLOADER_TEXT,
+      STAGE_PANEL_TEXT,
+      clearError,
+    );
   };
 
   /** Просмотр в новой вкладке */
-  const preview = (rec: ConfigFile) => {
-    if (!rec?.url) return;
-    window.open(rec.url, '_blank', 'noopener,noreferrer');
+  const preview = (rec: RenderItem) => {
+    return previewRecord(rec, LINK_TARGET_BLANK, WINDOW_FEATURES_NOOPENER);
   };
 
   /** Скачивание по клику на имени */
-  const download = (event: MouseEvent, configFile: ConfigFile) => {
-    event.preventDefault();
-    if (!configFile?.url) return;
-    const downloadLink = document.createElement('a');
-    downloadLink.href = configFile.url;
-    downloadLink.download = configFile.name || 'file';
-    document.body.appendChild(downloadLink);
-    downloadLink.click();
-    document.body.removeChild(downloadLink);
+  const download = (event: MouseEvent, configFile: RenderItem) => {
+    return downloadRecord(event as any, configFile, DEFAULT_DOWNLOAD_NAME);
   };
 
   /** Удаление из списка */
   const remove = (uid: string) => {
-    const next = files.filter((file) => file.uid !== uid);
-    if (onChange) onChange(next);
-    else setInner(next);
+    return removeFlow(files, uid, onChange, setInner);
   };
+
+  const renderList: RenderItem[] = (files ?? []).map((f) => ({
+    ...f,
+    previewUrl: previewByUid[f.uid],
+  }));
 
   return (
     <div className="config-uploader">
@@ -210,16 +197,16 @@ const ConfigUploader: FC<Props> = ({
         </div>
       )}
 
-      {files.length > 0 && (
+      {renderList.length > 0 && (
         <div className="config-uploader__list">
-          {files.map((rec) => (
+          {renderList.map((rec) => (
             <div className="config-uploader__item" key={rec.uid}>
               <PaperClipOutlined className="config-uploader__clip" />
 
               <a
-                href={rec.url || '#'}
+                href={hrefOrPlaceholder(rec.previewUrl)}
                 className="config-uploader__name"
-                onClick={(e) => download(e, rec)}
+                onClick={(e) => download(e as any, rec)}
                 download={rec.name}
               >
                 {rec.name}
@@ -230,6 +217,7 @@ const ConfigUploader: FC<Props> = ({
                   type="button"
                   className="config-uploader__view"
                   onClick={() => preview(rec)}
+                  {...previewButtonProps(rec.previewUrl, STAGE_PANEL_TEXT)}
                 >
                   {STAGE_PANEL_TEXT.files.previewBtn}
                 </button>

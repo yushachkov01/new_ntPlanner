@@ -18,10 +18,12 @@ export function resolveFieldKind(fd: StageFieldDef, types?: TypesDict): FieldKin
   const type = normalizeType(fd.type);
   const def = pickTypeDef(fd, types);
   const hasDropdown =
-    fd.widget === 'dropdown' ||
+    normalizeType(fd.widget) === 'dropdown' ||
     Array.isArray(fd.enum) ||
     Array.isArray(fd.options) ||
-    Array.isArray(def?.enum);
+    Array.isArray(def?.enum) ||
+    Array.isArray(def?.options);
+
   if (hasDropdown) return 'select';
   if (type === 'memo' || normalizeType(def?.type) === 'memo') return 'textarea';
   if (
@@ -39,7 +41,7 @@ export function resolveFieldKind(fd: StageFieldDef, types?: TypesDict): FieldKin
 /** собрать опции для Select */
 export function buildSelectOptions(fd: StageFieldDef, types?: TypesDict) {
   const def = pickTypeDef(fd, types);
-  const raw = (fd.enum || fd.options || def?.enum || []) as any[];
+  const raw = (fd.enum || fd.options || def?.enum || def?.options || []) as any[];
   return raw.map((opt) => {
     const label =
       typeof opt === 'object' && opt !== null
@@ -53,16 +55,44 @@ export function buildSelectOptions(fd: StageFieldDef, types?: TypesDict) {
 
 /** реестр инпутов по kind */
 const INPUTS_BY_KIND: Record<FieldKind, (fd: StageFieldDef, types?: TypesDict) => ReactNode> = {
-  select: (fd, t) => (
-    <Select
-      placeholder={STAGE_PANEL_TEXT.form.selectPlaceholder}
-      options={buildSelectOptions(fd, t)}
+  select: (fd, t) => {
+    const mode =
+      fd.multiple ||
+      normalizeType(fd.widget).includes('multi') ||
+      normalizeType(fd.type).includes('multi')
+        ? ('multiple' as const)
+        : undefined;
+
+    return (
+      <Select
+        mode={mode}
+        allowClear
+        showSearch
+        placeholder={(fd.placeholder as any) || STAGE_PANEL_TEXT?.form?.selectPlaceholder}
+        options={buildSelectOptions(fd, t)}
+        filterOption={(input, option) =>
+          (option?.label ?? '').toString().toLowerCase().includes(input.toLowerCase())
+        }
+      />
+    );
+  },
+  textarea: (fd) => (
+    <Input.TextArea
+      autoSize={{ minRows: 4, maxRows: 12 }}
+      placeholder={(fd.placeholder as any) || undefined}
     />
   ),
-  textarea: () => <Input.TextArea autoSize={{ minRows: 4, maxRows: 12 }} />,
-  number: () => <InputNumber style={{ width: '100%' }} />,
+  number: (fd) => (
+    <InputNumber
+      style={{ width: '100%' }}
+      min={fd.min as number | undefined}
+      max={fd.max as number | undefined}
+      step={fd.step as number | undefined}
+      placeholder={(fd.placeholder as any) || undefined}
+    />
+  ),
   boolean: () => <Select options={[...STAGE_PANEL_TEXT.booleanOptions]} />,
-  text: () => <Input />,
+  text: (fd) => <Input placeholder={(fd.placeholder as any) || undefined} />,
 };
 
 /** единая обвязка Form.Item */
@@ -87,7 +117,7 @@ export function wrapFormItem(name: string, label: string, isRequired: boolean, n
 export function renderField(fd: StageFieldDef, types?: TypesDict): ReactNode {
   const name = fd.key ?? '';
   if (!name) return null;
-  const label = fd.label ?? name;
+  const label = String(fd.label ?? name);
   const isRequired = Boolean(fd.required);
   const kind = resolveFieldKind(fd, types);
   const inputNode = (INPUTS_BY_KIND[kind] ?? INPUTS_BY_KIND.text)(fd, types);
