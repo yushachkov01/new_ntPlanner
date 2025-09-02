@@ -213,10 +213,18 @@ INSERT INTO public.executor (role, author) VALUES
 ```
 project-schemas/docker/yaml
 ```
-----
+
+---
 
 При сборке проекта важно указать .env
 
-
 VITE_HASURA_GRAPHQL_URL=http://localhost:8080/v1/graphql
 VITE_HASURA_ADMIN_SECRET=myadminsecretkey
+VITE_IFACE_WS_URL=ws://localhost:4000
+
+---
+
+Чтобы запустить ws сервер, необходимо написать
+`docker compose up -d`,
+либо же можно отдельно поднять ws-service
+`docker compose up -d ws-service`

@@ -27,7 +27,7 @@ services:
 
   frontend:
     image: nginx:1.26-alpine
-    container_name: frontend
+    container_name: frontend1
     restart: unless-stopped
     depends_on:
       - graphql-engine
@@ -39,17 +39,35 @@ services:
 
   minio:
     image: minio/minio:latest
-    container_name: myapp_minio
+    container_name: myapp_minio1
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: admin
-      MINIO_ROOT_PASSWORD: password
+      MINIO_ROOT_PASSWORD: secretpassword
     volumes:
       - minio-data:/data
     ports:
       - '9000:9000'
       - '9001:9001'
+
+  ws-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.ws
+    container_name: ws-service
+    restart: unless-stopped
+    environment:
+      HTTP_PORT: 3001
+      WS_PORT: 4000
+    ports:
+      - '3001:3001'
+      - '4000:4000'
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://localhost:3001/health']
+      interval: 15s
+      timeout: 3s
+      retries: 5
 
 volumes:
   pg_data:

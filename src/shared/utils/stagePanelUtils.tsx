@@ -18,7 +18,10 @@ export function resolveFieldKind(fd: StageFieldDef, types?: TypesDict): FieldKin
   const type = normalizeType(fd.type);
   const def = pickTypeDef(fd, types);
   const hasDropdown =
-    fd.widget === 'dropdown' || Array.isArray(fd.enum) || Array.isArray(fd.options) || Array.isArray(def?.enum);
+    fd.widget === 'dropdown' ||
+    Array.isArray(fd.enum) ||
+    Array.isArray(fd.options) ||
+    Array.isArray(def?.enum);
   if (hasDropdown) return 'select';
   if (type === 'memo' || normalizeType(def?.type) === 'memo') return 'textarea';
   if (
