@@ -23,15 +23,14 @@ function antdStyleResolver(name: string) {
 
 export default defineConfig({
   plugins: [
-    relay,
+    tsconfigPaths(),
     react(),
-
+    relay,
     vitePluginImp({
       libList: [{ libName: 'antd', libDirectory: 'es', style: antdStyleResolver }],
     }),
 
     nodePolyfills({ protocolImports: true }),
-    tsconfigPaths(),
 
     legacy({
       targets: ['defaults', 'not IE 11'],
@@ -42,12 +41,18 @@ export default defineConfig({
     visualizer({ filename: 'stats.html', open: false }),
   ],
 
-  optimizeDeps: { include: ['events'] },
+  resolve: {
+    dedupe: ['react', 'react-dom'],
+  },
+
+  optimizeDeps: {
+    include: ['react', 'react-dom', 'antd', '@ant-design/cssinjs'],
+  },
 
   build: {
     chunkSizeWarningLimit: 500,
 
-    commonjsOptions: { transformMixedEsModules: true },
+    commonjsOptions: { transformMixedEsModules: true, include: [/node_modules/] },
 
     rollupOptions: {
       output: {
