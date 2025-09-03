@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { devtools, persist } from 'zustand/middleware';
 
 import { parseYaml } from '@/shared/lib/yamlUtils/yamlUtils';
-import { listObjects, getObjectText } from '@/shared/minio/MinioClient';
+import { getMinioClient } from '@/shared/minio/getMinioClient';
 
 /**
  * Описание поля в колонке таблицы шаблона
@@ -150,6 +150,7 @@ export const templateStore = create<TemplatesState>()(
           set((state) => ({ loading: new Set(state.loading).add(cacheKey) }));
 
           try {
+            const { listObjects, getObjectText } = await getMinioClient();
             const objects = await listObjects(bucket, prefix);
             const loadedTemplates: Template[] = [];
 

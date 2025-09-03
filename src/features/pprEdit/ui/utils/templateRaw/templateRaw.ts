@@ -5,7 +5,7 @@
  * - Подгружает "raw" YAML содержимое, если его нет в объекте шаблона.
  */
 
-import { getObjectText } from '@/shared/minio/MinioClient';
+import { getMinioClient } from '@/shared/minio/getMinioClient';
 import type { Template } from '@entities/template/model/store/templateStore.ts';
 import { joinKey } from '@features/pprEdit/ui/utils/minioKey/minioKey';
 
@@ -65,6 +65,7 @@ export const resolveTemplateWithRaw = async (
   /** Пытаемся поочередно загрузить содержимое из MinIO */
   for (const candidateKey of candidates) {
     try {
+      const { getObjectText } = await getMinioClient();
       const text = await getObjectText(bucket, candidateKey);
       if (text && String(text).trim().length > 0) {
         return { ...(templateObj as any), raw: text } as Template;

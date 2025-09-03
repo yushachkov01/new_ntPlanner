@@ -5,7 +5,7 @@ import { message } from 'antd';
 import * as YAML from 'js-yaml';
 
 import { YAML_BUCKET, DEFAULT_TASK_NAME, PLANNED_TASK_STATUS } from '@/shared/constants';
-import { putObjectText } from '@/shared/minio/MinioClient';
+import { getMinioClient } from '@/shared/minio/getMinioClient';
 import type { PlannedTask } from '@entities/PlannedTask/model/mapping/mapper';
 import { toRawTaskInsert, toRawTaskSet } from '@entities/PlannedTask/model/mapping/mapper';
 import {
@@ -80,6 +80,7 @@ async function uploadTextToMinio(
   fallbackMime = 'text/plain',
 ): Promise<string> {
   let asText: string | null = null;
+  const { putObjectText } = await getMinioClient();
   try {
     asText = await blob.text();
   } catch {
@@ -121,7 +122,7 @@ async function ensureStageAttachmentsUrls(
 
       const processedList: Array<{ name: string; url: string }> = [];
       for (const item of inputList) {
-        //льзу Уже строка-URL — испоем как есть.
+        // Уже строка-URL — используем как есть.
         if (typeof item === 'string') {
           const name = item.split('/').pop() ?? 'file';
           processedList.push({ name, url: item });
@@ -378,6 +379,7 @@ export async function savePlannedTask({
   }
 
   try {
+    const { putObjectText } = await getMinioClient();
     await putObjectText(YAML_BUCKET, `${yamlId}.yaml`, yamlBody, 'text/yaml');
   } catch (err) {
     console.error('[savePlannedTask] MinIO upload error:', err);

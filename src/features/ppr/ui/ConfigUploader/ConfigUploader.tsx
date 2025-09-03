@@ -16,7 +16,7 @@ import {
   WINDOW_FEATURES_NOOPENER,
   DEFAULT_DOWNLOAD_NAME,
 } from '@/shared/constants';
-import { putObjectBytes } from '@/shared/minio/MinioClient';
+import { getMinioClient } from '@/shared/minio/getMinioClient';
 import {
   resolveNormalizedAllowed,
   resolveEffectiveAccept,
@@ -125,6 +125,7 @@ const ConfigUploader: FC<Props> = ({
   const persistToMinio = async (file: File): Promise<ConfigFile & { key: string }> => {
     const safeName = sanitizeName(file.name);
     const key = `${prefix}/${yyyymmdd()}/${Date.now()}-${rnd()}-${safeName}`;
+    const { putObjectBytes } = await getMinioClient();
     await putObjectBytes(bucket, key, file, file.type || DEFAULT_CONTENT_TYPE);
 
     const uid =

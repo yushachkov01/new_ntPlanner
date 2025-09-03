@@ -9,7 +9,7 @@ import { userStore } from '@/entities/user/model/store/UserStore';
 import { useUserStore } from '@/entities/users/model/store/userStore';
 import './YamlTemplateSelect.css';
 import AddSelectedFromTabModal from '@/features/pprEdit/ui/AddSelectedFromTabModal/AddSelectedFromTabModal';
-import { getObjectText } from '@/shared/minio/MinioClient';
+import { getMinioClient } from '@/shared/minio/getMinioClient';
 import useTimelineStore, { toRowId as toRow } from '@entities/timeline/model/store/timelineStore';
 import type { User } from '@entities/users/model/mapping/mapping';
 
@@ -193,6 +193,7 @@ const YamlTemplateSelect: FC<Props> = ({
 
     let parsedYaml: any | undefined;
     for (const objectKey of candidates) {
+      const { getObjectText } = await getMinioClient();
       const fileText = await getObjectText(bucket, objectKey);
       if (fileText && String(fileText).trim().length > 0) {
         parsedYaml = parseYamlToObject(String(fileText));
