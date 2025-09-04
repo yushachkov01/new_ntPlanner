@@ -15,8 +15,11 @@ import {
  */
 export const minio = new S3Client({
   region: 'us-east-1',
-  endpoint: 'http://localhost:9000',
-  credentials: { accessKeyId: 'admin', secretAccessKey: 'secretpassword' },
+  endpoint: import.meta.env.VITE_MINIO_ENDPOINT,
+  credentials: {
+    accessKeyId: import.meta.env.VITE_MINIO_ACCESS,
+    secretAccessKey: import.meta.env.VITE_MINIO_SECRET,
+  },
   forcePathStyle: true,
 });
 
