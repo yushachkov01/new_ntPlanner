@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import './PprEditorPage.css';
 import { usePlannedTaskStore } from '@/entities/PlannedTask/model/store/plannedTaskStore';
 import { YAML_BUCKET } from '@/shared/constants';
+import { subscribe as wsSubscribe } from '@/shared/ws/wsClient';
 import LocationOverview from '@/widgets/layout/LocationOverview/ui/LocationOverview';
 import type { Template } from '@entities/template/model/store/templateStore';
 import useTimelineStore from '@entities/timeline/model/store/timelineStore';
@@ -13,17 +14,16 @@ import { isUuid, pickUuid } from '@features/pprEdit/lib/utils/utils';
 import { usePprExecutors } from '@features/pprEdit/model/hooks/usePprExecutors';
 import { usePprWizard } from '@features/pprEdit/model/hooks/usePprWizard';
 import { useTimelineMove } from '@features/pprEdit/model/hooks/useTimelineMove';
-import { savePlannedTask } from '@features/pprEdit/model/services/savePlannedTask';
 import ConfirmDeleteDialog from '@features/pprEdit/ui/ConfirmDeleteDialog/ConfirmDeleteDialog';
 import DynamicYamlForm from '@features/pprEdit/ui/DynamicYamlForm/DynamicYamlForm';
 import { PlannedTaskDropdown } from '@features/pprEdit/ui/PlannedTaskDropdown/PlannedTaskDropdown';
 import PprEditorTabs from '@features/pprEdit/ui/PprEditorTabs/PprEditorTabs';
-import { normalizeExec } from '@features/pprEdit/ui/utils/execUtils/execUtils';
-import { resolveTemplateWithRaw } from '@features/pprEdit/ui/utils/templateRaw/templateRaw';
 import YamlTemplateSelect from '@features/pprEdit/ui/yamlTemplate/YamlTemplateSelect';
 import PprPage from '@pages/PprPage';
-
-import { Button, Steps, message, Tooltip, Switch, Modal, Tag } from 'antd';
+import { Button, Steps, message, Tooltip } from 'antd';
+import { normalizeExec } from '@features/pprEdit/ui/utils/execUtils/execUtils';
+import { resolveTemplateWithRaw } from '@features/pprEdit/ui/utils/templateRaw/templateRaw';
+import { savePlannedTask } from '@features/pprEdit/model/services/savePlannedTask';
 
 const PprEditorPage: React.FC = () => {
   /**
@@ -124,6 +124,29 @@ const PprEditorPage: React.FC = () => {
   /** Значения параметров формы */
   const mainFormValuesRef = useRef<any>(null);
 
+  /** На проверке / verified */
+  const [reviewForId, setReviewForId] = useState<string | null>(null);
+  const [statusVerified, setStatusVerified] = useState(false);
+  const editingLocked = !!reviewForId && !statusVerified;
+
+  useEffect(() => {
+    const unsub = wsSubscribe((msg: any) => {
+      if (!msg || msg.type !== 'planned_tasks.status') return;
+      const incomingId = String(msg.id ?? '');
+      const incomingStatus = String(msg.status ?? '');
+      if (!incomingId) return;
+
+      if (reviewForId && incomingId === reviewForId) {
+        if (incomingStatus.toLowerCase() === 'verified') {
+          setStatusVerified(true);
+          setReviewForId(null);
+          message.success('Заявка утверждена тимлидом');
+        }
+      }
+    });
+    return () => unsub?.();
+  }, [reviewForId]);
+
   /**
    * Добавляет новый пустой шаблон:
    *   расширяет массив шаблонов,
@@ -131,6 +154,7 @@ const PprEditorPage: React.FC = () => {
    *   создаёт пустой слот исполнителей.
    */
   const addTemplate = () => {
+    if (editingLocked) return;
     const me = normalizeExec(currentUser);
     const newIndex = additionalTemplates.length;
     setAdditionalTemplates((prev) => [...prev, {} as Template]);
@@ -144,6 +168,7 @@ const PprEditorPage: React.FC = () => {
 
   /** Сменить шаблон (точечно удаляем блоки ) */
   const changeTemplate = async (index: number, newTemplate: Template) => {
+    if (editingLocked) return;
     const prevKey = (additionalTemplates[index] as any)?.key;
     const execIds = (executorsByTemplate[index + 1] ?? []).map(normalizeExecId);
     if (prevKey) {
@@ -188,47 +213,38 @@ const PprEditorPage: React.FC = () => {
 
   /**  Сохранение  */
   const [saving, setSaving] = useState(false);
-  const [createNew, setCreateNew] = useState(false);
   const templateChosen = Boolean((mainTemplate as any)?.key);
 
-  const canSave =
-    templateChosen && (createNew ? Boolean(authorUuid && timeWorkUuid) : Boolean(selectedTaskId));
+  const canSave = templateChosen && Boolean(authorUuid && timeWorkUuid);
 
   const saveTooltip = !templateChosen
     ? 'Выберите шаблон YAML'
-    : createNew && !authorUuid
+    : !authorUuid
       ? 'Нет author_id (UUID пользователя/исполнителя)'
-      : createNew && !timeWorkUuid
+      : !timeWorkUuid
         ? 'Нет time_work_id (выберите смену/интервал)'
-        : !createNew && !selectedTaskId
-          ? 'Выберите задачу или включите «Создать как новую запись»'
-          : undefined;
+        : undefined;
 
   const handleSave = async () => {
-    if (saving) return;
+    if (saving || editingLocked) return;
     if (!templateChosen) return message.error('Не выбран YAML-шаблон (шаг «Шаблон»).');
     setSaving(true);
+    setStatusVerified(false);
     try {
       const result = await savePlannedTask({
         mainTemplate,
-        selectedTask,
+        selectedTask: undefined,
         executorsByTemplate,
         getMergedStageOverrides,
         getTimelineState,
         mainFormValues: mainFormValuesRef.current,
-        createNew,
-        selectedTaskId: selectedTaskId ?? undefined,
+        createNew: true,
+        selectedTaskId: undefined,
         authorUuid: authorUuid ?? undefined,
         timeWorkUuid: timeWorkUuid ?? undefined,
       });
-      if (result?.createdId) {
-        setReviewForId(result.createdId);
-        setReviewOpen(true);
-      }
-      if (result?.updatedId) {
-        setReviewForId(result.updatedId);
-        setReviewOpen(true);
-      }
+      if (result?.createdId) setReviewForId(result.createdId);
+      if (result?.updatedId) setReviewForId(result.updatedId);
     } catch (e: any) {
       console.error('[PprEditorPage] save error:', e);
       message.error(
@@ -239,16 +255,35 @@ const PprEditorPage: React.FC = () => {
     }
   };
 
+  // Заголовок шага «На проверке»
+  const pendingTitle: React.ReactNode =
+    editingLocked && !statusVerified ? (
+      <span className="ppr-step-title">
+        <span className="ppr-step-pulse" />
+        <span>На проверке</span>
+      </span>
+    ) : (
+      'На проверке'
+    );
+
+  const computedStepsCurrent = (() => {
+    let curr = currentStep;
+    if (statusVerified) curr = Math.max(curr, 5);
+    else if (editingLocked) curr = Math.max(curr, 4);
+    return curr;
+  })();
+
   return (
     <section className="ppr-editor-card">
       <div style={{ padding: '8px 16px 0 16px' }}>
         <Steps
-          current={currentStep}
+          current={computedStepsCurrent}
           items={[
             { title: 'Задача' },
             { title: 'Значения (в табе)' },
             { title: 'Шаблон' },
             { title: 'Параметры шаблона' },
+            { title: pendingTitle },
             { title: 'Заявка готова' },
           ]}
         />
@@ -268,7 +303,9 @@ const PprEditorPage: React.FC = () => {
             className="ppr-editor-card__select"
             placeholder="Список выбранных планируемых работ"
             value={selectedTaskId}
+            disabled={editingLocked}
             onChange={(val) => {
+              if (editingLocked) return;
               setSelectedTaskId(val);
               setTabsConfirmed(false);
               setMainTemplate(undefined);
@@ -277,20 +314,23 @@ const PprEditorPage: React.FC = () => {
           />
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Switch checked={createNew} onChange={setCreateNew} />
-          <span style={{ userSelect: 'none' }}>Создать как новую запись</span>
-        </div>
-
-        <Tooltip title={saveTooltip}>
-          <Button type="primary" onClick={handleSave} loading={saving} disabled={!canSave}>
+        <Tooltip title={saveTooltip || (editingLocked ? 'Заявка на проверке' : undefined)}>
+          <Button
+            type="primary"
+            onClick={handleSave}
+            loading={saving}
+            disabled={!canSave || editingLocked}
+          >
             Сохранить
           </Button>
         </Tooltip>
       </div>
       {!!selectedTaskId && (
         <div style={{ marginTop: 12 }}>
-          <div className="ppr-editor-card__controls-right">
+          <div
+            className="ppr-editor-card__controls-right"
+            style={editingLocked ? { pointerEvents: 'none', opacity: 0.6 } : undefined}
+          >
             <div className="ppr-editor-card__tabs">
               <PprEditorTabs
                 taskId={selectedTaskId}
@@ -310,7 +350,11 @@ const PprEditorPage: React.FC = () => {
             </div>
             {!tabsConfirmed && (
               <div style={{ marginTop: 12 }}>
-                <Button type="primary" onClick={() => setTabsConfirmed(true)}>
+                <Button
+                  type="primary"
+                  onClick={() => setTabsConfirmed(true)}
+                  disabled={editingLocked}
+                >
                   Перейти к выбору шаблона
                 </Button>
               </div>
@@ -319,11 +363,19 @@ const PprEditorPage: React.FC = () => {
         </div>
       )}
       {tabsConfirmed && (
-        <div className="ppr-template-wrap" style={{ marginTop: 16 }}>
+        <div
+          className="ppr-template-wrap"
+          style={{
+            marginTop: 16,
+            ...(editingLocked ? { pointerEvents: 'none', opacity: 0.6 } : {}),
+          }}
+        >
           <YamlTemplateSelect
             bucket={YAML_BUCKET}
             value={(mainTemplate as any)?.key}
+            disabled={editingLocked as any}
             onChange={async (tpl) => {
+              if (editingLocked) return;
               const prevMainKey = (mainTemplate as any)?.key;
               const execIds = (executorsByTemplate[0] ?? []).map(normalizeExecId);
               if (prevMainKey) removeBySourcePrefix?.({ execIds, prefix: String(prevMainKey) });
@@ -361,7 +413,7 @@ const PprEditorPage: React.FC = () => {
             className="ppr-template-wrap__delete"
             danger
             ghost
-            disabled={!(mainTemplate as any)?.key}
+            disabled={editingLocked || !(mainTemplate as any)?.key}
             onClick={() => setConfirmState({ open: true, kind: 'main' })}
           >
             Удалить шаблон
@@ -369,7 +421,10 @@ const PprEditorPage: React.FC = () => {
         </div>
       )}
       {step3Done && (
-        <div ref={paramsRef}>
+        <div
+          ref={paramsRef}
+          style={editingLocked ? { pointerEvents: 'none', opacity: 0.6 } : undefined}
+        >
           {(mainTemplate as any)?.key && (mainTemplate as any)?.raw && (
             <DynamicYamlForm
               key={`main-${(mainTemplate as any)?.key}-${tplReadyTick}`}
@@ -380,6 +435,7 @@ const PprEditorPage: React.FC = () => {
                 if (!paramsConfirmed && cnt > 0) setParamsConfirmed(true);
               }}
               onValuesChange={(vals: any) => {
+                if (editingLocked) return;
                 mainFormValuesRef.current = vals;
               }}
             />
@@ -391,10 +447,17 @@ const PprEditorPage: React.FC = () => {
         if (hiddenExtraSlots.has(idx)) return null;
         return (
           <React.Fragment key={idx}>
-            <div className="ppr-template-wrap" style={{ marginTop: 12 }}>
+            <div
+              className="ppr-template-wrap"
+              style={{
+                marginTop: 12,
+                ...(editingLocked ? { pointerEvents: 'none', opacity: 0.6 } : {}),
+              }}
+            >
               <YamlTemplateSelect
                 bucket={YAML_BUCKET}
                 value={(template as any).key}
+                disabled={editingLocked as any}
                 onChange={(newTpl) => changeTemplate(idx, newTpl)}
                 executors={(executorsByTemplate[idx + 1] ?? []).map(normalizeExec)}
                 addExecutor={(executor) => addExecutor(idx + 1, executor)}
@@ -406,7 +469,7 @@ const PprEditorPage: React.FC = () => {
                 className="ppr-template-wrap__delete"
                 danger
                 ghost
-                disabled={!(template as any)?.key}
+                disabled={editingLocked || !(template as any)?.key}
                 onClick={() => setConfirmState({ open: true, kind: 'extra', index: idx })}
               >
                 Удалить шаблон
@@ -428,10 +491,18 @@ const PprEditorPage: React.FC = () => {
 
       {step5Done && (
         <>
-          <Button type="dashed" onClick={addTemplate} style={{ marginTop: 12 }}>
+          <Button
+            type="dashed"
+            onClick={addTemplate}
+            style={{ marginTop: 12 }}
+            disabled={editingLocked}
+          >
             Добавить шаблон
           </Button>
-          <div className="ppr-editor-card__timeline">
+          <div
+            className="ppr-editor-card__timeline"
+            style={editingLocked ? { pointerEvents: 'none', opacity: 0.6 } : undefined}
+          >
             <PprPage
               gridStart={timelineWindow.start}
               gridEnd={timelineWindow.end}
@@ -439,6 +510,7 @@ const PprEditorPage: React.FC = () => {
               executorsByTemplate={executorsByTemplate}
               onBlockClick={() => {}}
               onTimerChange={(tplIdx, stageKey, newTimer) => {
+                if (editingLocked) return;
                 updateTplStageDuration?.({
                   tplIdx,
                   stageKey,
