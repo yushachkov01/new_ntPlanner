@@ -192,14 +192,11 @@ const TaskDetail: FC<Props> = ({
       : [];
     const tags: string[] = rawTags.map((t) => String(t).trim()).filter(Boolean);
 
-    /** единый цвет для всех тегов текущего этапа */
-    const tagVariant = inType === 'failure' ? 'danger' : 'success';
-
     return (
       <div className="td-collapse-title">
         <span className="td-collapse-title__left" style={{ display: 'inline-flex', gap: 8 }}>
           {tags.map((tag, idx) => (
-            <Tag key={`${tag}-${idx}`} thin variant={tagVariant}>
+            <Tag key={`${tag}-${idx}`} thin allTags={tags}>
               {tag}
             </Tag>
           ))}

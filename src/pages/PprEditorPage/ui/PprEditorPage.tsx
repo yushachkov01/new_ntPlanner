@@ -14,16 +14,17 @@ import { isUuid, pickUuid } from '@features/pprEdit/lib/utils/utils';
 import { usePprExecutors } from '@features/pprEdit/model/hooks/usePprExecutors';
 import { usePprWizard } from '@features/pprEdit/model/hooks/usePprWizard';
 import { useTimelineMove } from '@features/pprEdit/model/hooks/useTimelineMove';
+import { savePlannedTask } from '@features/pprEdit/model/services/savePlannedTask';
 import ConfirmDeleteDialog from '@features/pprEdit/ui/ConfirmDeleteDialog/ConfirmDeleteDialog';
 import DynamicYamlForm from '@features/pprEdit/ui/DynamicYamlForm/DynamicYamlForm';
 import { PlannedTaskDropdown } from '@features/pprEdit/ui/PlannedTaskDropdown/PlannedTaskDropdown';
 import PprEditorTabs from '@features/pprEdit/ui/PprEditorTabs/PprEditorTabs';
-import YamlTemplateSelect from '@features/pprEdit/ui/yamlTemplate/YamlTemplateSelect';
-import PprPage from '@pages/PprPage';
-import { Button, Steps, message, Tooltip } from 'antd';
 import { normalizeExec } from '@features/pprEdit/ui/utils/execUtils/execUtils';
 import { resolveTemplateWithRaw } from '@features/pprEdit/ui/utils/templateRaw/templateRaw';
-import { savePlannedTask } from '@features/pprEdit/model/services/savePlannedTask';
+import YamlTemplateSelect from '@features/pprEdit/ui/yamlTemplate/YamlTemplateSelect';
+import PprPage from '@pages/PprPage';
+
+import { Button, Steps, message, Tooltip } from 'antd';
 
 const PprEditorPage: React.FC = () => {
   /**
@@ -215,15 +216,17 @@ const PprEditorPage: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const templateChosen = Boolean((mainTemplate as any)?.key);
 
-  const canSave = templateChosen && Boolean(authorUuid && timeWorkUuid);
+  const canSave = templateChosen && Boolean(selectedTaskId && authorUuid && timeWorkUuid);
 
   const saveTooltip = !templateChosen
     ? 'Выберите шаблон YAML'
-    : !authorUuid
-      ? 'Нет author_id (UUID пользователя/исполнителя)'
-      : !timeWorkUuid
-        ? 'Нет time_work_id (выберите смену/интервал)'
-        : undefined;
+    : !selectedTaskId
+      ? 'Выберите задачу'
+      : !authorUuid
+        ? 'Нет author_id (UUID пользователя/исполнителя)'
+        : !timeWorkUuid
+          ? 'Нет time_work_id (выберите смену/интервал)'
+          : undefined;
 
   const handleSave = async () => {
     if (saving || editingLocked) return;
@@ -233,13 +236,13 @@ const PprEditorPage: React.FC = () => {
     try {
       const result = await savePlannedTask({
         mainTemplate,
-        selectedTask: undefined,
+        selectedTask,
         executorsByTemplate,
         getMergedStageOverrides,
         getTimelineState,
         mainFormValues: mainFormValuesRef.current,
         createNew: true,
-        selectedTaskId: undefined,
+        selectedTaskId: selectedTaskId ?? undefined,
         authorUuid: authorUuid ?? undefined,
         timeWorkUuid: timeWorkUuid ?? undefined,
       });
@@ -247,7 +250,7 @@ const PprEditorPage: React.FC = () => {
       if (result?.updatedId) setReviewForId(result.updatedId);
     } catch (e: any) {
       console.error('[PprEditorPage] save error:', e);
-      message.error(
+      console.error(
         `Не удалось сохранить: ${e?.response?.errors?.[0]?.message ?? e?.message ?? 'unknown error'}`,
       );
     } finally {

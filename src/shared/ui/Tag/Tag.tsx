@@ -14,6 +14,8 @@ export interface TagProps {
   thin?: boolean;
   /** Заголовок для тултипа */
   title?: string;
+  /** Все теги стадии */
+  allTags?: string[];
 }
 
 function cx(...classes: Array<string | false | null | undefined>) {
@@ -25,11 +27,22 @@ function cx(...classes: Array<string | false | null | undefined>) {
  * - "rollback" ->  danger (красный)
  * Остальные -> default (серый).
  */
-const Tag: FC<TagProps> = ({ children, variant, className, thin, title }) => {
+const Tag: FC<TagProps> = ({ children, variant, className, thin, title, allTags }) => {
   const text = String(children ?? '').trim();
 
   const autoVariant: TagVariant = React.useMemo(() => {
     if (variant) return variant;
+
+    if (allTags && allTags.length > 0) {
+      const normalizedTags = allTags.map((tags) => String(tags).trim().toLowerCase());
+      if (normalizedTags.includes('rollback')) {
+        return 'danger';
+      }
+      if (normalizedTags.includes('пдс')) {
+        return 'success';
+      }
+      return 'default';
+    }
 
     const norm = text.toLocaleLowerCase('ru-RU');
 
