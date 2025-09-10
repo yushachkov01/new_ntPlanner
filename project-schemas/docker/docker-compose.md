@@ -220,7 +220,7 @@ project-schemas/docker/yaml
 
 VITE_HASURA_GRAPHQL_URL=http://localhost:8080/v1/graphql
 VITE_HASURA_ADMIN_SECRET=myadminsecretkey
-VITE_IFACE_WS_URL=ws://localhost:4000
+VITE_WS_URL=ws://localhost:4000
 VITE_MINIO_ENDPOINT=http://localhost:9000
 VITE_MINIO_ACCESS=admin
 

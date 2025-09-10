@@ -7,6 +7,7 @@ import type { ReactNode } from 'react';
 import { useEffect } from 'react';
 
 import { workStore } from '@entities/work/model/store/WorkStore.ts';
+import { WS_URL } from '@/shared/ws/wsClient';
 
 type Props = { children: ReactNode };
 
@@ -18,7 +19,7 @@ export function WorkProvider({ children }: Props) {
     /**
      * real-time обновления
      */
-    const ws = new WebSocket('ws://localhost:4000/');
+    const ws = new WebSocket(WS_URL);
 
     ws.onopen = () => console.log('WS opened');
     ws.onerror = (e) => console.error('WS error', e);
@@ -30,9 +31,14 @@ export function WorkProvider({ children }: Props) {
         console.warn('WS: не удалось распарсить сообщение', e.data);
         return;
       }
-      const { type, payload } = msg;
-      if (!payload || typeof payload !== 'object') return;
-      const rawId = payload.idInt ?? payload.id;
+      const { type, payload, ...rest } = msg ?? {};
+
+      if (type === 'ping') return;
+
+      const data = payload && typeof payload === 'object' ? payload : rest;
+      if (!data || typeof type !== 'string') return;
+
+      const rawId = data.idInt ?? data.id;
       const idInt =
         typeof rawId === 'number' ? rawId : typeof rawId === 'string' ? Number(rawId) : NaN;
 
@@ -42,7 +48,7 @@ export function WorkProvider({ children }: Props) {
       }
 
       const normalized = {
-        ...payload,
+        ...data,
         idInt,
         id: String(idInt),
       };

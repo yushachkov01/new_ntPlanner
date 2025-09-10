@@ -5,7 +5,7 @@ interface ImportMetaEnv {
   readonly DEV: boolean;
   readonly VITE_HASURA_QUERY_FIELD: string;
   readonly VITE_HASURA_INSERT_FIELD: string;
-  readonly VITE_IFACE_WS_URL?: string;
+  readonly VITE_WS_URL?: string;
   readonly VITE_MINIO_ENDPOINT?: string;
   readonly VITE_MINIO_ACCESS: string;
   readonly VITE_MINIO_SECRET: string;
