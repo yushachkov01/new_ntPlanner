@@ -2,7 +2,12 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 
 import './PprEditorPage.css';
 import { usePlannedTaskStore } from '@/entities/PlannedTask/model/store/plannedTaskStore';
-import { YAML_BUCKET } from '@/shared/constants';
+import {
+  YAML_BUCKET,
+  STEP_ICON_SIZE,
+  WS_EVENT_PLANNED_TASK_STATUS,
+  PROGRESS_EVENT_NAME,
+} from '@/shared/constants';
 import { subscribe as wsSubscribe } from '@/shared/ws/wsClient';
 import LocationOverview from '@/widgets/layout/LocationOverview/ui/LocationOverview';
 import type { Template } from '@entities/template/model/store/templateStore';
@@ -20,11 +25,13 @@ import DynamicYamlForm from '@features/pprEdit/ui/DynamicYamlForm/DynamicYamlFor
 import { PlannedTaskDropdown } from '@features/pprEdit/ui/PlannedTaskDropdown/PlannedTaskDropdown';
 import PprEditorTabs from '@features/pprEdit/ui/PprEditorTabs/PprEditorTabs';
 import { normalizeExec } from '@features/pprEdit/ui/utils/execUtils/execUtils';
+import type { ProgressMap } from '@features/pprEdit/ui/utils/requiredUtils/requiredUtils';
+import { countRequiredInYaml } from '@features/pprEdit/ui/utils/requiredUtils/requiredUtils';
 import { resolveTemplateWithRaw } from '@features/pprEdit/ui/utils/templateRaw/templateRaw';
 import YamlTemplateSelect from '@features/pprEdit/ui/yamlTemplate/YamlTemplateSelect';
 import PprPage from '@pages/PprPage';
 
-import { Button, Steps, message, Tooltip } from 'antd';
+import { Button, Steps, message, Tooltip, Progress } from 'antd';
 
 const PprEditorPage: React.FC = () => {
   /**
@@ -47,10 +54,10 @@ const PprEditorPage: React.FC = () => {
   /**
    * Пользователь и окно таймлайна (старт/финиш сетки)
    */
-  const currentUser = userStore((s) => s.user)!;
-  const wt = WorkTimeStore() as any;
-  const { timelineWindow, setTimelineWindow } = wt;
-  const selectedTimeWorkId: string | undefined = wt?.selectedTimeWorkId;
+  const currentUser = userStore((state) => state.user)!;
+  const workTimeStore = WorkTimeStore() as any;
+  const { timelineWindow, setTimelineWindow } = workTimeStore;
+  const selectedTimeWorkId: string | undefined = workTimeStore?.selectedTimeWorkId;
 
   // Исполнители
   const addedExecutors = useUserStore((state) => state.addedExecutors);
@@ -105,7 +112,7 @@ const PprEditorPage: React.FC = () => {
   /**
    * Фактическое наличие строк в сторе таймлайна
    */
-  const liveRowsCount = useTimelineStore((s) => s.rows?.length ?? 0);
+  const liveRowsCount = useTimelineStore((state) => state.rows?.length ?? 0);
   useEffect(() => {
     if (liveRowsCount > 0) {
       setParamsConfirmed(true);
@@ -119,7 +126,7 @@ const PprEditorPage: React.FC = () => {
   const [tplReadyTick, setTplReadyTick] = useState(0);
 
   useEffect(() => {
-    if ((mainTemplate as any)?.raw) setTplReadyTick((t) => t + 1);
+    if ((mainTemplate as any)?.raw) setTplReadyTick((tick) => tick + 1);
   }, [mainTemplate]);
 
   /** Значения параметров формы */
@@ -131,10 +138,10 @@ const PprEditorPage: React.FC = () => {
   const editingLocked = !!reviewForId && !statusVerified;
 
   useEffect(() => {
-    const unsub = wsSubscribe((msg: any) => {
-      if (!msg || msg.type !== 'planned_tasks.status') return;
-      const incomingId = String(msg.id ?? '');
-      const incomingStatus = String(msg.status ?? '');
+    const unsubscribe = wsSubscribe((wsMessage: any) => {
+      if (!wsMessage || wsMessage.type !== WS_EVENT_PLANNED_TASK_STATUS) return;
+      const incomingId = String(wsMessage.id ?? '');
+      const incomingStatus = String(wsMessage.status ?? '');
       if (!incomingId) return;
 
       if (reviewForId && incomingId === reviewForId) {
@@ -145,7 +152,7 @@ const PprEditorPage: React.FC = () => {
         }
       }
     });
-    return () => unsub?.();
+    return () => unsubscribe?.();
   }, [reviewForId]);
 
   /**
@@ -156,15 +163,17 @@ const PprEditorPage: React.FC = () => {
    */
   const addTemplate = () => {
     if (editingLocked) return;
-    const me = normalizeExec(currentUser);
+    const meExec = normalizeExec(currentUser);
     const newIndex = additionalTemplates.length;
     setAdditionalTemplates((prev) => [...prev, {} as Template]);
-    setExecutorsByTemplate((prevList) => [...prevList, currentUser ? [me] : []]);
+    setExecutorsByTemplate((prevList) => [...prevList, currentUser ? [meExec] : []]);
     setHiddenExtraSlots((prev) => {
       const next = new Set(prev);
       next.delete(newIndex);
       return next;
     });
+    // запрет шага 5 до сохранения
+    setAllowStep5(false);
   };
 
   /** Сменить шаблон (точечно удаляем блоки ) */
@@ -174,19 +183,23 @@ const PprEditorPage: React.FC = () => {
     const execIds = (executorsByTemplate[index + 1] ?? []).map(normalizeExecId);
     if (prevKey) {
       /** удаляем только блоки, созданные «старым» шаблоном этой вкладки */
-      removeBySourcePrefix?.({ execIds, prefix: String(prevKey) });
+      removeBySourcePrefix?.({ execIds: execIds, prefix: String(prevKey) });
     }
     const resolved = await resolveTemplateWithRaw(newTemplate as Template, YAML_BUCKET);
     if (!resolved) {
       message.error('Не удалось загрузить YAML шаблона.');
       return;
     }
-    setAdditionalTemplates((prev) => prev.map((item, idx) => (idx === index ? resolved : item)));
+    setAdditionalTemplates((prev) =>
+      prev.map((templateItem, idx) => (idx === index ? resolved : templateItem)),
+    );
     setHiddenExtraSlots((prev) => {
       const next = new Set(prev);
       next.delete(index);
       return next;
     });
+    // запрет шага 5 до сохранения
+    setAllowStep5(false);
   };
 
   /** состояние модалки подтверждения */
@@ -216,21 +229,82 @@ const PprEditorPage: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const templateChosen = Boolean((mainTemplate as any)?.key);
 
-  const canSave = templateChosen && Boolean(selectedTaskId && authorUuid && timeWorkUuid);
+  /** Прогресс по обязательным полям */
+  const [progressMap, setProgressMap] = useState<ProgressMap>({});
+  useEffect(() => {
+    const progressEventHandler = (event: Event) => {
+      const customEvent = event as CustomEvent<{ id: string; filled: number; required: number }>;
+      const { id, filled, required } = customEvent.detail || ({} as any);
+      if (!id) return;
+      setProgressMap((prev) => ({ ...prev, [id]: { filled, required } }));
+    };
+    window.addEventListener(PROGRESS_EVENT_NAME, progressEventHandler as EventListener);
+    return () =>
+      window.removeEventListener(PROGRESS_EVENT_NAME, progressEventHandler as EventListener);
+  }, []);
 
-  const saveTooltip = !templateChosen
-    ? 'Выберите шаблон YAML'
-    : !selectedTaskId
-      ? 'Выберите задачу'
-      : !authorUuid
-        ? 'Нет author_id (UUID пользователя/исполнителя)'
-        : !timeWorkUuid
-          ? 'Нет time_work_id (выберите смену/интервал)'
-          : undefined;
+  const totals = useMemo(
+    () =>
+      Object.values(progressMap).reduce(
+        (accumulator, value) => ({
+          filled: accumulator.filled + (value?.filled ?? 0),
+          required: accumulator.required + (value?.required ?? 0),
+        }),
+        { filled: 0, required: 0 },
+      ),
+    [progressMap],
+  );
+
+  const yamlRequiredTotal = useMemo(() => {
+    let sumRequired = 0;
+    const mainRawSchema = (mainTemplate as any)?.raw;
+    if (mainRawSchema) sumRequired += countRequiredInYaml(mainRawSchema);
+    for (const templateItem of additionalTemplates) {
+      const rawSchema = (templateItem as any)?.raw;
+      if (rawSchema) sumRequired += countRequiredInYaml(rawSchema);
+    }
+    return sumRequired;
+  }, [mainTemplate, additionalTemplates]);
+
+  const effectiveRequired = useMemo(
+    () => Math.max(totals.required, yamlRequiredTotal),
+    [totals.required, yamlRequiredTotal],
+  );
+
+  const totalPercent = useMemo(() => {
+    if (effectiveRequired <= 0) return 0;
+    const clampedFilled = Math.min(totals.filled, effectiveRequired);
+    return Math.round((clampedFilled / effectiveRequired) * 100);
+  }, [totals.filled, effectiveRequired]);
+
+  const isParamsComplete = effectiveRequired === 0 ? true : totals.filled >= effectiveRequired;
+
+  /** Разрешать переход на шаг 5 только после клика «Сохранить» */
+  const [allowStep5, setAllowStep5] = useState(false);
+
+  const canSave =
+    isParamsComplete && templateChosen && Boolean(selectedTaskId && authorUuid && timeWorkUuid);
+
+  const saveTooltip = !isParamsComplete
+    ? 'Заполните все обязательные поля (100%)'
+    : !templateChosen
+      ? 'Выберите шаблон YAML'
+      : !selectedTaskId
+        ? 'Выберите задачу'
+        : !authorUuid
+          ? 'Нет author_id (UUID пользователя/исполнителя)'
+          : !timeWorkUuid
+            ? 'Нет time_work_id (выберите смену/интервал)'
+            : undefined;
 
   const handleSave = async () => {
     if (saving || editingLocked) return;
     if (!templateChosen) return message.error('Не выбран YAML-шаблон (шаг «Шаблон»).');
+    if (!isParamsComplete) return message.error('Заполните все обязательные поля (100%).');
+
+    // разрешаем шаг 5 только после клика «Сохранить»
+    setAllowStep5(true);
+
     setSaving(true);
     setStatusVerified(false);
     try {
@@ -248,10 +322,12 @@ const PprEditorPage: React.FC = () => {
       });
       if (result?.createdId) setReviewForId(result.createdId);
       if (result?.updatedId) setReviewForId(result.updatedId);
-    } catch (e: any) {
-      console.error('[PprEditorPage] save error:', e);
+    } catch (error: any) {
+      console.error('[PprEditorPage] save error:', error);
       console.error(
-        `Не удалось сохранить: ${e?.response?.errors?.[0]?.message ?? e?.message ?? 'unknown error'}`,
+        `Не удалось сохранить: ${
+          error?.response?.errors?.[0]?.message ?? error?.message ?? 'unknown error'
+        }`,
       );
     } finally {
       setSaving(false);
@@ -269,12 +345,35 @@ const PprEditorPage: React.FC = () => {
       'На проверке'
     );
 
+  /** Итоговый активный шаг: стиль старого файла + новые условия (100% и Save) */
   const computedStepsCurrent = (() => {
-    let curr = currentStep;
-    if (statusVerified) curr = Math.max(curr, 5);
-    else if (editingLocked) curr = Math.max(curr, 4);
-    return curr;
+    // базовая логика «старого» файла
+    let computed = currentStep;
+    if (statusVerified) computed = Math.max(computed, 5);
+    else if (editingLocked) computed = Math.max(computed, 4);
+
+    // дополнение: держим на шаге 4 пока не 100% и не нажали «Сохранить»
+    if (computed >= 3) {
+      if (!isParamsComplete) return 3;
+      if (!allowStep5) return 3;
+    }
+    return computed;
   })();
+
+  // На шаге 4 показываем кольцо с процентом; до шага 4 — дефолтные кружки AntD
+  const showStep4Progress = currentStep >= 3;
+  const paramsStepIcon = showStep4Progress ? (
+    <span className="ppr-steps__progress-icon" style={{ display: 'flex' }}>
+      <Progress
+        type="circle"
+        percent={totalPercent}
+        size={STEP_ICON_SIZE}
+        strokeLinecap="round"
+        status={totalPercent === 100 ? 'success' : 'normal'}
+        format={(percentValue) => `${percentValue ?? 0}%`}
+      />
+    </span>
+  ) : undefined;
 
   return (
     <section className="ppr-editor-card">
@@ -285,7 +384,7 @@ const PprEditorPage: React.FC = () => {
             { title: 'Задача' },
             { title: 'Значения (в табе)' },
             { title: 'Шаблон' },
-            { title: 'Параметры шаблона' },
+            { title: 'Параметры шаблона', icon: paramsStepIcon },
             { title: pendingTitle },
             { title: 'Заявка готова' },
           ]}
@@ -307,12 +406,14 @@ const PprEditorPage: React.FC = () => {
             placeholder="Список выбранных планируемых работ"
             value={selectedTaskId}
             disabled={editingLocked}
-            onChange={(val) => {
+            onChange={(taskId) => {
               if (editingLocked) return;
-              setSelectedTaskId(val);
+              setSelectedTaskId(taskId);
               setTabsConfirmed(false);
               setMainTemplate(undefined);
               setParamsConfirmed(false);
+              // сброс разрешения шага 5
+              setAllowStep5(false);
             }}
           />
         </div>
@@ -339,15 +440,19 @@ const PprEditorPage: React.FC = () => {
                 taskId={selectedTaskId}
                 onWorkTimeChange={setTimelineWindow}
                 executors={tabExecutors}
-                addExecutor={(exe) =>
+                addExecutor={(executorToAdd) =>
                   setTabExecutors((prev) =>
-                    prev.some((e) => String(e.id) === String((exe as any).id))
+                    prev.some(
+                      (existing) => String(existing.id) === String((executorToAdd as any).id),
+                    )
                       ? prev
-                      : [...prev, normalizeExec(exe)],
+                      : [...prev, normalizeExec(executorToAdd)],
                   )
                 }
-                removeExecutor={(id) =>
-                  setTabExecutors((prev) => prev.filter((e) => String(e.id) !== String(id)))
+                removeExecutor={(executorId) =>
+                  setTabExecutors((prev) =>
+                    prev.filter((existing) => String(existing.id) !== String(executorId)),
+                  )
                 }
               />
             </div>
@@ -377,33 +482,42 @@ const PprEditorPage: React.FC = () => {
             bucket={YAML_BUCKET}
             value={(mainTemplate as any)?.key}
             disabled={editingLocked as any}
-            onChange={async (tpl) => {
+            onChange={async (selectedTemplate) => {
               if (editingLocked) return;
               const prevMainKey = (mainTemplate as any)?.key;
               const execIds = (executorsByTemplate[0] ?? []).map(normalizeExecId);
-              if (prevMainKey) removeBySourcePrefix?.({ execIds, prefix: String(prevMainKey) });
+              if (prevMainKey)
+                removeBySourcePrefix?.({ execIds: execIds, prefix: String(prevMainKey) });
               if (currentUser) {
-                const me = normalizeExec(currentUser);
+                const meExec = normalizeExec(currentUser);
                 setExecutorsByTemplate((prev) => {
                   const next = [...prev];
-                  const list0 = next[0] ?? [];
-                  const hasMe = list0.some((x: any) => String(x.id) === String(me.id));
-                  next[0] = hasMe ? list0 : [me, ...list0];
+                  const mainList = next[0] ?? [];
+                  const hasMe = mainList.some(
+                    (existing) => String(existing.id) === String(meExec.id),
+                  );
+                  next[0] = hasMe ? mainList : [meExec, ...mainList];
                   return next;
                 });
                 setTabExecutors((prev) =>
-                  prev.some((x) => String(x.id) === String(me.id)) ? prev : [me, ...prev],
+                  prev.some((existing) => String(existing.id) === String(meExec.id))
+                    ? prev
+                    : [meExec, ...prev],
                 );
               }
 
               // подгрузим raw при необходимости
-              const resolved = await resolveTemplateWithRaw(tpl as Template, YAML_BUCKET);
+              const resolved = await resolveTemplateWithRaw(
+                selectedTemplate as Template,
+                YAML_BUCKET,
+              );
               if (!resolved) {
                 message.error('Не удалось загрузить YAML шаблона.');
                 return;
               }
               setMainTemplate(resolved);
               setParamsConfirmed(false);
+              setAllowStep5(false);
 
               setTimeout(() => paramsRef.current?.scrollIntoView({ behavior: 'smooth' }), 0);
             }}
@@ -434,22 +548,23 @@ const PprEditorPage: React.FC = () => {
               schema={(mainTemplate as any)?.raw}
               templateKey={(mainTemplate as any)?.key}
               executors={(executorsByTemplate[0] ?? []).map(normalizeExec)}
-              onRowCountChange={(cnt: number) => {
-                if (!paramsConfirmed && cnt > 0) setParamsConfirmed(true);
+              onRowCountChange={(rowCount: number) => {
+                if (!paramsConfirmed && rowCount > 0) setParamsConfirmed(true);
               }}
-              onValuesChange={(vals: any) => {
+              onValuesChange={(formValues: any) => {
                 if (editingLocked) return;
-                mainFormValuesRef.current = vals;
+                mainFormValuesRef.current = formValues;
+                setAllowStep5(false);
               }}
             />
           )}
         </div>
       )}
 
-      {additionalTemplates.map((template, idx) => {
-        if (hiddenExtraSlots.has(idx)) return null;
+      {additionalTemplates.map((templateItem, templateIndex) => {
+        if (hiddenExtraSlots.has(templateIndex)) return null;
         return (
-          <React.Fragment key={idx}>
+          <React.Fragment key={templateIndex}>
             <div
               className="ppr-template-wrap"
               style={{
@@ -459,12 +574,15 @@ const PprEditorPage: React.FC = () => {
             >
               <YamlTemplateSelect
                 bucket={YAML_BUCKET}
-                value={(template as any).key}
+                value={(templateItem as any).key}
                 disabled={editingLocked as any}
-                onChange={(newTpl) => changeTemplate(idx, newTpl)}
-                executors={(executorsByTemplate[idx + 1] ?? []).map(normalizeExec)}
-                addExecutor={(executor) => addExecutor(idx + 1, executor)}
-                removeExecutor={(executorId) => removeExecutor(idx + 1, executorId)}
+                onChange={(newTemplate) => {
+                  changeTemplate(templateIndex, newTemplate);
+                  setAllowStep5(false);
+                }}
+                executors={(executorsByTemplate[templateIndex + 1] ?? []).map(normalizeExec)}
+                addExecutor={(executor) => addExecutor(templateIndex + 1, executor)}
+                removeExecutor={(executorId) => removeExecutor(templateIndex + 1, executorId)}
                 tabCandidates={tabExecutors}
               />
 
@@ -472,19 +590,19 @@ const PprEditorPage: React.FC = () => {
                 className="ppr-template-wrap__delete"
                 danger
                 ghost
-                disabled={editingLocked || !(template as any)?.key}
-                onClick={() => setConfirmState({ open: true, kind: 'extra', index: idx })}
+                disabled={editingLocked || !(templateItem as any)?.key}
+                onClick={() => setConfirmState({ open: true, kind: 'extra', index: templateIndex })}
               >
                 Удалить шаблон
               </Button>
             </div>
 
-            {(template as any)?.key && (template as any)?.raw && (
+            {(templateItem as any)?.key && (templateItem as any)?.raw && (
               <DynamicYamlForm
-                key={`extra-${idx}-${(template as any)?.key}-${tplReadyTick}`}
-                schema={(template as any)?.raw}
-                templateKey={(template as any)?.key}
-                executors={(executorsByTemplate[idx + 1] ?? []).map(normalizeExec)}
+                key={`extra-${templateIndex}-${(templateItem as any)?.key}-${tplReadyTick}`}
+                schema={(templateItem as any)?.raw}
+                templateKey={(templateItem as any)?.key}
+                executors={(executorsByTemplate[templateIndex + 1] ?? []).map(normalizeExec)}
                 onRowCountChange={() => {}}
               />
             )}
@@ -512,13 +630,14 @@ const PprEditorPage: React.FC = () => {
               executors={timelineExecutors}
               executorsByTemplate={executorsByTemplate}
               onBlockClick={() => {}}
-              onTimerChange={(tplIdx, stageKey, newTimer) => {
+              onTimerChange={(templateIdx, stageKey, newTimerMinutes) => {
                 if (editingLocked) return;
                 updateTplStageDuration?.({
-                  tplIdx,
+                  tplIdx: templateIdx,
                   stageKey,
-                  minutes: Number(newTimer) || 0,
+                  minutes: Number(newTimerMinutes) || 0,
                 });
+                setAllowStep5(false);
               }}
               onMoveBetweenExecutors={handleMoveBetweenExecutors}
             />

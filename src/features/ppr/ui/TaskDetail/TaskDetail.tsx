@@ -1,6 +1,6 @@
 import { Collapse } from 'antd';
 import type { FC } from 'react';
-import { useMemo } from 'react';
+import { useMemo, useEffect, useRef, useCallback } from 'react';
 
 import type { StageField } from '@/entities/template/model/store/templateStore';
 import { ROLE_COLORS, ROLE_SWATCH_DEFAULT_COLOR } from '@/shared/constants';
@@ -44,10 +44,14 @@ interface Props extends TaskDetailProps {
   displayColKeys?: string[];
 }
 
+/** Устойчивый id для прогресса по этому TaskDetail (чтобы суммировать корректно) */
+const makeProgressId = (label?: string, start?: string) => `${label || 'task'}::${start || ''}`;
+
 /**
  * Контейнер TaskDetail отвечает за:
  * - построение порядка этапов и типов «входа» (success/failure),
  * - управление открытыми панелями Collapse,
+ * - агрегацию required/filled на уровне этапов и эмит события ppr:stage-progress
  */
 const TaskDetail: FC<Props> = ({
   tplIdx = 0,
@@ -96,14 +100,12 @@ const TaskDetail: FC<Props> = ({
    */
   const [openKeys, setOpenKeys] = useSyncedOpenKeys(fullStageOrder, stageKeys?.[0]);
 
-  /**  контекст подстановки для текущего блока  */
+  /** контекст подстановки для текущего блока ===== */
   const placeholderRoots = useMemo(() => extractPlaceholderRoots(stagesField), [stagesField]);
-
   const paramsContext = useMemo(
     () => buildParamsFromSingleRow(placeholderRoots, displayColKeys, displayHeaders, displayRow),
     [placeholderRoots, displayColKeys, displayHeaders, displayRow],
   );
-
   const interpCtx = useMemo(() => ({ ...paramsContext, params: paramsContext }), [paramsContext]);
 
   /** исполнители: добавленные вручную */
@@ -143,7 +145,6 @@ const TaskDetail: FC<Props> = ({
 
       const rawRole: string =
         (found?.role?.name as string) ?? (found?.role as string) ?? (row.role as string) ?? '';
-
       const roleKey = toCanonicalRole(rawRole);
       if (!roleKey) continue;
 
@@ -225,6 +226,55 @@ const TaskDetail: FC<Props> = ({
     [startTime, successMinutes],
   );
 
+  // ======= ПРОГРЕСС REQUIRED/FILLED НА УРОВНЕ ЭТАПОВ =======
+  const progressId = useMemo(() => makeProgressId(label, startTime), [label, startTime]);
+  const requiredByStageRef = useRef<Record<string, string[]>>({});
+  const filledByStageRef = useRef<Record<string, Set<string>>>({});
+
+  const emitProgress = useCallback(() => {
+    const requiredTotal = Object.values(requiredByStageRef.current).reduce(
+      (acc, arr) => acc + (arr?.length ?? 0),
+      0,
+    );
+
+    const filledTotal = Object.entries(filledByStageRef.current).reduce((acc, [stage, set]) => {
+      const req = requiredByStageRef.current[stage] ?? [];
+      if (!req.length) return acc;
+      const cnt = req.filter((k) => set?.has(k)).length;
+      return acc + cnt;
+    }, 0);
+
+    const detail = { id: progressId, filled: filledTotal, required: requiredTotal };
+    window.dispatchEvent(new CustomEvent('ppr:stage-progress', { detail }));
+  }, [progressId]);
+
+  const handleStageRequiredChange = useCallback(
+    (stageKey: string, requiredKeys: string[]) => {
+      requiredByStageRef.current = {
+        ...requiredByStageRef.current,
+        [stageKey]: Array.from(new Set((requiredKeys ?? []).map(String))),
+      };
+      if (!filledByStageRef.current[stageKey])
+        filledByStageRef.current[stageKey] = new Set<string>();
+      emitProgress();
+    },
+    [emitProgress],
+  );
+
+  const handleStageFieldFilledChange = useCallback(
+    (stageKey: string, fieldKey: string, isFilled: boolean) => {
+      if (!filledByStageRef.current[stageKey])
+        filledByStageRef.current[stageKey] = new Set<string>();
+      const set = filledByStageRef.current[stageKey];
+      if (isFilled) set.add(fieldKey);
+      else set.delete(fieldKey);
+      emitProgress();
+    },
+    [emitProgress],
+  );
+
+  // Прогресс сохраняется между маунтами/анмаунтами панелей, т.к. refs не сбрасываем
+
   return (
     <div className="task-detail">
       <div className="task-detail__header">
@@ -268,6 +318,8 @@ const TaskDetail: FC<Props> = ({
                 columns={[]}
                 configs={[]}
                 onConfigsChange={() => {}}
+                onStageRequiredChange={handleStageRequiredChange}
+                onStageFieldFilledChange={handleStageFieldFilledChange}
               />
             ),
           };

@@ -120,3 +120,11 @@ export const DEFAULT_CONTENT_TYPE = 'application/octet-stream' as const;
 export const LINK_TARGET_BLANK = '_blank' as const;
 export const WINDOW_FEATURES_NOOPENER = 'noopener,noreferrer' as const;
 export const DEFAULT_DOWNLOAD_NAME = 'file' as const;
+
+/** Диаметр кольца прогресса в иконке шага мастера (AntD Steps) */
+export const STEP_ICON_SIZE = 35 as const;
+
+/** События/каналы */
+export const WS_EVENT_PLANNED_TASK_STATUS = 'planned_tasks.status' as const;
+/** Кастомное DOM-событие прогресса стадий формы */
+export const PROGRESS_EVENT_NAME = 'ppr:stage-progress' as const;

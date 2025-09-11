@@ -1,10 +1,11 @@
-import { Button, Form, InputNumber, Table, Typography } from 'antd';
+import { Button, Form, InputNumber, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import type { FC } from 'react';
 import { useMemo, useEffect, useState, useCallback } from 'react';
 
 import type { StageField } from '@/entities/template/model/store/templateStore';
 import { useTypesStore } from '@/entities/types/model/store/typesStore';
+
 import './StagePanel.css';
 import {
   ROLE_TITLES_RU,
@@ -36,7 +37,7 @@ export interface ConfigFile extends BaseConfigFile {
 
 /** Минимально необходимая форма пользователя-исполнителя для рендера. */
 export interface SimpleUser {
-  id: number;
+  id: number | string;
   role: string;
   author: string;
 }
@@ -59,13 +60,27 @@ export interface StagePanelProps {
   configs: ConfigFile[];
   /** Обработчик изменения (загрузки) конфигов. */
   onConfigsChange: (files: BaseConfigFile[]) => void;
+
+  /**  ДЛЯ ПРОГРЕССА ОБЯЗАТЕЛЬНЫХ  */
+  onStageRequiredChange?: (stageKey: string, requiredKeys: string[]) => void;
+  onStageFieldFilledChange?: (stageKey: string, fieldKey: string, isFilled: boolean) => void;
 }
+
+/** Проверка «значение заполнено» для разных типов значений */
+const isFilledValue = (value: any) => {
+  if (value === null || value === undefined) return false;
+  if (typeof value === 'string') return value.trim().length > 0;
+  if (typeof value === 'number') return !Number.isNaN(value);
+  if (typeof value === 'boolean') return true;
+  if (Array.isArray(value)) return value.length > 0;
+  if (value instanceof File || value instanceof Blob) return true;
+  if (typeof value === 'object') return Object.keys(value).length > 0;
+  return false;
+};
 
 /**
  * Панель этапа: показывает назначенных исполнителей, динамические поля,
  * таймер и загрузку конфигураций.
- * params
- *  - props: StagePanelProps
  */
 export const StagePanel: FC<StagePanelProps> = ({
   tplIdx,
@@ -77,6 +92,8 @@ export const StagePanel: FC<StagePanelProps> = ({
   columns,
   configs,
   onConfigsChange,
+  onStageRequiredChange,
+  onStageFieldFilledChange,
 }) => {
   /** Текущий пользователь — для подстановки в uploadedBy при отсутствии значения */
   const currentUser = userStore((s) => s.user);
@@ -166,6 +183,21 @@ export const StagePanel: FC<StagePanelProps> = ({
     [stageFields, isFileField],
   );
 
+  /** === ОБЯЗАТЕЛЬНЫЕ ПОЛЯ ЭТАПА === */
+  const requiredKeys = useMemo(
+    () =>
+      [...fileFields, ...nonFileFields]
+        .filter((fd) => Boolean(fd.required))
+        .map((fd) => String(fd.key)),
+    [fileFields, nonFileFields],
+  );
+
+  // сообщаем о наборе обязательных полей
+  useEffect(() => {
+    onStageRequiredChange?.(stageKey, requiredKeys);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stageKey, requiredKeys.join('|')]);
+
   /** По каждому файловому полю храним свой список видимых файлов и ошибки валидатора */
   const [visibleByField, setVisibleByField] = useState<Record<string, ConfigFile[]>>({});
   const [removedByField, setRemovedByField] = useState<Record<string, Set<string>>>({});
@@ -182,6 +214,17 @@ export const StagePanel: FC<StagePanelProps> = ({
       record?.uid ?? record?.id ?? record?.name ?? record?.path ?? JSON.stringify(record),
     );
   }, []);
+
+  /** при маунте — отметить заполненность НЕ файловых required по дефолтам/значениям */
+  const [form] = Form.useForm();
+  useEffect(() => {
+    const values = form.getFieldsValue();
+    requiredKeys.forEach((k) => {
+      const isFile = fileFields.some((f) => String(f.key) === k);
+      if (!isFile) onStageFieldFilledChange?.(stageKey, k, isFilledValue(values[k]));
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form, stageKey, requiredKeys.join('|')]);
 
   /** onChange для конкретного файлового поля */
   const handleConfigsChangeFor = useCallback(
@@ -211,6 +254,9 @@ export const StagePanel: FC<StagePanelProps> = ({
           setStageFieldValue?.({ stageKey, fieldKey, value: baseList });
         } catch {}
 
+        // отметить заполненность файлового поля
+        onStageFieldFilledChange?.(stageKey, fieldKey, uniqueList.length > 0);
+
         return next;
       });
     },
@@ -221,6 +267,7 @@ export const StagePanel: FC<StagePanelProps> = ({
       removedByField,
       setStageFieldValue,
       stageKey,
+      onStageFieldFilledChange,
     ],
   );
 
@@ -234,6 +281,7 @@ export const StagePanel: FC<StagePanelProps> = ({
   return (
     <section className="task-detail__stage">
       <p className="task-detail__header">{meta?.description}</p>
+
       {filteredExecutors.map((user) => (
         <div key={`${user.id}`} className="yaml-executor-row">
           <div className="yaml-executor-field">
@@ -248,6 +296,7 @@ export const StagePanel: FC<StagePanelProps> = ({
       <div className="stage-panel__layout">
         <div className="stage-panel__form">
           <Form
+            form={form}
             layout="vertical"
             initialValues={{
               timer: timerInitial,
@@ -257,7 +306,7 @@ export const StagePanel: FC<StagePanelProps> = ({
                   .map(([key, def]) => [key, def.default]),
               ),
             }}
-            onValuesChange={(changedValues) => {
+            onValuesChange={(changedValues, allValues) => {
               if (changedValues.timer != null) {
                 onTimerChange?.(stageKey, changedValues.timer as number);
               }
@@ -266,6 +315,11 @@ export const StagePanel: FC<StagePanelProps> = ({
                 try {
                   setStageFieldValue?.({ stageKey, fieldKey: changedKey, value: changedValue });
                 } catch {}
+                onStageFieldFilledChange?.(
+                  stageKey,
+                  changedKey,
+                  isFilledValue((allValues as any)[changedKey]),
+                );
               });
             }}
             preserve
