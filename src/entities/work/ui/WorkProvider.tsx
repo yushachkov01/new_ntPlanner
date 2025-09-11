@@ -6,8 +6,8 @@
 import type { ReactNode } from 'react';
 import { useEffect } from 'react';
 
-import { workStore } from '@entities/work/model/store/WorkStore.ts';
 import { WS_URL } from '@/shared/ws/wsClient';
+import { workStore } from '@entities/work/model/store/WorkStore.ts';
 
 type Props = { children: ReactNode };
 

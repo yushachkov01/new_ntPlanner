@@ -22,8 +22,7 @@ let connecting = false;
 let pingTimer: number | undefined;
 
 /** URL сервера WebSocket */
-export const WS_URL =
-    (import.meta as any).env.VITE_WS_URL;
+export const WS_URL = (import.meta as any).env.VITE_WS_URL;
 
 /** Интервал keep-alive */
 const PING_EVERY_MS = 15000;
