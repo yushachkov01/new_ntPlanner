@@ -148,3 +148,16 @@ export const getFormatsGeneric = (fd: StageFieldDef, typesDict?: TypesDictionary
 
 export const getAcceptGeneric = (fd: StageFieldDef, typesDict?: TypesDictionary) =>
   deriveFieldTypeMeta(fd, typesDict).accept;
+
+
+/** Проверка «значение заполнено» для разных типов значений */
+export const isFilledValue = (value: any) => {
+  if (value === null || value === undefined) return false;
+  if (typeof value === 'string') return value.trim().length > 0;
+  if (typeof value === 'number') return !Number.isNaN(value);
+  if (typeof value === 'boolean') return true;
+  if (Array.isArray(value)) return value.length > 0;
+  if (value instanceof File || value instanceof Blob) return true;
+  if (typeof value === 'object') return Object.keys(value).length > 0;
+  return false;
+};

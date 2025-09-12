@@ -1,7 +1,7 @@
 import { Button, Form, InputNumber, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import type { FC } from 'react';
-import { useMemo, useEffect, useState, useCallback } from 'react';
+import { useMemo, useEffect, useState, useCallback, useRef } from 'react';
 
 import type { StageField } from '@/entities/template/model/store/templateStore';
 import { useTypesStore } from '@/entities/types/model/store/typesStore';
@@ -19,13 +19,18 @@ import { renderField } from '@/shared/utils/stagePanelUtils';
 import {
   isFileFieldGeneric,
   getFormatsGeneric,
-  getAcceptGeneric,
+  getAcceptGeneric, isFilledValue,
 } from '@/shared/utils/TaskDetailUtils';
 import useTimelineStore from '@entities/timeline/model/store/timelineStore';
 import { getStageMinutes } from '@entities/timeline/model/utils/time';
 import { userStore } from '@entities/user/model/store/UserStore';
 import type { ConfigFile as BaseConfigFile } from '@features/ppr/ui/ConfigUploader/ConfigUploader';
 import ConfigUploader from '@features/ppr/ui/ConfigUploader/ConfigUploader';
+import {
+  StageFormPersistKey,
+  StageFormValues,
+  useStageFormStore
+} from "@entities/stageFormStore/model/store/stageFormStore";
 
 const { Text } = Typography;
 
@@ -65,18 +70,6 @@ export interface StagePanelProps {
   onStageRequiredChange?: (stageKey: string, requiredKeys: string[]) => void;
   onStageFieldFilledChange?: (stageKey: string, fieldKey: string, isFilled: boolean) => void;
 }
-
-/** Проверка «значение заполнено» для разных типов значений */
-const isFilledValue = (value: any) => {
-  if (value === null || value === undefined) return false;
-  if (typeof value === 'string') return value.trim().length > 0;
-  if (typeof value === 'number') return !Number.isNaN(value);
-  if (typeof value === 'boolean') return true;
-  if (Array.isArray(value)) return value.length > 0;
-  if (value instanceof File || value instanceof Blob) return true;
-  if (typeof value === 'object') return Object.keys(value).length > 0;
-  return false;
-};
 
 /**
  * Панель этапа: показывает назначенных исполнителей, динамические поля,
@@ -217,6 +210,24 @@ export const StagePanel: FC<StagePanelProps> = ({
 
   /** при маунте — отметить заполненность НЕ файловых required по дефолтам/значениям */
   const [form] = Form.useForm();
+
+  /** ключ и персист значений формы этапа через Zustand */
+  const persistKey: StageFormPersistKey = useMemo(
+      () => ({
+        plannedTaskId: null,
+        templateKey: String(tplIdx ?? '0'),
+        stageKey,
+        rowId: null,
+      }),
+      [tplIdx, stageKey],
+  );
+  const getPersisted = useStageFormStore((stage) => stage.get(persistKey));
+  const patchPersisted = useStageFormStore((stage) => stage.patch);
+  const setAllPersisted = useStageFormStore((stage) => stage.setAll);
+  const isHydratedRef = useRef(false);
+  const lastHydratedSavedRef = useRef<StageFormValues | undefined>(undefined);
+
+  /** при маунте — отметить заполненность НЕ файловых required по дефолтам/значениям */
   useEffect(() => {
     const values = form.getFieldsValue();
     requiredKeys.forEach((k) => {
@@ -225,6 +236,57 @@ export const StagePanel: FC<StagePanelProps> = ({
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form, stageKey, requiredKeys.join('|')]);
+
+  /** Гидрация формы из стора + восстановление списка файлов и первичный пересчёт заполненности */
+  useEffect(() => {
+    const saved = getPersisted as StageFormValues | undefined;
+    if (saved && !isHydratedRef.current) {
+      lastHydratedSavedRef.current = saved;
+      form.setFieldsValue(saved);
+
+      const nextVisible: Record<string, ConfigFile[]> = {};
+      for (const fd of fileFields) {
+        const key = String(fd.key);
+        const list = (saved as any)?.[key];
+        if (Array.isArray(list)) {
+          nextVisible[key] = (list as BaseConfigFile[]).map((file) => ({
+            uploadedAt: (file as any).uploadedAt ?? new Date().toISOString(),
+            uploadedBy: (file as any).uploadedBy ?? currentUserDisplayName ?? '',
+            ...(file as any),
+          }));
+        }
+      }
+      if (Object.keys(nextVisible).length) {
+        setVisibleByField((prev) => ({ ...prev, ...nextVisible }));
+      }
+
+      isHydratedRef.current = true;
+    }
+  }, [fileFields.map((field) => String(field.key)).join('|')]);
+
+  /** после гидрации/обновления visibleByField пересчитываем filled для всех required */
+  useEffect(() => {
+    if (!isHydratedRef.current) return;
+    const allValues = form.getFieldsValue();
+
+    requiredKeys.forEach((keys) => {
+      const isFile = fileFields.some((field) => String(field.key) === keys);
+      if (isFile) {
+        const fromVisible = (visibleByField[keys]?.length ?? 0) > 0;
+        const fromSaved =
+            Array.isArray((lastHydratedSavedRef.current as any)?.[keys]) &&
+            ((lastHydratedSavedRef.current as any)[keys] as any[]).length > 0;
+        const fromForm =
+            Array.isArray((allValues as any)?.[keys]) &&
+            ((allValues as any)[keys] as any[]).length > 0;
+        const isFilled = fromVisible || fromSaved || fromForm;
+        onStageFieldFilledChange?.(stageKey, keys, isFilled);
+      } else {
+        onStageFieldFilledChange?.(stageKey, keys, isFilledValue((allValues as any)[keys]));
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visibleByField, requiredKeys.join('|')]);
 
   /** onChange для конкретного файлового поля */
   const handleConfigsChangeFor = useCallback(
@@ -257,6 +319,7 @@ export const StagePanel: FC<StagePanelProps> = ({
         // отметить заполненность файлового поля
         onStageFieldFilledChange?.(stageKey, fieldKey, uniqueList.length > 0);
 
+        patchPersisted(persistKey, { [fieldKey]: baseList as unknown });
         return next;
       });
     },
@@ -268,6 +331,8 @@ export const StagePanel: FC<StagePanelProps> = ({
       setStageFieldValue,
       stageKey,
       onStageFieldFilledChange,
+      patchPersisted,
+      persistKey,
     ],
   );
 
@@ -321,8 +386,9 @@ export const StagePanel: FC<StagePanelProps> = ({
                   isFilledValue((allValues as any)[changedKey]),
                 );
               });
+              setAllPersisted(persistKey, allValues as unknown as StageFormValues);
             }}
-            preserve
+           preserve
           >
             {wrapTimer()}
             {nonFileFields.map((fd) => renderField(fd))}

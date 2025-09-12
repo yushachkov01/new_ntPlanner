@@ -17,6 +17,7 @@ import {
   addMinutesToTime,
   normalizeAuthor,
   toCanonicalRole,
+  isFilledValue,
 } from '@/shared/utils/TaskDetailUtils';
 import useTimelineStore from '@entities/timeline/model/store/timelineStore';
 import { getStageMinutes } from '@entities/timeline/model/utils/time';
@@ -26,6 +27,12 @@ import './TaskDetail.css';
 import { useSyncedOpenKeys } from '@features/ppr/model/hooks/useSyncedOpenKeys';
 import type { SimpleUser } from '@features/ppr/ui/StagePanel/StagePanel';
 import { StagePanel } from '@features/ppr/ui/StagePanel/StagePanel';
+import {
+  StageFormPersistKey,
+  StageFormValues,
+  useStageFormStore
+} from "@entities/stageFormStore/model/store/stageFormStore";
+
 
 /**
  * Свойства компонента TaskDetail
@@ -272,6 +279,49 @@ const TaskDetail: FC<Props> = ({
     },
     [emitProgress],
   );
+
+  // пересчёт прогресса при переключениях/гидрациях
+  const valuesByStageMap = useStageFormStore((stage) => stage.valuesByStage);
+  const getPersist = useStageFormStore((stage) => stage.get);
+
+  useEffect(() => {
+    const templateKeyStr = String(tplIdx ?? '0');
+
+    // для каждого этапа: вычисляем required
+    fullStageOrder.forEach((sk) => {
+      const meta = stagesField[sk]!;
+      const fields = ((meta as any)?.fields ?? {}) as Record<string, any>;
+
+      const requiredList = Object.entries(fields)
+          .filter(([, def]) => Boolean((def as any)?.required))
+          .map(([key]) => String(key));
+
+      requiredByStageRef.current[sk] = Array.from(new Set(requiredList));
+
+      const saved =
+          (getPersist({
+            plannedTaskId: null,
+            templateKey: templateKeyStr,
+            stageKey: sk,
+            rowId: null,
+          } as StageFormPersistKey) as StageFormValues | undefined) ?? {};
+
+      const filledSet = new Set<string>();
+      for (const rk of requiredList) {
+        if (isFilledValue((saved as any)[rk])) filledSet.add(rk);
+      }
+      filledByStageRef.current[sk] = filledSet;
+    });
+
+    emitProgress();
+  }, [
+    // триггеры пересчёта
+    valuesByStageMap,
+    fullStageOrder.join('|'),
+    JSON.stringify(stagesField),
+    (openKeys as string[]).join('|'),
+    tplIdx,
+  ]);
 
   // Прогресс сохраняется между маунтами/анмаунтами панелей, т.к. refs не сбрасываем
 
