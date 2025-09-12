@@ -1,4 +1,4 @@
-import { useDraggable } from '@dnd-kit/core';
+import { useDraggable, useDroppable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import type { FC, PropsWithChildren } from 'react';
 import React, {
@@ -6,6 +6,7 @@ import React, {
   useState,
   useCallback,
   useEffect,
+  useRef,
   Children,
   isValidElement,
   cloneElement,
@@ -58,9 +59,22 @@ const TemplateFrameBlock: FC<Props> = ({
   isPZTemplate = false,
 }) => {
   /** dnd-kit hook для drag&drop */
+  const draggableId = `template-${idx}`;
   const { setNodeRef, listeners, attributes, transform, isDragging } = useDraggable({
-    id: `template-${idx}`,
+    id: draggableId,
   });
+
+  /** делаем фрейм также зоной дропа, чтобы можно было «наехать» одним бандлом на другой */
+  const { setNodeRef: setDropRef } = useDroppable({ id: draggableId });
+
+  /** единый ref, который передаём контейнеру: и draggable, и droppable одновременно */
+  const setCombinedRef = useCallback(
+    (node: HTMLElement | null) => {
+      setNodeRef(node);
+      setDropRef(node as any);
+    },
+    [setNodeRef, setDropRef],
+  );
 
   /** состояние «нажатия» для эффекта заливки */
   const [press, setPress] = useState(false);
@@ -103,6 +117,26 @@ const TemplateFrameBlock: FC<Props> = ({
     return { top: `${h * partIndex!}%`, height: `${h}%` };
   }, [rowParts, partIndex]);
 
+  /**
+   * Анимация только ПОСЛЕ drop:
+   * - ловим переход isDragging: true -> false
+   * - включаем transition на left/width на один следующий кадр
+   */
+  const wasDraggingRef = useRef(false);
+  const [animateAfterDrop, setAnimateAfterDrop] = useState(false);
+
+  useEffect(() => {
+    if (isDragging) {
+      wasDraggingRef.current = true;
+      setAnimateAfterDrop(false);
+      return;
+    }
+    if (wasDraggingRef.current) {
+      const id = requestAnimationFrame(() => setAnimateAfterDrop(true));
+      return () => cancelAnimationFrame(id);
+    }
+  }, [isDragging]);
+
   /** итоговый стиль контейнера фрейма */
   const style: React.CSSProperties = {
     ...lane,
@@ -111,6 +145,12 @@ const TemplateFrameBlock: FC<Props> = ({
     transform: transform ? CSS.Translate.toString({ x: transform.x, y: 0 }) : undefined,
     zIndex: isDragging ? 20 : 1,
     position: 'absolute',
+    transition: animateAfterDrop
+      ? 'left 240ms cubic-bezier(.2,.8,.2,1), width 240ms cubic-bezier(.2,.8,.2,1)'
+      : 'none',
+    willChange: isDragging ? 'transform' : animateAfterDrop ? 'left, width' : undefined,
+    backfaceVisibility: 'hidden',
+    contain: 'layout paint',
   };
 
   /**
@@ -133,7 +173,7 @@ const TemplateFrameBlock: FC<Props> = ({
 
   return (
     <div
-      ref={setNodeRef}
+      ref={setCombinedRef}
       className={[
         'template-frame',
         press && 'template-frame--pressing',

@@ -29,3 +29,45 @@ export const parseOverRowId = (overId: unknown): number | null => {
   }
   return null;
 };
+
+/**
+ * Нужен для простых проверок, получает overId (id цели drop-а в dnd-kit) и возвращает только tplIdx (индекс группы шаблона), без rowId.
+ */
+export const parseOverTplIdx = (overId: unknown): number | null => {
+  if (typeof overId === 'string') {
+    const match = overId.match(/^template-(\d+)$/);
+    if (match) {
+      const composite = Number(match[1]);
+      if (Number.isFinite(composite)) return composite % 1000; // НОРМАЛИЗУЕМ!
+    }
+  }
+  if (typeof overId === 'number' && Number.isFinite(overId)) {
+    return overId % 1000;
+  }
+  return null;
+};
+
+/**
+ * id зоны дропа (overId), которую возвращает dnd-kit в событии onDragEnd.
+ */
+export const parseOverTplMeta = (overId: unknown): { rowId: number; tplIdx: number } | null => {
+  if (typeof overId === 'string') {
+    const match = overId.match(/^template-(\d+)$/);
+    if (match) {
+      const composite = Number(match[1]);
+      if (Number.isFinite(composite)) {
+        return {
+          rowId: Math.floor(composite / 1000),
+          tplIdx: composite % 1000,
+        };
+      }
+    }
+  }
+  if (typeof overId === 'number' && Number.isFinite(overId)) {
+    return {
+      rowId: Math.floor(overId / 1000),
+      tplIdx: overId % 1000,
+    };
+  }
+  return null;
+};
