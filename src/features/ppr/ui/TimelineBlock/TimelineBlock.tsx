@@ -1,6 +1,7 @@
 /**
  * Блок на таймлайне: рассчитывает позицию, обрабатывает клики и popover
  */
+import { Popover } from 'antd';
 import type { FC, CSSProperties } from 'react';
 import { useState, useEffect, useRef, useCallback } from 'react';
 
@@ -51,14 +52,6 @@ const TimelineBlock: FC<TimelineBlockExProps> = ({
 }) => {
   const [showPopover, setShowPopover] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-
-  /**
-   * При показе popover, свернуть детальную карточку
-   */
-  const handleClick = useCallback(() => {
-    setShowPopover((prev) => !prev);
-    if (expandedBlockId) setExpandedBlockId(null);
-  }, [expandedBlockId, setExpandedBlockId]);
 
   /**
    * Двойной клик — popover прячется, разворачивается детальная панель
@@ -146,13 +139,26 @@ const TimelineBlock: FC<TimelineBlockExProps> = ({
     .join(' ');
 
   return (
-    <div
-      ref={ref}
-      className={className}
-      style={style}
-      onClick={handleClick}
-      onDoubleClick={handleDoubleClick}
+    <Popover
+      open={showPopover}
+      onOpenChange={(open) => {
+        setShowPopover(open);
+        if (open && expandedBlockId) setExpandedBlockId(null);
+      }}
+      trigger="click"
+      placement="top"
+      getPopupContainer={() => document.body}
+      destroyTooltipOnHide
+      content={
+        <div className="popover-content">
+          <div className="popover-title">“{block.label}”</div>
+          <div className="popover-time">
+            {block.startTime} – {block.endTime}
+          </div>
+        </div>
+      }
     >
+    <div ref={ref} className={className} style={style} onDoubleClick={handleDoubleClick}>
       {!showStages && <div className="timeline-block__hover-text">{absEnd - absStart} мин</div>}
 
       {showStages && (
@@ -179,19 +185,8 @@ const TimelineBlock: FC<TimelineBlockExProps> = ({
           })}
         </div>
       )}
-
-      {showPopover && (
-        <div className="timeline-block__popover">
-          <div className="popover-arrow" />
-          <div className="popover-content">
-            <div className="popover-title">“{block.label}”</div>
-            <div className="popover-time">
-              {block.startTime} – {block.endTime}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
+    </Popover>
   );
 };
 
