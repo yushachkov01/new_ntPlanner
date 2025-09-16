@@ -5,6 +5,7 @@
   background: transparent;
   border-radius: 6px;
   cursor: grab;
+  overflow: visible;
 }
 
 .template-frame:active {
@@ -71,4 +72,67 @@
   white-space: nowrap;
   pointer-events: none;
   z-index: 6;
+}
+
+.time-marker {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  pointer-events: none;
+  z-index: 6;
+}
+
+.time-marker--start {
+  left: 0;
+}
+
+.time-marker--end {
+  right: 0;
+}
+
+.time-marker__line {
+  position: absolute;
+  top: -6px;
+  bottom: -6px;
+  width: 2px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 0 0 1px rgba(0,0,0,.2);
+  border-radius: 1px;
+}
+
+.time-marker__label {
+  position: absolute;
+  top: -10px;
+  transform: translateY(-100%);
+  background: rgba(0,0,0,0.9);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 3px 6px;
+  border-radius: 6px;
+  white-space: nowrap;
+  box-shadow: 0 2px 6px rgba(0,0,0,.25);
+}
+
+.time-marker--start .time-marker__label {
+  left: 0;
+  transform: translate(0, -100%);
+}
+
+.time-marker--end .time-marker__label {
+  right: 0;
+  transform: translate(0, -100%);
+}
+
+.guide-label-floating{
+  background: rgba(0,0,0,.9);
+  color:#fff;
+  font-size:12px;
+  font-weight:700;
+  line-height:1;
+  padding:3px 6px;
+  border-radius:6px;
+  white-space:nowrap;
+  pointer-events:none;
 }

@@ -1,4 +1,4 @@
-import { useDraggable, useDroppable } from '@dnd-kit/core';
+import { useDraggable, useDroppable, useDndMonitor } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import type { FC, PropsWithChildren } from 'react';
 import React, {
@@ -11,6 +11,7 @@ import React, {
   isValidElement,
   cloneElement,
 } from 'react';
+import { createPortal } from 'react-dom';
 
 import './TemplateFrameBlock.css';
 import { toTime } from '@/shared/ui/time/toTime';
@@ -27,6 +28,16 @@ interface Props extends PropsWithChildren {
   partIndex?: number;
   isSMRTemplate?: boolean;
   isPZTemplate?: boolean;
+}
+
+/** строка HH:MM (округление до ближайшей минуты) */
+function formatMinutesToHHMM(totalMinutes: number): string {
+    if (!Number.isFinite(totalMinutes)) return '00:00';
+    let minutes = Math.round(totalMinutes) % 1440;
+    if (minutes < 0) minutes += 1440;
+    const hh = Math.floor(minutes / 60);
+    const mm = minutes % 60;
+    return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
 }
 
 /**
@@ -99,23 +110,53 @@ const TemplateFrameBlock: FC<Props> = ({
     };
   }, [startMin, endMin, windowStartMin, totalWindowMin]);
 
-  /**
-   * Перевод смещения по оси X в минуты.
-   */
-  const deltaMin = useMemo(() => {
-    if (!transform?.x || containerWidthPx <= 0) return 0;
-    return (transform.x / containerWidthPx) * totalWindowMin;
-  }, [transform, containerWidthPx, totalWindowMin]);
+    /**
+     * Перевод смещения по оси X в минуты.
+     */
+    const [dragDeltaX, setDragDeltaX] = useState(0);
+    const [isDraggingFromMonitor, setIsDraggingFromMonitor] = useState(false);
 
-  /**
-   * Вычисляет CSS-свойства top и height
-   * для размещения фрейма в своей «полке».
-   */
-  const lane: React.CSSProperties = useMemo(() => {
-    if ((rowParts ?? 1) <= 1) return { top: 0, height: '100%' };
-    const h = 100 / rowParts!;
-    return { top: `${h * partIndex!}%`, height: `${h}%` };
-  }, [rowParts, partIndex]);
+    useDndMonitor({
+        onDragStart(event) {
+            if (event.active.id === draggableId) {
+                setIsDraggingFromMonitor(true);
+                setDragDeltaX(0);
+            }
+        },
+        onDragMove(event) {
+            if (event.active.id === draggableId) {
+                setDragDeltaX(event.delta.x);
+            }
+        },
+        onDragCancel(event) {
+            if (event.active.id === draggableId) {
+                setIsDraggingFromMonitor(false);
+                setDragDeltaX(0);
+            }
+        },
+        onDragEnd(event) {
+            if (event.active.id === draggableId) {
+                setIsDraggingFromMonitor(false);
+                setDragDeltaX(0);
+            }
+        },
+    });
+
+    const deltaMin = useMemo(() => {
+        const offsetX = (transform?.x ?? dragDeltaX) || 0;
+        if (containerWidthPx <= 0) return 0;
+        return (offsetX / containerWidthPx) * totalWindowMin;
+    }, [transform?.x, dragDeltaX, containerWidthPx, totalWindowMin]);
+
+    /**
+     * Вычисляет CSS-свойства top и height
+     * для размещения фрейма в своей «полке».
+     */
+    const lane: React.CSSProperties = useMemo(() => {
+        if ((rowParts ?? 1) <= 1) return { top: 0, height: '100%' };
+        const heightPercent = 100 / rowParts!;
+        return { top: `${heightPercent * partIndex!}%`, height: `${heightPercent}%` };
+    }, [rowParts, partIndex]);
 
   /**
    * Анимация только ПОСЛЕ drop:
@@ -125,33 +166,41 @@ const TemplateFrameBlock: FC<Props> = ({
   const wasDraggingRef = useRef(false);
   const [animateAfterDrop, setAnimateAfterDrop] = useState(false);
 
-  useEffect(() => {
-    if (isDragging) {
-      wasDraggingRef.current = true;
-      setAnimateAfterDrop(false);
-      return;
-    }
-    if (wasDraggingRef.current) {
-      const id = requestAnimationFrame(() => setAnimateAfterDrop(true));
-      return () => cancelAnimationFrame(id);
-    }
-  }, [isDragging]);
+    useEffect(() => {
+        const draggingNow = isDragging || isDraggingFromMonitor;
+        if (draggingNow) {
+            wasDraggingRef.current = true;
+            setAnimateAfterDrop(false);
+            return;
+        }
+        if (wasDraggingRef.current) {
+            const id = requestAnimationFrame(() => setAnimateAfterDrop(true));
+            return () => cancelAnimationFrame(id);
+        }
+    }, [isDragging, isDraggingFromMonitor]);
 
-  /** итоговый стиль контейнера фрейма */
-  const style: React.CSSProperties = {
-    ...lane,
-    left: `${leftPct}%`,
-    width: `${widthPct}%`,
-    transform: transform ? CSS.Translate.toString({ x: transform.x, y: 0 }) : undefined,
-    zIndex: isDragging ? 20 : 1,
-    position: 'absolute',
-    transition: animateAfterDrop
-      ? 'left 240ms cubic-bezier(.2,.8,.2,1), width 240ms cubic-bezier(.2,.8,.2,1)'
-      : 'none',
-    willChange: isDragging ? 'transform' : animateAfterDrop ? 'left, width' : undefined,
-    backfaceVisibility: 'hidden',
-    contain: 'layout paint',
-  };
+    /** итоговый стиль контейнера фрейма */
+    const style: React.CSSProperties = {
+        ...lane,
+        left: `${leftPct}%`,
+        width: `${widthPct}%`,
+        transform:
+            transform
+                ? CSS.Translate.toString({ x: transform.x, y: 0 })
+                : dragDeltaX
+                    ? CSS.Translate.toString({ x: dragDeltaX, y: 0 })
+                    : undefined,
+        zIndex: (isDragging || isDraggingFromMonitor) ? 20 : 1,
+        position: 'absolute',
+        transition: animateAfterDrop
+            ? 'left 240ms cubic-bezier(.2,.8,.2,1), width 240ms cubic-bezier(.2,.8,.2,1)'
+            : 'none',
+        willChange:
+            (isDragging || isDraggingFromMonitor) ? 'transform' : animateAfterDrop ? 'left, width' : undefined,
+        backfaceVisibility: 'hidden',
+        contain: 'layout paint',
+        overflow: 'visible',
+    };
 
   /**
    * Оборачивает потомков, чтобы они
@@ -171,39 +220,228 @@ const TemplateFrameBlock: FC<Props> = ({
       : ch,
   );
 
-  return (
-    <div
-      ref={setCombinedRef}
-      className={[
-        'template-frame',
-        press && 'template-frame--pressing',
-        isDragging && 'template-frame--dragging',
-        isSMRTemplate && 'template-frame--smr',
-        isPZTemplate && 'template-frame--zr',
-      ]
-        .filter(Boolean)
-        .join(' ')}
-      style={style}
-      onPointerDown={down}
-      onPointerUp={up}
-      onPointerCancel={up}
-      {...listeners}
-      {...attributes}
-    >
-      <div className="template-frame__bg" />
-      {renderedChildren}
-      {isDragging && (
+    /**
+     * Ref на DOM-элемент блока (template-frame).
+     * Используется для вычисления позиции и размеров блока (через getBoundingClientRect).
+     */
+    const blockRef = useRef<HTMLDivElement | null>(null);
+
+    /** Стили для вертикальной линии слева (зелёной) */
+    const [startLineStyle, setStartLineStyle] = useState<React.CSSProperties>({ display: 'none' });
+
+    /** Стили для вертикальной линии справа (красной) */
+    const [endLineStyle, setEndLineStyle] = useState<React.CSSProperties>({ display: 'none' });
+
+    /** Стили для лейбла слева с временем начала блока. */
+    const [startLabelStyle, setStartLabelStyle] = useState<React.CSSProperties>({ display: 'none' });
+
+    /** Стили для лейбла справа с временем конца блока. */
+    const [endLabelStyle, setEndLabelStyle] = useState<React.CSSProperties>({ display: 'none' });
+
+    /**
+     * Коэффициент, указывающий где "базовая линия" цифр в заголовке таймлайна.
+     */
+    const HEADER_DIGITS_BASELINE_RATIO = 0.78;
+
+    /** Отступ между верхом линии и текстовым лейблом с временем. */
+    const LABEL_GAP_ABOVE_LINE_PX = 6;
+
+    /** Цвет линии начала блока (зелёный). */
+    const LEFT_LINE_COLOR = 'rgb(0, 200, 83)';
+
+    /** Цвет линии конца блока (красный). */
+    const RIGHT_LINE_COLOR = 'rgb(244, 67, 54)';
+
+    /**
+     * Функция ищет элемент шапки таймлайна.
+     */
+    const findTimelineHeaderRect = useCallback((): DOMRect | null => {
+        const host = blockRef.current;
+        if (!host) return null;
+
+        // Корневой контейнер таймлайна
+        const root =
+            host.closest('.timeline') ||
+            host.parentElement;
+
+        const selectors = [
+            '.timeline-header',
+        ];
+
+        for (const sel of selectors) {
+            const el = (root as HTMLElement | null)?.querySelector?.(sel) || document.querySelector(sel);
+            if (el) return el.getBoundingClientRect();
+        }
+        return null;
+    }, []);
+
+    /** Флаг: показывать ли направляющие (зависит от drag state). */
+    const showGuides = isDragging || isDraggingFromMonitor;
+
+    /**
+     *  отвечает за рендер вертикальных направляющих (линии и лейблы).
+     * Пока showGuides=true, каждую анимацию кадра пересчитывает координаты
+     * и обновляет стили для startLine, endLine, startLabel, endLabel.
+     */
+    useEffect(() => {
+        if (!showGuides) {
+            // Скрываем все линии и подписи
+            setStartLineStyle(s => ({ ...s, display: 'none' }));
+            setEndLineStyle(s => ({ ...s, display: 'none' }));
+            setStartLabelStyle(s => ({ ...s, display: 'none' }));
+            setEndLabelStyle(s => ({ ...s, display: 'none' }));
+            return;
+        }
+
+        let rafId = 0;
+
+        /**
+         * Пересчитывает позиции и обновляет стили направляющих.
+         * Запускается в каждом кадре
+         */
+        const update = () => {
+            const el = blockRef.current;
+            if (!el) {
+                rafId = requestAnimationFrame(update);
+                return;
+            }
+
+            // Позиция блока
+            const rect = el.getBoundingClientRect();
+
+            // Позиция шапки таймлайна
+            const headerRect = findTimelineHeaderRect();
+
+            // Верх линии (чуть ниже цифр в шапке), низ — низ блока
+            const headerTop = headerRect ? headerRect.top : rect.top - 56;
+            const lineTop = Math.round(
+                headerRect
+                    ? headerRect.top + headerRect.height * HEADER_DIGITS_BASELINE_RATIO
+                    : (headerTop + 40)
+            );
+            const lineBottom = Math.round(rect.bottom);
+            const lineHeight = Math.max(8, lineBottom - lineTop);
+
+            /** Общие CSS-свойства для обеих вертикальных линий */
+            const commonLine: React.CSSProperties = {
+                position: 'fixed',
+                top: `${lineTop}px`,
+                height: `${lineHeight}px`,
+                width: '2px',
+                borderRadius: '1px',
+                zIndex: 9999,
+                display: 'block',
+                pointerEvents: 'none',
+                boxShadow: '0 0 0 1px rgba(0,0,0,.2)',
+            };
+
+            // Линия слева (зелёная)
+            setStartLineStyle({
+                ...commonLine,
+                left: `${Math.round(rect.left)}px`,
+                background: LEFT_LINE_COLOR,
+            });
+
+            // Линия справа (красная)
+            setEndLineStyle({
+                ...commonLine,
+                left: `${Math.round(rect.right)}px`,
+                background: RIGHT_LINE_COLOR,
+            });
+
+            // Лейблы над линиями
+            const labelTop = Math.max(headerTop, lineTop - LABEL_GAP_ABOVE_LINE_PX);
+
+            /** Общие CSS для лейблов */
+            const commonLabel: React.CSSProperties = {
+                position: 'fixed',
+                top: `${labelTop}px`,
+                background: 'rgba(0,0,0,.9)',
+                color: '#fff',
+                fontSize: '12px',
+                fontWeight: 700,
+                lineHeight: 1,
+                padding: '3px 6px',
+                borderRadius: '6px',
+                whiteSpace: 'nowrap',
+                boxShadow: '0 2px 6px rgba(0,0,0,.25)',
+                zIndex: 10000,
+                display: 'block',
+                pointerEvents: 'none',
+            };
+
+            // Лейбл слева
+            setStartLabelStyle({
+                ...commonLabel,
+                left: `${Math.round(rect.left)}px`,
+                transform: 'translateX(-100%)',
+            });
+
+            // Лейбл справа
+            setEndLabelStyle({
+                ...commonLabel,
+                left: `${Math.round(rect.right)}px`,
+                transform: 'translateX(0)',
+            });
+            rafId = requestAnimationFrame(update);
+        };
+        rafId = requestAnimationFrame(update);
+
+        // Обновления при скролле/resize
+        window.addEventListener('scroll', update, true);
+        window.addEventListener('resize', update);
+
+        return () => {
+            cancelAnimationFrame(rafId);
+            window.removeEventListener('scroll', update, true);
+            window.removeEventListener('resize', update);
+        };
+    }, [showGuides, findTimelineHeaderRect]);
+
+    return (
         <>
-          <div className="template-frame__guide guide-start">
-            <span className="guide-label">{toTime(startMin + deltaMin)}</span>
-          </div>
-          <div className="template-frame__guide guide-end">
-            <span className="guide-label">{toTime(endMin + deltaMin)}</span>
-          </div>
+            {showGuides &&
+                createPortal(
+                    <>
+                        <div style={startLineStyle} />
+                        <div className="guide-label-floating" style={startLabelStyle}>
+                            {formatMinutesToHHMM(startMin + deltaMin)}
+                        </div>
+
+                        <div style={endLineStyle} />
+                        <div className="guide-label-floating" style={endLabelStyle}>
+                            {formatMinutesToHHMM(endMin + deltaMin)}
+                        </div>
+                    </>,
+                    document.body
+                )}
+
+            <div
+                ref={(node) => {
+                    setCombinedRef(node);
+                    blockRef.current = node;
+                }}
+                className={[
+                    'template-frame',
+                    press && 'template-frame--pressing',
+                    (isDragging || isDraggingFromMonitor) && 'template-frame--dragging',
+                    isSMRTemplate && 'template-frame--smr',
+                    isPZTemplate && 'template-frame--zr',
+                ]
+                    .filter(Boolean)
+                    .join(' ')}
+                style={style}
+                onPointerDown={down}
+                onPointerUp={up}
+                onPointerCancel={up}
+                {...listeners}
+                {...attributes}
+            >
+                <div className="template-frame__bg" />
+                {renderedChildren}
+            </div>
         </>
-      )}
-    </div>
-  );
+    );
 };
 
 export default TemplateFrameBlock;
