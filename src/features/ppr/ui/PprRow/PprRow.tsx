@@ -37,7 +37,19 @@ export interface Props {
  * @param {Props} props - Пропсы компонента.
  * @returns {JSX.Element} Компонент строки таймлайна.
  */
-const PprRow: FC<Props> = (props) =>
-  props.row.id !== 0 ? <SingleExecutorRow {...props} /> : <AllTasksRow {...props} />;
+const PprRow: FC<Props> = (props) => {
+  const { row, rowsState } = props;
+
+  if (!row || typeof row.id !== 'number') {
+    return null;
+  }
+
+  const isRowsStateArray = Array.isArray(rowsState);
+  const safeRowsState: Executor[] = isRowsStateArray ? rowsState : [];
+  if (row.id === 0) {
+    return <AllTasksRow {...props} rowsState={safeRowsState} />;
+  }
+  return <SingleExecutorRow {...props} rowsState={safeRowsState} />;
+};
 
 export default PprRow;

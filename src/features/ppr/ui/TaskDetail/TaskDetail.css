@@ -180,6 +180,7 @@ body.dark .task-detail__close:hover {
 
 body.dark .ant-collapse {
   background: var(--task-bg, #1f2937);
+  margin-top: 20px;
 }
 body.dark .ant-collapse-item {
   background: #2b2f36;
@@ -188,7 +189,7 @@ body.dark .ant-collapse-item {
 body.dark .ant-collapse > .ant-collapse-item > .ant-collapse-header {
   color: #e5e7eb;
   background: var(--bg-header, #2b2f36) !important;
-  border-top: 1px solid #e5e7eb;
+/*border-top: 1px solid #e5e7eb;*/
 }
 body.dark .ant-collapse > .ant-collapse-item > .ant-collapse-header .ant-collapse-arrow {
   color: #cbd5e1;

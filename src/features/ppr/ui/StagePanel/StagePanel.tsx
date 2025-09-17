@@ -345,8 +345,6 @@ export const StagePanel: FC<StagePanelProps> = ({
 
   return (
     <section className="task-detail__stage">
-      <p className="task-detail__header">{meta?.description}</p>
-
       {filteredExecutors.map((user) => (
         <div key={`${user.id}`} className="yaml-executor-row">
           <div className="yaml-executor-field">

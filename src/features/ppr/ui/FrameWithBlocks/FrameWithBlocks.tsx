@@ -1,5 +1,4 @@
-import type { FC } from 'react';
-import React from 'react';
+import React, { type FC, useMemo } from 'react';
 
 import { parseTimeToMinutes } from '@/shared/ui/time/toTime';
 import type { BlockExt } from '@features/ppr/ui/SingleExecutorRow/SingleExecutorRow';
@@ -11,10 +10,17 @@ import TimelineBlock from '@features/ppr/ui/TimelineBlock/TimelineBlock';
  * @param role название роли
  * @returns функция-предикат
  */
-function has(role: string) {
-  return (b: BlockExt): boolean =>
-    b.stageKeys.some((k) => (b.stagesField?.[k] as any)?.engineer === role);
-}
+const blockHasRole = (role: string) => (block: BlockExt): boolean => {
+    const keys: string[] = Array.isArray(block?.stageKeys) ? (block.stageKeys as string[]) : [];
+    if (!keys.length) return false;
+
+    const stagesField = (block as any)?.stagesField ?? {};
+    for (const key of keys) {
+        const st = stagesField?.[key];
+        if (st && (st as any).engineer === role) return true;
+    }
+    return false;
+};
 
 interface FrameWithBlocksProps {
   execId: number;
@@ -60,32 +66,69 @@ const FrameWithBlocks: FC<FrameWithBlocksProps> = ({
   onBlockClick,
   rowParts,
 }) => {
-  const inner = allBlocks.filter(
-    (b) =>
-      b.tplIdx === tplIdx &&
-      rowsState.some((r) => r.id === execId && r.blocks?.some((bl) => bl.id === b.id)),
-  );
-  if (!inner.length) return null;
+    /**  набор id блоков, принадлежащих текущему исполнителю  */
+    const blockIdsOfExec = useMemo<Set<number>>(() => {
+        const row = rowsState.find((row) => row?.id === execId);
+        const ids = new Set<number>();
+        (row?.blocks ?? []).forEach((block) => {
+            if (block && typeof block.id === 'number') ids.add(block.id);
+        });
+        return ids;
+    }, [rowsState, execId]);
 
-  const s = Math.min(...inner.map((b) => parseTimeToMinutes(b.startTime)));
-  let e = Math.max(
-    ...inner.map((b) => {
-      const st = parseTimeToMinutes(b.startTime),
-        en = parseTimeToMinutes(b.endTime);
-      return en <= st ? en + 1440 : en;
-    }),
-  );
-  if (e <= s) e += 1440;
+    /** Внутренние блоки данного шаблона (tplIdx) приписанные к текущему исполнителю */
+    const inner: BlockExt[] = useMemo(() => {
+        if (!Array.isArray(allBlocks) || allBlocks.length === 0 || blockIdsOfExec.size === 0) return [];
+        return allBlocks.filter(
+            (block) => block && block.tplIdx === tplIdx && typeof block.id === 'number' && blockIdsOfExec.has(block.id),
+        );
+    }, [allBlocks, tplIdx, blockIdsOfExec]);
+
+    if (inner.length === 0) return null;
+
+    /** Безопасный парс времени с поддержкой перехода через полночь */
+    const toMin = (time: string): number | null => {
+        try {
+            const min = parseTimeToMinutes(time);
+            return Number.isFinite(min) ? min : null;
+        } catch {
+            return null;
+        }
+    };
+
+    /** Старт окна — минимальный start среди внутренних */
+    const windowStartMinComputed = (() => {
+        const startMinutesList = inner
+            .map((block) => toMin(block.startTime))
+            .filter((minutes): minutes is number => minutes !== null);
+        if (startMinutesList.length === 0) return startMin;
+        return Math.min(...startMinutesList);
+    })();
+
+    /** Финиш окна — максимальный end, нормализованный если end <= start (перешли через 00:00) */
+    let windowEndMinComputed = (() => {
+        const endMinutesList = inner
+            .map((block) => {
+                const startMinutes = toMin(block.startTime);
+                const endMinutes = toMin(block.endTime);
+                if (startMinutes === null || endMinutes === null) return null;
+                return endMinutes <= startMinutes ? endMinutes + 1440 : endMinutes;
+            })
+            .filter((minutes): minutes is number => minutes !== null);
+        if (endMinutesList.length === 0) return windowStartMinComputed;
+        return Math.max(...endMinutesList);
+    })();
+    if (windowEndMinComputed <= windowStartMinComputed) windowEndMinComputed += 1440;
 
   const widthPx =
-    document.querySelector('.timeline-row__blocks')?.getBoundingClientRect().width ?? 0;
+    (document.querySelector('.timeline-row__blocks') as HTMLElement | null)?.getBoundingClientRect().width ?? 0;
 
   return (
     <TemplateFrameBlock
       key={`all-${execId}-${tplIdx}-${laneIdx}`}
       idx={`${execId}-${tplIdx}`}
-      startMin={s}
-      endMin={e}
+      startMin={windowStartMinComputed}
+      endMin={windowEndMinComputed}
       windowStartMin={startMin}
       totalWindowMin={spanMin}
       containerWidthPx={widthPx}
@@ -93,19 +136,19 @@ const FrameWithBlocks: FC<FrameWithBlocksProps> = ({
       partIndex={laneIdx}
       isExpanded={false}
       onToggleExpand={() => {}}
-      isSMRTemplate={inner.some(has('Инженер СМР'))}
-      isPZTemplate={inner.some(has('Представитель Заказчика'))}
+      isSMRTemplate={inner.some(blockHasRole('Инженер СМР'))}
+      isPZTemplate={inner.some(blockHasRole('Представитель Заказчика'))}
     >
       {inner.map((b) => (
         <TimelineBlock
           key={`blk-${execId}-${b.id}`}
           block={b}
-          totalWindowMin={e - s}
-          windowStartMin={s}
+          totalWindowMin={windowEndMinComputed - windowStartMinComputed}
+          windowStartMin={windowStartMinComputed}
           expandedBlockId={openBlockId}
           setExpandedBlockId={setOpenBlockId}
           onDoubleClickBlock={setOpenBlockId}
-          isCovered={!!coverageMap[b.id]}
+          isCovered={!!coverageMap?.[b.id]}
           onClick={() => onBlockClick(b.tplIdx)}
           showStages
           laneParts={rowParts}

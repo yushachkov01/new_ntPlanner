@@ -25,13 +25,18 @@ const AllTasksRow: FC<Props> = ({
 }) => {
   const { setNodeRef } = useDroppable({ id: 0 });
 
-  /** все блоки из всех исполнителей */
-  const allBlocks = rowsState.flatMap((r) => r.blocks ?? []);
-  const frames = rowsState
-    .filter((r) => r.blocks?.length)
-    .flatMap((r) => {
-      const tplIds = Array.from(new Set(r.blocks!.map((b) => b.tplIdx)));
-      return tplIds.map((tplIdx) => ({ execId: r.id, tplIdx }));
+    /** исключаем сам агрегатор (id === 0) из расчётов */
+    const executorsOnly = rowsState.filter((r) => r.id !== 0);
+
+    /** все блоки из всех исполнителей */
+    const allBlocks = executorsOnly.flatMap((executorRow) => executorRow.blocks ?? []);
+
+    /**
+     * Собираем «полки»: для каждого исполнителя берём уникальные tplIdx.
+     */
+    const frames = executorsOnly.flatMap((r) => {
+        const uniqueTplIdx = Array.from(new Set((r.blocks ?? []).map((b) => b.tplIdx)));
+        return uniqueTplIdx.map((tplIdx) => ({ execId: r.id, tplIdx }));
     });
 
   /** Количество полок */
@@ -47,10 +52,7 @@ const AllTasksRow: FC<Props> = ({
             setOpenBlockId(null);
           }}
         >
-          {rowsState
-            .filter((r) => r.blocks?.length)
-            .slice(0, 2)
-            .map((ex, i) => (
+          {executorsOnly.slice(0, 2).map((ex, i) => (
               <div
                 key={ex.id}
                 className="avatar-combined__circle"
@@ -59,12 +61,12 @@ const AllTasksRow: FC<Props> = ({
                 <span className="avatar-icon">👤</span>
               </div>
             ))}
-          {rowsState.filter((r) => r.blocks?.length).length > 2 && (
+          {executorsOnly.length > 2 && (
             <div
               className="avatar-combined__circle avatar-combined__more"
               style={{ left: '1.5rem' }}
             >
-              +{rowsState.filter((r) => r.blocks?.length).length - 2}
+              +{executorsOnly.length - 2}
             </div>
           )}
         </div>
@@ -77,10 +79,11 @@ const AllTasksRow: FC<Props> = ({
             setExpandedUsers(false);
             setOpenBlockId(null);
           }}
+          style={{ cursor: 'pointer', userSelect: 'none', textDecoration: 'underline' }}
         >
           Все
           <br />
-          Задачи
+          Шаблоны
         </span>
       </div>
       <div

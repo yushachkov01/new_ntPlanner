@@ -49,6 +49,9 @@ interface Props extends TaskDetailProps {
   displayHeaders?: string[];
   displayRow?: string[];
   displayColKeys?: string[];
+
+  /** Скрывать верхнюю шапку (для вложения в внешний Collapse под таймлайном) */
+  hideTitle?: boolean;
 }
 
 /** Устойчивый id для прогресса по этому TaskDetail (чтобы суммировать корректно) */
@@ -71,6 +74,7 @@ const TaskDetail: FC<Props> = ({
   displayHeaders = [],
   displayRow = [],
   displayColKeys = [],
+  hideTitle = false,
 }) => {
   /** актуальные строки таймлайна */
   const rows = useTimelineStore((s) => s.rows ?? []);
@@ -327,6 +331,7 @@ const TaskDetail: FC<Props> = ({
 
   return (
     <div className="task-detail">
+        {!hideTitle && (
       <div className="task-detail__header">
         <div className="task-detail__title">{label}</div>
         <div className="task-detail__controls">
@@ -338,6 +343,7 @@ const TaskDetail: FC<Props> = ({
           </button>
         </div>
       </div>
+)}
       <Collapse
         className="task-detail__collapse"
         activeKey={openKeys}
