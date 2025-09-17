@@ -128,3 +128,5 @@ export const STEP_ICON_SIZE = 35 as const;
 export const WS_EVENT_PLANNED_TASK_STATUS = 'planned_tasks.status' as const;
 /** Кастомное DOM-событие прогресса стадий формы */
 export const PROGRESS_EVENT_NAME = 'ppr:stage-progress' as const;
+/** ID закреплённой строки «Все шаблоны/Все задачи» */
+export const ALL_TASKS_ROW_ID = 0 as const;
