@@ -407,7 +407,8 @@ export default function DynamicYamlForm({
   const fieldTree = useMemo(() => {
     if (!typesReady) return { nodes: [] };
     try {
-      return buildFieldTree(uiParams ?? [], types);
+      const { nodes } = buildFieldTree((uiParams ?? []) as FieldCfg[], types);
+      return { nodes };
     } catch {
       return { nodes: [] };
     }

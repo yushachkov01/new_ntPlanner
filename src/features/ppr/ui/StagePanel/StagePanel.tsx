@@ -129,7 +129,8 @@ export const StagePanel: FC<StagePanelProps> = ({
     const entries = Object.entries(rawFields) as [string, StageFieldDef][];
     return entries
       .map(([fieldKey, fieldDef], index) => {
-        const def: any = (types as any)?.[String(fieldDef?.type ?? '').trim()];
+        const dict = (types as any)?.types || (types as any) || {};
+        const def: any = dict[String(fieldDef?.type ?? '').trim()];
         const merged: StageFieldDef & { __idx: number } = {
           key: fieldKey,
           ...(fieldDef || {}),
@@ -389,7 +390,7 @@ export const StagePanel: FC<StagePanelProps> = ({
            preserve
           >
             {wrapTimer()}
-            {nonFileFields.map((fd) => renderField(fd))}
+            {nonFileFields.map((fd) => renderField(fd, types as any))}
           </Form>
         </div>
 
