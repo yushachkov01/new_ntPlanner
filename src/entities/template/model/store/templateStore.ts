@@ -156,8 +156,8 @@ export const templateStore = create<TemplatesState>()(
 
             /** читаем и парсим каждый YAML-файл */
             for (const obj of objects) {
-              if (!obj.Key?.endsWith('.yaml')) continue;
-              const yamlText = await getObjectText(bucket, obj.Key);
+              if (!/\.(ya?ml)$/i.test(obj.Key ?? '')) continue;
+              const yamlText = await getObjectText(bucket, obj.Key as string);
               const { data, error } = parseYaml(yamlText);
               if (error) {
                 console.error('YAML parse error', obj.Key, error);

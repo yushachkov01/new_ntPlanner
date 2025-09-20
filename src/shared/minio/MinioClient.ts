@@ -46,10 +46,27 @@ export const ensureBucket = async (bucket: string) => {
  * @returns Promise<Contents[]> — массив метаданных объектов
  */
 export const listObjects = async (bucket: string, prefix = '') => {
-  const { Contents } = await minio.send(
-    new ListObjectsV2Command({ Bucket: bucket, Prefix: prefix }),
-  );
-  return Contents ?? [];
+  const collectedObjects: Array<{ Key?: string }> = [];
+  let continuationToken: string | undefined = undefined;
+
+  do {
+    const { Contents, IsTruncated, NextContinuationToken } = await minio.send(
+        new ListObjectsV2Command({
+          Bucket: bucket,
+          Prefix: prefix,
+          ContinuationToken: continuationToken,
+          MaxKeys: 1000,
+        }),
+    );
+
+    if (Contents && Contents.length > 0) {
+      collectedObjects.push(...Contents);
+    }
+
+    continuationToken = IsTruncated ? NextContinuationToken : undefined;
+  } while (continuationToken);
+
+  return collectedObjects;
 };
 
 /**

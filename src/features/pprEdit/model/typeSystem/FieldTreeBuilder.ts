@@ -24,6 +24,14 @@ export type FieldNode =
       widget: 'input' | 'number' | 'checkbox' | 'select';
       options?: Array<{ label: string; value: any }>;
       rules?: Rule[];
+      /** множественный выбор для select */
+      multiple?: boolean;
+      /** числовые ограничения (если есть) */
+      min?: number;
+      max?: number;
+      step?: number;
+      /** плейсхолдер, если задан в схеме */
+      placeholder?: string;
     }
   | {
       kind: 'interface';
@@ -167,6 +175,52 @@ const isStructuredAlias = (entry: any) =>
   !('type' in entry) &&
   !('enum' in entry);
 
+/** вспомогательно: нормализация строкового типа */
+const normalizeType = (type?: string) => (type || '').toString().trim().toLowerCase();
+
+/** запись из types.yaml, поддержка ссылочных типов  */
+function mergeWithTypeDef(schema: any, typesYaml?: any): any {
+  const rawType = (schema?.type ?? '').toString().trim();
+  const isRef = rawType.startsWith('^');
+  const typeKey = isRef ? rawType.slice(1) : rawType;
+  const hit = typesYaml ? findTypeEntry(typeKey, typesYaml) : null;
+  const fromTypes = hit?.entry;
+
+  if (!fromTypes || typeof fromTypes !== 'object') {
+    return { ...schema, type: isRef ? typeKey : rawType };
+  }
+  return { ...(fromTypes as object), ...(schema as object), type: isRef ? typeKey : rawType };
+}
+
+/** собрать enum/options или любые другие типы из types.yaml */
+function buildOptions(schema: any, typesYaml?: any): Array<{ label: string; value: any }> {
+  const effective = mergeWithTypeDef(schema, typesYaml);
+  const raw: any[] =
+      (Array.isArray(effective?.enum) && effective.enum) ||
+      (Array.isArray(effective?.options) && effective.options) ||
+      (Array.isArray(effective?.check) && effective.check) ||
+      (Array.isArray(schema?.enum) && schema.enum) ||
+      (Array.isArray(schema?.check) && schema.check) ||
+      [];
+  const seen = new Set<string>();
+  return raw
+      .map((opt: any) => {
+        const label =
+            typeof opt === 'object' && opt !== null
+                ? (opt.label ?? opt.value ?? JSON.stringify(opt))
+                : String(opt);
+        const value =
+            typeof opt === 'object' && opt !== null ? (opt.value ?? JSON.stringify(opt)) : String(opt);
+        return { label: String(label), value };
+      })
+      .filter((o) => {
+        const key = String(o.value);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+}
+
 /**
  * Добавить field-узел по простому типу / enum
  */
@@ -179,11 +233,35 @@ function pushSimpleFieldNode(
   required?: boolean,
   typesYaml?: any,
 ) {
+  const effective = mergeWithTypeDef(schema ?? {}, typesYaml);
   const explicitEnum = Array.isArray(schema?.enum) ? schema.enum : undefined;
   const resolved = resolveType(schema?.type ?? rawType, typesYaml);
-  const finalEnum = explicitEnum ?? resolved.enum;
+  const finalEnum =
+      explicitEnum ??
+      resolved.enum ??
+      (Array.isArray(effective?.options) ? effective.options : undefined) ??
+      (Array.isArray((effective as any)?.check) ? (effective as any).check : undefined);
+  const finalOptions = buildOptions({ ...effective, enum: finalEnum }, typesYaml);
 
-  if (resolved.base === 'number' || resolved.base === 'int') {
+
+  if (normalizeType(effective?.type) === 'memo') {
+    nodes.push({
+      kind: 'field',
+      key,
+      label,
+      rawType,
+      widget: 'textarea',
+      rules: buildRules(required ?? schema?.required),
+      placeholder: (effective?.placeholder as string) || undefined,
+    });
+    return;
+  }
+
+  if (
+      resolved.base === 'number' ||
+      resolved.base === 'int' ||
+      normalizeType(effective?.type) === 'number'
+  ) {
     nodes.push({
       kind: 'field',
       key,
@@ -191,10 +269,14 @@ function pushSimpleFieldNode(
       rawType,
       widget: 'number',
       rules: buildRules(required ?? schema?.required),
+      min: (effective?.min as number | undefined) ?? undefined,
+      max: (effective?.max as number | undefined) ?? undefined,
+      step: (effective?.step as number | undefined) ?? undefined,
+      placeholder: (effective?.placeholder as string) || undefined,
     });
     return;
   }
-  if (resolved.base === 'boolean') {
+  if (resolved.base === 'boolean' || normalizeType(effective?.type) === 'boolean') {
     nodes.push({
       kind: 'field',
       key,
@@ -205,15 +287,27 @@ function pushSimpleFieldNode(
     });
     return;
   }
-  if (finalEnum && finalEnum.length) {
+
+  const isDropdown =
+      normalizeType(effective?.widget) === 'dropdown' ||
+      (finalOptions && Array.isArray(finalOptions) && finalOptions.length > 0) ||
+      Array.isArray((effective as any)?.check);
+  if (isDropdown) {
+    const isMultiple =
+        Boolean(effective?.multiple) ||
+        normalizeType(effective?.widget).includes('multi') ||
+        Array.isArray((effective as any)?.check);
+
     nodes.push({
       kind: 'field',
       key,
       label,
       rawType,
       widget: 'select',
-      options: finalEnum.map((v: any) => ({ label: String(v), value: v })),
+      options: finalOptions?.map((o) => ({ label: String(o.label), value: o.value })),
       rules: buildRules(required ?? schema?.required),
+      multiple: isMultiple,
+      placeholder: (effective?.placeholder as string) || undefined,
     });
     return;
   }
@@ -224,6 +318,7 @@ function pushSimpleFieldNode(
     rawType,
     widget: 'input',
     rules: buildRules(required ?? schema?.required),
+    placeholder: (effective?.placeholder as string) || undefined,
   });
 }
 
@@ -237,11 +332,14 @@ function pushSimpleFieldNode(
 export function buildFieldTree(params: FieldCfg[] = [], typesYaml?: any): { nodes: FieldNode[] } {
   const nodes: FieldNode[] = [];
 
-  for (const param of params) {
+  for (const param of params as any[]) {
     const key = String((param as any).key ?? (param as any).name ?? '');
     const label = String((param as any).label ?? (param as any).name ?? key);
     const paramType = String((param as any).type ?? 'string');
 
+    if (!key) continue;
+
+    /** Поддержка интерфейсов */
     if (paramType === 'interface' || paramType === 'interface_with_vlan') {
       nodes.push({
         kind: 'interface',
@@ -312,10 +410,17 @@ export function buildFieldTree(params: FieldCfg[] = [], typesYaml?: any): { node
       // interfaces
       if (
         struct.interfaces &&
-        (struct.interfaces.type === 'collection' || struct.interfaces.type === 'array')
+        (normalizeType(struct.interfaces.type) === 'collection' ||
+            normalizeType(struct.interfaces.type) === 'array' ||
+            normalizeType(struct.interfaces.type) === 'list')
       ) {
-        const inner = struct.interfaces.inner_type ?? struct.interfaces.items?.type;
-        const innerType = String(inner ?? '');
+        const inner =
+            struct.interfaces.inner_type ??
+            struct.interfaces.items?.type ??
+            struct.interfaces.items;
+        const innerType = String(
+            (typeof inner === 'string' ? inner : (inner?.type as string)) ?? '',
+        );
 
         if (innerType === 'interface' || innerType === 'interface_with_vlan') {
           nodes.push({
@@ -361,28 +466,64 @@ export function buildFieldTree(params: FieldCfg[] = [], typesYaml?: any): { node
     const explicitEnum = Array.isArray((param as any).enum) ? (param as any).enum : undefined;
     const finalEnum = explicitEnum ?? resolved.enum;
 
-    /** string + enum -> select */
-    if (resolved.base === 'string') {
-      if (finalEnum && finalEnum.length) {
-        nodes.push({
-          kind: 'field',
-          key,
-          label,
-          rawType: paramType,
-          widget: 'select',
-          options: finalEnum.map((value: any) => ({ label: String(value), value })),
-          rules: buildRules((param as any).required),
-        });
-      } else {
-        nodes.push({
-          kind: 'field',
-          key,
-          label,
-          rawType: paramType,
-          widget: 'input',
-          rules: buildRules((param as any).required),
-        });
-      }
+    /** string + enum/options/widget -> select */
+    const effective = mergeWithTypeDef(param, typesYaml);
+    // соберём опции (учтёт enum/options/check)
+    const builtOptions = buildOptions(effective, typesYaml);
+
+    const hasDropdown =
+        normalizeType(effective?.widget) === 'dropdown' ||
+        (finalEnum && finalEnum.length) ||
+        (Array.isArray(effective?.options) && effective.options.length > 0) ||
+        (Array.isArray((effective as any)?.check) && (effective as any).check.length > 0) ||
+        (builtOptions.length > 0);
+
+    if (normalizeType(effective?.type) === 'memo') {
+      nodes.push({
+        kind: 'field',
+        key,
+        label,
+        rawType: paramType,
+        widget: 'textarea',
+        rules: buildRules((param as any).required),
+        placeholder: (effective?.placeholder as string) || undefined,
+      });
+      continue;
+    }
+
+    /** string + enum/options/check -> select */
+    if (resolved.base === 'string' && hasDropdown) {
+      const options = (
+          finalEnum ??
+          effective?.options ??
+          (effective as any)?.check ??
+          builtOptions
+      ).map((value: any) =>
+          typeof value === 'object' && value !== null
+              ? {
+                label: String(value.label ?? value.value ?? JSON.stringify(value)),
+                value: value.value ?? JSON.stringify(value),
+              }
+              : { label: String(value), value },
+      );
+
+      const isMultiple =
+          Boolean(effective?.multiple) ||
+          normalizeType(effective?.widget).includes('multi') ||
+          normalizeType(effective?.type).includes('multi') ||
+          Array.isArray((effective as any)?.check);
+
+      nodes.push({
+        kind: 'field',
+        key,
+        label,
+        rawType: paramType,
+        widget: 'select',
+        options,
+        rules: buildRules((param as any).required),
+        multiple: isMultiple,
+        placeholder: (effective?.placeholder as string) || undefined,
+      });
       continue;
     }
 
@@ -395,6 +536,10 @@ export function buildFieldTree(params: FieldCfg[] = [], typesYaml?: any): { node
         rawType: paramType,
         widget: 'number',
         rules: buildRules((param as any).required),
+        min: (effective?.min as number | undefined) ?? undefined,
+        max: (effective?.max as number | undefined) ?? undefined,
+        step: (effective?.step as number | undefined) ?? undefined,
+        placeholder: (effective?.placeholder as string) || undefined,
       });
       continue;
     }
@@ -420,6 +565,7 @@ export function buildFieldTree(params: FieldCfg[] = [], typesYaml?: any): { node
       rawType: paramType,
       widget: 'input',
       rules: buildRules((param as any).required),
+      placeholder: (effective?.placeholder as string) || undefined,
     });
   }
 
