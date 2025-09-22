@@ -3,7 +3,7 @@ mutation InsertPlannedTasks($objects: [planned_tasks_insert_input!]!) {
     objects: $objects
     on_conflict: {
       constraint: planned_tasks_pkey
-      update_columns: [time_work, description, equipment]
+      update_columns: [time_work_id, description, yaml_url, author_id, rm_task_id, project_id, status]
     }
   ) {
     affected_rows

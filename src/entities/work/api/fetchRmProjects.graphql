@@ -1,5 +1,5 @@
 query fetchRmProjects {
-  public7_rm_projects {
+  rm_projects {
     id
     ext_id
     name

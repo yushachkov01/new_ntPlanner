@@ -1,5 +1,5 @@
 query fetchDevices {
-  public7_devices {
+  devices {
     id
     hostname
     node_id

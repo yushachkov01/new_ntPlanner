@@ -1,6 +1,6 @@
 # Города
 query fetchCities {
-  public7_cities {
+  cities {
     id
     name
     time_zone

@@ -1,6 +1,6 @@
 # Исполнители (users)
 query fetchExecutors {
-  public7_users {
+  users {
     id
     email
     name

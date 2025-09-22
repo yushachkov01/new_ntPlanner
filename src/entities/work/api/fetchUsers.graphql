@@ -1,5 +1,5 @@
 query fetchUsers {
-  public7_users {
+  users {
     id
     email
     name

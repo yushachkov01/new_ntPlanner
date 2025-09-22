@@ -1,5 +1,5 @@
 query plannedTaskByPk($id: uuid!) {
-  public7_planned_tasks_by_pk(id: $id) {
+  planned_tasks_by_pk(id: $id) {
     id
     name
     description
@@ -12,20 +12,20 @@ query plannedTaskByPk($id: uuid!) {
 }
 
 query namesLike($pattern: String!) {
-  public7_planned_tasks(where: { name: { _ilike: $pattern } }) {
+  planned_tasks(where: { name: { _ilike: $pattern } }) {
     name
   }
 }
 
 # mutations
-mutation updatePlannedTask($id: uuid!, $_set: public7_planned_tasks_set_input!) {
-  update_public7_planned_tasks(where: { id: { _eq: $id } }, _set: $_set) {
+mutation updatePlannedTask($id: uuid!, $_set: planned_tasks_set_input!) {
+  update_planned_tasks(where: { id: { _eq: $id } }, _set: $_set) {
     affected_rows
   }
 }
 
-mutation insertPlannedTaskOne($object: public7_planned_tasks_insert_input!) {
-  insert_public7_planned_tasks_one(object: $object) {
+mutation insertPlannedTaskOne($object: planned_tasks_insert_input!) {
+  insert_planned_tasks_one(object: $object) {
     id
     name
     description

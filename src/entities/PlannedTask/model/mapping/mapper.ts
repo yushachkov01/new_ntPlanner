@@ -2,26 +2,24 @@ import type { FetchPlannedTasksQuery } from '@/entities/work/api/fetchPlannedTas
 import type { FetchRmProjectsQuery } from '@/entities/work/api/fetchRmProjects.generated';
 import type { FetchRmTasksQuery } from '@/entities/work/api/fetchRmTasks.generated';
 import type { FetchTimeWorksQuery } from '@/entities/work/api/fetchTimeWorks.generated';
-import type {
-  Public7_Planned_Tasks_Insert_Input,
-  Public7_Planned_Tasks_Set_Input,
-} from '@/shared/api/graphql';
+
 import type { FetchDevicesQuery } from '@entities/work/api/fetchDevices.generated';
+import {Planned_Tasks_Insert_Input, Planned_Tasks_Set_Input} from "@/shared/api/graphql";
 
-/** Сырые данные задачи из public7_planned_tasks (snake_case) */
-export type RawTask = FetchPlannedTasksQuery['public7_planned_tasks'][number];
+/** Сырые данные задачи из planned_tasks (snake_case) */
+export type RawTask = FetchPlannedTasksQuery['planned_tasks'][number];
 
-/** Сырые данные интервала из public7_time_works (snake_case) */
-export type RawTimeWork = FetchTimeWorksQuery['public7_time_works'][number];
+/** Сырые данные интервала из time_works (snake_case) */
+export type RawTimeWork = FetchTimeWorksQuery['time_works'][number];
 
-/** Сырые данные проекта из public7_rm_projects (snake_case) */
-export type RawProject = FetchRmProjectsQuery['public7_rm_projects'][number];
+/** Сырые данные проекта из rm_projects (snake_case) */
+export type RawProject = FetchRmProjectsQuery['rm_projects'][number];
 
-/** Сырые данные Redmine-задачи из public7_rm_tasks (snake_case) */
-export type RawRmTask = FetchRmTasksQuery['public7_rm_tasks'][number];
+/** Сырые данные Redmine-задачи из rm_tasks (snake_case) */
+export type RawRmTask = FetchRmTasksQuery['rm_tasks'][number];
 
-/** Сырые данные Redmine-задачи из public7_devices (snake_case) */
-export type RawDevice = FetchDevicesQuery['public7_devices'][number];
+/** Сырые данные Redmine-задачи из devices (snake_case) */
+export type RawDevice = FetchDevicesQuery['devices'][number];
 
 /** Доменная модель задачи (camelCase) */
 export interface PlannedTask {
@@ -32,6 +30,7 @@ export interface PlannedTask {
   yamlUrl: string;
   timeWorkId: string;
   authorId: string;
+  projectId: string | null
 }
 
 /** Доменная модель интервала времени (camelCase + Date) */
@@ -141,13 +140,13 @@ export function toDomainDevice(r: RawDevice): Device {
 
 /** domain → raw (GraphQL inputs)
  *   Используем именно сгенерированные типы Hasura:
- *     - Public7_Planned_Tasks_Insert_Input
- *     - Public7_Planned_Tasks_Set_Input
+ *     - Planned_Tasks_Insert_Input
+ *     - Planned_Tasks_Set_Input
  *  Это убирает расхождения между типами выборки (query) и типами записи (insert/update).
  */
 
 /** Полный объект для INSERT (все поля опциональные)*/
-export function toRawTaskInsert(plannedTask: PlannedTask): Public7_Planned_Tasks_Insert_Input {
+export function toRawTaskInsert(plannedTask: PlannedTask): Planned_Tasks_Insert_Input {
   return {
     name: clean(plannedTask.name),
     description: clean(plannedTask.description),
@@ -155,10 +154,11 @@ export function toRawTaskInsert(plannedTask: PlannedTask): Public7_Planned_Tasks
     yaml_url: clean(plannedTask.yamlUrl),
     time_work_id: asUuid(plannedTask.timeWorkId),
     author_id: asUuid(plannedTask.authorId),
+    project_id: asUuid(plannedTask.projectId),
   };
 }
 
-export function toRawTaskSet(partialTask: Partial<PlannedTask>): Public7_Planned_Tasks_Set_Input {
+export function toRawTaskSet(partialTask: Partial<PlannedTask>): Planned_Tasks_Set_Input {
   return {
     name: partialTask.name !== undefined ? clean(partialTask.name) : undefined,
     description: partialTask.description !== undefined ? clean(partialTask.description) : undefined,

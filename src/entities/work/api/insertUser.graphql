@@ -1,5 +1,5 @@
-mutation InsertUser($object: users_insert_input!) {
-  insert_users_one(object: $object) {
+mutation InsertUser($object: user_insert_input!) {
+  insert_user_one(object: $object) {
     id
     role
     author

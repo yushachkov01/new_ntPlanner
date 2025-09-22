@@ -2,7 +2,7 @@ import type { FetchRolesQuery } from '@entities/work/api/fetchRoles.generated';
 import type { FetchUsersQuery } from '@entities/work/api/fetchUsers.generated';
 
 /** Сырой тип роли (snake_case) */
-export type RawRole = FetchRolesQuery['public7_roles'][number];
+export type RawRole = FetchRolesQuery['roles'][number];
 
 /** Доменный тип роли (camelCase) */
 export interface Role {
@@ -18,7 +18,7 @@ export function toDomainRole(r: RawRole): Role {
 }
 
 /** Сырой тип пользователя (snake_case) */
-export type RawUser = FetchUsersQuery['public7_users'][number];
+export type RawUser = FetchUsersQuery['users'][number];
 
 /** Доменный тип пользователя (camelCase) */
 export interface User {

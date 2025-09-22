@@ -1,6 +1,6 @@
 # Узлы
 query fetchNodes {
-  public7_nodes {
+  nodes {
     id
     name
     address

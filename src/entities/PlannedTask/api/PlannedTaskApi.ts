@@ -11,37 +11,37 @@ const rmTasksSdk = getRmTasksSdk(graphqlClient);
 const deviceSdk = getDeviceSdk(graphqlClient);
 /**
  * Читает все запланированные задачи
- * @returns массив сырых записей public7_planned_tasks
+ * @returns массив сырых записей planned_tasks
  */
 export async function fetchPlannedTasks() {
-  const { public7_planned_tasks } = await tasksSdk.fetchPlannedTasks();
-  return public7_planned_tasks;
+  const { planned_tasks } = await tasksSdk.fetchPlannedTasks();
+  return planned_tasks;
 }
 
 /**
  * Читает все временные интервалы (TimeWorks) из GraphQL.
- * @returns массив сырых записей public7_time_works
+ * @returns массив сырых записей time_works
  */
 export async function fetchTimeWorks() {
-  const { public7_time_works } = await timeWorksSdk.fetchTimeWorks();
-  return public7_time_works;
+  const { time_works } = await timeWorksSdk.fetchTimeWorks();
+  return time_works;
 }
 
 /**
  * Читает все проекты Redmine из GraphQL.
- * @returns массив сырых записей public7_rm_projects
+ * @returns массив сырых записей rm_projects
  */
 export async function fetchRmProjects() {
-  const { public7_rm_projects } = await projectsSdk.fetchRmProjects();
-  return public7_rm_projects;
+  const { rm_projects } = await projectsSdk.fetchRmProjects();
+  return rm_projects;
 }
 
 export async function fetchRmTasks() {
-  const { public7_rm_tasks } = await rmTasksSdk.fetchRmTasks();
-  return public7_rm_tasks;
+  const { rm_tasks } = await rmTasksSdk.fetchRmTasks();
+  return rm_tasks;
 }
 
 export async function fetchDevices() {
-  const { public7_devices } = await deviceSdk.fetchDevices();
-  return public7_devices;
+  const { devices } = await deviceSdk.fetchDevices();
+  return devices;
 }

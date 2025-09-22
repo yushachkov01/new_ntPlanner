@@ -1,6 +1,6 @@
 # Интервалы работ
 query fetchTimeWorks {
-  public7_time_works {
+  time_works {
     id
     start_at
     end_at

@@ -15,37 +15,37 @@ import type { FetchProvidersQuery } from '@entities/work/api/fetchProviders.gene
 /**
  * Получить список провайдеров
  */
-export async function fetchProviders(): Promise<FetchProvidersQuery['public7_providers']> {
-  const { public7_providers } = await graphqlClient.request<FetchProvidersQuery>(
+export async function fetchProviders(): Promise<FetchProvidersQuery['providers']> {
+  const { providers } = await graphqlClient.request<FetchProvidersQuery>(
     FetchProvidersDocument,
     {},
   );
-  return public7_providers;
+  return providers;
 }
 
 /**
  * Получить список филиалов
  */
-export async function fetchBranches(): Promise<FetchBranchesQuery['public7_branches']> {
-  const { public7_branches } = await graphqlClient.request<FetchBranchesQuery>(
+export async function fetchBranches(): Promise<FetchBranchesQuery['branches']> {
+  const { branches } = await graphqlClient.request<FetchBranchesQuery>(
     FetchBranchesDocument,
     {},
   );
-  return public7_branches;
+  return branches;
 }
 
 /**
  * Получить список городов
  */
-export async function fetchCities(): Promise<FetchCitiesQuery['public7_cities']> {
-  const { public7_cities } = await graphqlClient.request<FetchCitiesQuery>(FetchCitiesDocument, {});
-  return public7_cities;
+export async function fetchCities(): Promise<FetchCitiesQuery['cities']> {
+  const { cities } = await graphqlClient.request<FetchCitiesQuery>(FetchCitiesDocument, {});
+  return cities;
 }
 
 /**
  * Получить список узлов
  */
-export async function fetchNodes(): Promise<FetchNodesQuery['public7_nodes']> {
-  const { public7_nodes } = await graphqlClient.request<FetchNodesQuery>(FetchNodesDocument, {});
-  return public7_nodes;
+export async function fetchNodes(): Promise<FetchNodesQuery['nodes']> {
+  const { nodes } = await graphqlClient.request<FetchNodesQuery>(FetchNodesDocument, {});
+  return nodes;
 }

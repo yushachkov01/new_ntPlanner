@@ -1,5 +1,5 @@
 query fetchRoles {
-  public7_roles {
+  roles {
     id
     role
   }

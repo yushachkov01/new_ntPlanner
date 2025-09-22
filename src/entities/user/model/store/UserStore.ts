@@ -3,7 +3,7 @@ import { create } from 'zustand';
 import * as api from '@/entities/user/api/UserApi';
 import type { FetchUserQuery } from '@entities/work/api/fetchUser.generated.ts';
 
-type User = NonNullable<FetchUserQuery['users_by_pk']>;
+type User = NonNullable<FetchUserQuery['user_by_pk']>;
 
 /**
  * UserStore — zustand-хранилище для текущего ( авторизованного пользователя ).

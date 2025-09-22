@@ -14,10 +14,10 @@ import type { FetchProvidersQuery } from '@entities/work/api/fetchProviders.gene
  * @property address — адрес площадки (может быть null)
  * @property city_id — ID города (в узле)
  */
-export type RawProvider = FetchProvidersQuery['public7_providers'][number];
-export type RawBranch = FetchBranchesQuery['public7_branches'][number];
-export type RawCity = FetchCitiesQuery['public7_cities'][number];
-export type RawNode = FetchNodesQuery['public7_nodes'][number];
+export type RawProvider = FetchProvidersQuery['providers'][number];
+export type RawBranch = FetchBranchesQuery['branches'][number];
+export type RawCity = FetchCitiesQuery['cities'][number];
+export type RawNode = FetchNodesQuery['nodes'][number];
 
 /**
  * Доменная модель провайдера

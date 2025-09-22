@@ -1,6 +1,6 @@
 # Плановые задачи
 query fetchPlannedTasks {
-  public7_planned_tasks {
+  planned_tasks {
     id
     name
     description

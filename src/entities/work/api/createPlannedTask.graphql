@@ -1,5 +1,5 @@
-mutation createPlannedTask($object: public7_planned_tasks_insert_input!) {
-  insert_public7_planned_tasks_one(object: $object) {
+mutation createPlannedTask($object: planned_tasks_insert_input!) {
+  insert_planned_tasks_one(object: $object) {
     id
     name
     description

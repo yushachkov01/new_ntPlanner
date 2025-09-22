@@ -49,7 +49,7 @@ export default function useHasuraInterfaces({ requestType }: Props) {
   }, []);
 
   /**
-   * Тянем последнюю запись public7.query для выбранного устройства/типа.
+   * Тянем последнюю запись query для выбранного устройства/типа.
    */
   const pullLatest = useCallback(async () => {
     if (!selectedDevice) return;
@@ -63,7 +63,7 @@ export default function useHasuraInterfaces({ requestType }: Props) {
         FetchLastInterfacesDocument,
         variables,
       );
-      const row = data?.public7_query?.[0];
+      const row = data?.query?.[0];
       const list = (row?.result as any)?.interfaces as string[] | undefined;
       setIfaceOptions(normalizeInterfaces(list));
     } finally {
@@ -93,20 +93,33 @@ export default function useHasuraInterfaces({ requestType }: Props) {
   useEffect(() => {
     const unsubscribe = subscribe((msg) => {
       try {
+        if (!msg) return;
         if (msg?.type === 'iface.ping' || msg?.type === 'iface.connected') return;
 
-        if (msg?.type === 'iface.data') {
-          const okTable = msg?.table === 'public7.query' || msg?.table === 'public7_query';
-          const okType = String(msg?.requestType) === String(requestType);
-          const okDevice =
-            !!selectedDevice &&
-            (String(msg?.deviceId) === String(selectedDevice) ||
-              String(msg?.device) === String(selectedDevice));
+        const isIfaceEvent = msg?.type === 'iface.data' || msg?.type === 'iface.result';
+        if (!isIfaceEvent) return;
+        const tableName = String(msg?.table ?? '');
+        const okTable =
+            tableName === 'query' ||
+            tableName === 'public.query'
 
-          if (okTable && okType && okDevice) {
-            const list: string[] = msg?.interfaces ?? msg?.result?.interfaces ?? [];
-            setIfaceOptions(normalizeInterfaces(list));
-          }
+        const incomingRequestType = String(msg?.requestType ?? msg?.payload?.request_type ?? '');
+        const okType = incomingRequestType === String(requestType);
+
+        const incomingDeviceId = String(
+            msg?.deviceId ?? msg?.payload?.device_id ?? msg?.payload?.deviceId ?? '',
+        );
+        const okDevice =
+            !!selectedDevice && incomingDeviceId !== '' && incomingDeviceId === String(selectedDevice);
+
+        if (okTable && okType && okDevice) {
+          const list: string[] =
+              msg?.interfaces ??
+              msg?.payload?.interfaces ??
+              msg?.result?.interfaces ??
+              msg?.payload?.result?.interfaces ??
+              [];
+          setIfaceOptions(normalizeInterfaces(list));
         }
       } catch {}
     });

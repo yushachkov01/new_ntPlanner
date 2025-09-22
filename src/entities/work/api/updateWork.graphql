@@ -1,6 +1,6 @@
-mutation UpdateWork($idInt: Int!, $set: works_set_input!) {
-  update_works_by_pk(pk_columns: { idInt: $idInt }, _set: $set) {
-    idInt
+mutation UpdateWork($id: Int!, $set: works_set_input!) {
+  update_works_by_pk(pk_columns: { id: $id }, _set: $set) {
+    id
     date
     project
     site

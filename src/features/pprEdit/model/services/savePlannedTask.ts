@@ -27,7 +27,7 @@ export async function ensureUniqueName(baseRaw: string): Promise<string> {
   const pattern = `${escapeLike(base)}%`;
 
   const queryResult = await namesLike({ pattern });
-  const takenNames = new Set((queryResult.public7_planned_tasks ?? []).map((row) => row.name));
+  const takenNames = new Set((queryResult.planned_tasks ?? []).map((row) => row.name));
 
   if (!takenNames.has(base)) return base;
 
@@ -412,7 +412,7 @@ export async function savePlannedTask({
     insertObject.status = PLANNED_TASK_STATUS.ON_REVIEW;
 
     const insertResult = await insertPlannedTaskOne({ object: insertObject });
-    const created = insertResult.insert_public7_planned_tasks_one;
+    const created = insertResult.insert_planned_tasks_one;
 
     if (created?.id) {
       message.success(`Создана новая запись planned_tasks (id: ${created.id})`);
@@ -441,7 +441,7 @@ export async function savePlannedTask({
   patchSet.status = PLANNED_TASK_STATUS.ON_REVIEW;
 
   const updateResult = await updatePlannedTask({ id: selectedTaskId as any, _set: patchSet });
-  const affectedRows = updateResult.update_public7_planned_tasks?.affected_rows ?? 0;
+  const affectedRows = updateResult.update_planned_tasks?.affected_rows ?? 0;
 
   if (affectedRows > 0) {
     message.success('Плановая задача обновлена и отправлена на проверку');

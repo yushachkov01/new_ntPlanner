@@ -1,5 +1,5 @@
 query FetchUser($id: Int!) {
-  users_by_pk(id: $id) {
+  user_by_pk(id: $id) {
     id
     role
     author
