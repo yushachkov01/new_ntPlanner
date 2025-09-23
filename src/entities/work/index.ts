@@ -1,5 +1,5 @@
-export * from './api/WorkApi.ts';
-export * from '@entities/work/model/store/WorkStore.ts';
+export * from './api/WorkApi';
+export * from '@entities/work/model/store/WorkStore';
 import { graphqlClient } from '@/shared/lib/graphql/client';
 import { getSdk } from '@entities/work/api/plannedTasks.generated';
 

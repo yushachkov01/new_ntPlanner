@@ -5,53 +5,15 @@
  * поле формы или интерфейсное поле.
  */
 
-import type { Rule } from 'antd/es/form';
-
 import type { FieldCfg } from '@/features/pprEdit/model/types';
-
-/**
- * Узел декларативного дерева (FieldTree).
- * Может быть:
- *  - простое поле (field)
- *  - интерфейс (interface)
- */
-export type FieldNode =
-  | {
-      kind: 'field';
-      key: string;
-      label: string;
-      rawType: string;
-      widget: 'input' | 'number' | 'checkbox' | 'select';
-      options?: Array<{ label: string; value: any }>;
-      rules?: Rule[];
-      /** множественный выбор для select */
-      multiple?: boolean;
-      /** числовые ограничения (если есть) */
-      min?: number;
-      max?: number;
-      step?: number;
-      /** плейсхолдер, если задан в схеме */
-      placeholder?: string;
-    }
-  | {
-      kind: 'interface';
-      key: string;
-      label: string;
-      requestType?: string;
-      withVlan?: boolean;
-      /** множественный выбор интерфейсов (для коллекций) */
-      multiple?: boolean;
-    };
+import {StageFieldDef} from "@/shared/types/fieldRenderer/types";
+import {COMPOSITE_TYPE_SET} from "@/shared/constants";
+import {FieldNode} from "@/shared/types/fileNode/fileNode";
 
 /** Результат "раскрытия" типа из types.yaml */
 type ResolvedType = { base: string; enum?: any[]; format?: any };
 
-/**
- * Построение правил валидации для AntD Form
- *
- * @param required — обязательное ли поле
- * @returns массив правил или undefined
- */
+/** Построение правил валидации для AntD Form */
 function buildRules(required?: boolean) {
   if (!required) return undefined;
   return [{ required: true, message: 'Обязательное поле' }];
@@ -140,10 +102,7 @@ function resolveType(typeName: string, typesYaml?: any, guard = 0): ResolvedType
   if (!typesYaml) return { base: typeName };
   if (guard > 32) return { base: typeName };
   const hit = findTypeEntry(typeName, typesYaml);
-
-  if (!hit) {
-    return { base: typeName };
-  }
+  if (!hit) return { base: typeName };
 
   const typeEntry = hit.entry;
 
@@ -151,7 +110,11 @@ function resolveType(typeName: string, typesYaml?: any, guard = 0): ResolvedType
   if (Array.isArray(typeEntry)) {
     return { base: 'string', enum: typeEntry };
   }
-
+    /**
+     * Если запись типа (typeEntry) — объект и у него есть поле enum (массив значений):
+     * - Берём базовый тип (если явно указан type — строка, иначе "string")
+     * - Возвращаем ResolvedType с base, enum и format
+     */
   if (typeEntry && typeof typeEntry === 'object' && Array.isArray(typeEntry.enum)) {
     const base = typeof typeEntry.type === 'string' ? typeEntry.type : 'string';
     return { base, enum: typeEntry.enum, format: typeEntry.format };
@@ -199,8 +162,10 @@ function buildOptions(schema: any, typesYaml?: any): Array<{ label: string; valu
       (Array.isArray(effective?.enum) && effective.enum) ||
       (Array.isArray(effective?.options) && effective.options) ||
       (Array.isArray(effective?.check) && effective.check) ||
+      (Array.isArray(effective?.radio) && effective.radio) ||
       (Array.isArray(schema?.enum) && schema.enum) ||
       (Array.isArray(schema?.check) && schema.check) ||
+      (Array.isArray(schema?.radio) && schema.radio) ||
       [];
   const seen = new Set<string>();
   return raw
@@ -221,9 +186,7 @@ function buildOptions(schema: any, typesYaml?: any): Array<{ label: string; valu
       });
 }
 
-/**
- * Добавить field-узел по простому типу / enum
- */
+/** Простой field (input/number/checkbox/select/textarea/radio) — единая реализация */
 function pushSimpleFieldNode(
   nodes: FieldNode[],
   key: string,
@@ -233,6 +196,20 @@ function pushSimpleFieldNode(
   required?: boolean,
   typesYaml?: any,
 ) {
+    // спец. случай ^device → select без options (options придут на рендере)
+    if (rawType === '^device') {
+        nodes.push({
+            kind: 'field',
+            key,
+            label,
+            rawType,
+            widget: 'select',
+            rules: buildRules(required ?? schema?.required),
+            placeholder: (schema?.placeholder as string) || undefined,
+        });
+        return;
+    }
+
   const effective = mergeWithTypeDef(schema ?? {}, typesYaml);
   const explicitEnum = Array.isArray(schema?.enum) ? schema.enum : undefined;
   const resolved = resolveType(schema?.type ?? rawType, typesYaml);
@@ -243,7 +220,34 @@ function pushSimpleFieldNode(
       (Array.isArray((effective as any)?.check) ? (effective as any).check : undefined);
   const finalOptions = buildOptions({ ...effective, enum: finalEnum }, typesYaml);
 
+    // radio
+    const isRadioWidget =
+        normalizeType((effective as any)?.widget) === 'radio' ||
+        Array.isArray((effective as any)?.radio) ||
+        Array.isArray((schema as any)?.radio) ||
+        (Array.isArray((resolved as any)?.format)
+            ? (resolved as any).format.map(normalizeType).includes('radio')
+            : normalizeType((resolved as any)?.format) === 'radio');
 
+    if (isRadioWidget) {
+        const radioOptions = buildOptions(
+            { ...effective, radio: (effective as any)?.radio ?? (schema as any)?.radio },
+            typesYaml,
+        );
+        nodes.push({
+            kind: 'field',
+            key,
+            label,
+            rawType,
+            widget: 'radio',
+            options: radioOptions,
+            rules: buildRules(required ?? schema?.required),
+            placeholder: (effective?.placeholder as string) || undefined,
+        });
+        return;
+    }
+
+    // textarea (memo)
   if (normalizeType(effective?.type) === 'memo') {
     nodes.push({
       kind: 'field',
@@ -276,6 +280,7 @@ function pushSimpleFieldNode(
     });
     return;
   }
+  // boolean → checkbox
   if (resolved.base === 'boolean' || normalizeType(effective?.type) === 'boolean') {
     nodes.push({
       kind: 'field',
@@ -287,7 +292,7 @@ function pushSimpleFieldNode(
     });
     return;
   }
-
+  // dropdown (string + enum/options/check)
   const isDropdown =
       normalizeType(effective?.widget) === 'dropdown' ||
       (finalOptions && Array.isArray(finalOptions) && finalOptions.length > 0) ||
@@ -311,6 +316,7 @@ function pushSimpleFieldNode(
     });
     return;
   }
+  // default: input
   nodes.push({
     kind: 'field',
     key,
@@ -322,92 +328,63 @@ function pushSimpleFieldNode(
   });
 }
 
-/**
- * Главная функция: строит декларативное дерево (FieldTree) из параметров.
- *
- * @param params — массив параметров конфигурации
- * @param typesYaml — объект types.yaml для резолвинга alias и enum
- * @returns FieldTree — массив узлов
- */
-export function buildFieldTree(params: FieldCfg[] = [], typesYaml?: any): { nodes: FieldNode[] } {
-  const nodes: FieldNode[] = [];
-
-  for (const param of params as any[]) {
-    const key = String((param as any).key ?? (param as any).name ?? '');
-    const label = String((param as any).label ?? (param as any).name ?? key);
-    const paramType = String((param as any).type ?? 'string');
-
-    if (!key) continue;
-
-    /** Поддержка интерфейсов */
-    if (paramType === 'interface' || paramType === 'interface_with_vlan') {
-      nodes.push({
+/** Композитный (интерфейс-подобный) узел */
+function pushCompositeNode(
+    nodes: FieldNode[],
+    key: string,
+    label: string,
+    typeKey: string,
+    opts?: { multiple?: boolean },
+) {
+    const isIface = typeKey.startsWith('interface');
+    nodes.push({
         kind: 'interface',
         key,
         label,
-        requestType: 'interface',
-        withVlan: paramType === 'interface_with_vlan',
-      });
-      continue;
-    }
+        requestType: isIface ? 'interface' : typeKey, // для routing — 'routing' и т.п.
+        withVlan: typeKey === 'interface_with_vlan',
+        multiple: !!opts?.multiple,
+    });
+}
 
-    if (paramType === '^device') {
-      nodes.push({
-        kind: 'field',
-        key,
-        label,
-        rawType: paramType,
-        widget: 'select',
-        rules: buildRules((param as any).required),
-      });
-      continue;
-    }
-
-    const hit = typesYaml ? findTypeEntry(paramType, typesYaml) : null;
-
-    if (hit && isStructuredAlias(hit.entry)) {
-      const struct = hit.entry as Record<string, any>;
-
-      // device
-      if (struct.device) {
+/** Разворачивание структурного алиаса (объект вида { device, model, interfaces, ... }) */
+function expandStructuredAlias(
+    nodes: FieldNode[],
+    baseKey: string,
+    baseLabel: string,
+    struct: Record<string, any>,
+    required: boolean | undefined,
+    typesYaml?: any,
+) {
+    // device
+    if (struct.device) {
         const schema = struct.device;
-        if (schema?.type === '^device') {
-          nodes.push({
-            kind: 'field',
-            key: `${key}.device`,
-            label: `${label}: устройство`,
-            rawType: '^device',
-            widget: 'select',
-            rules: buildRules(schema?.required ?? (param as any).required),
-          });
-        } else {
-          pushSimpleFieldNode(
+        pushSimpleFieldNode(
             nodes,
-            `${key}.device`,
-            `${label}: устройство`,
-            String(schema?.type ?? 'string'),
+            `${baseKey}.device`,
+            `${baseLabel}: устройство`,
+            String(schema?.type ?? '^device'),
             schema,
-            (param as any).required,
+            required,
             typesYaml,
-          );
-        }
-      }
+        );
+    }
 
-      // model
-      if (struct.model) {
+    // model
+    if (struct.model) {
         const schema = struct.model;
         pushSimpleFieldNode(
           nodes,
-          `${key}.model`,
-          `${label}: модель`,
+          `${baseKey}.model`,
+          `${baseLabel}: модель`,
           String(schema?.type ?? 'string'),
           schema,
-          (param as any).required,
+          required,
           typesYaml,
         );
       }
 
-      // interfaces
+      // interfaces (коллекция)
       if (
         struct.interfaces &&
         (normalizeType(struct.interfaces.type) === 'collection' ||
@@ -415,159 +392,130 @@ export function buildFieldTree(params: FieldCfg[] = [], typesYaml?: any): { node
             normalizeType(struct.interfaces.type) === 'list')
       ) {
         const inner =
-            struct.interfaces.inner_type ??
-            struct.interfaces.items?.type ??
-            struct.interfaces.items;
-        const innerType = String(
-            (typeof inner === 'string' ? inner : (inner?.type as string)) ?? '',
-        );
+            struct.interfaces.inner_type ?? struct.interfaces.items?.type ?? struct.interfaces.items;
+        const innerType = String((typeof inner === 'string' ? inner : (inner?.type as string)) ?? '');
 
-        if (innerType === 'interface' || innerType === 'interface_with_vlan') {
-          nodes.push({
-            kind: 'interface',
-            key: `${key}.interfaces`,
-            label: `${label}: интерфейсы`,
-            requestType: 'interface',
-            withVlan: innerType === 'interface_with_vlan',
-            multiple: true, // ключевой флаг
-          });
+        if (COMPOSITE_TYPE_SET.has(innerType)) {
+            pushCompositeNode(nodes, `${baseKey}.interfaces`, `${baseLabel}: интерфейсы`, innerType, {
+                multiple: true,
+            });
         } else {
-          nodes.push({
-            kind: 'field',
-            key: `${key}.interfaces`,
-            label: `${label}: интерфейсы`,
-            rawType: 'string',
-            widget: 'input',
-            rules: buildRules(struct.interfaces?.required ?? (param as any).required),
-          });
+            pushSimpleFieldNode(
+                nodes,
+                `${baseKey}.interfaces`,
+                `${baseLabel}: интерфейсы`,
+                'string',
+                struct.interfaces,
+                required,
+                typesYaml,
+            );
         }
-      }
-      for (const subKey of Object.keys(struct)) {
+    }
+
+    // прочие под-поля структуры
+    for (const subKey of Object.keys(struct)) {
         if (['device', 'model', 'interfaces'].includes(subKey)) continue;
         const schema = struct[subKey];
-        if (schema && typeof schema === 'object') {
+        if (!schema || typeof schema !== 'object') continue;
+
+        const subType = String(schema?.type ?? 'string');
+        if (COMPOSITE_TYPE_SET.has(subType)) {
+            pushCompositeNode(nodes, `${baseKey}.${subKey}`, `${baseLabel}: ${subKey}`, subType);
+        } else {
           pushSimpleFieldNode(
             nodes,
-            `${key}.${subKey}`,
-            `${label}: ${subKey}`,
-            String(schema?.type ?? 'string'),
+            `${baseKey}.${subKey}`,
+            `${baseLabel}: ${subKey}`,
+                subType,
             schema,
-            (param as any).required,
+            required,
             typesYaml,
           );
         }
       }
+}
 
-      continue;
+/** ОБЩАЯ сборка узлов — для params и stages */
+function buildNodesFromSpecs(specs: StageFieldDef[] = [], typesYaml?: any): { nodes: FieldNode[] } {
+    const nodes: FieldNode[] = [];
+
+    for (const spec of specs) {
+        const key = String(spec.key ?? '').trim();
+        if (!key) continue;
+        const label = String(spec.label ?? spec.key);
+        const typeKey = String(spec.type ?? 'string');
+
+        // Композитный тип
+        if (COMPOSITE_TYPE_SET.has(typeKey)) {
+            pushCompositeNode(nodes, key, label, typeKey, { multiple: !!spec.multiple });
+            continue;
+        }
+
+    // Структурный алиас
+    const hit = typesYaml ? findTypeEntry(typeKey, typesYaml) : null;
+    if (hit && isStructuredAlias(hit.entry)) {
+            expandStructuredAlias(nodes, key, label, hit.entry as Record<string, any>, spec.required, typesYaml);
+            continue;
+        }
+
+    pushSimpleFieldNode(
+            nodes,
+            key,
+            label,
+            typeKey,
+            {
+                type: typeKey,
+                enum: spec.enum,
+                options: spec.options,
+                widget: spec.widget,
+                min: spec.min,
+                max: spec.max,
+                step: spec.step,
+                placeholder: spec.placeholder,
+                required: spec.required,
+                multiple: spec.multiple,
+            },
+            spec.required,
+            typesYaml,
+        );
     }
+    return { nodes };
+}
 
-    /** Резолвим alias из types.yaml */
-    const resolved = resolveType(paramType, typesYaml);
-    const explicitEnum = Array.isArray((param as any).enum) ? (param as any).enum : undefined;
-    const finalEnum = explicitEnum ?? resolved.enum;
+/** Универсальный нормализатор → StageFieldDef (и для params, и для stages) */
+function toSpec(input: FieldCfg | (Partial<StageFieldDef> & { key: string })): StageFieldDef {
+    const rawInput = input as any;
+    const key = String(rawInput.key ?? rawInput.name ?? '').trim();
+    const label = String(rawInput.label ?? rawInput.name ?? key);
+    const type = String(rawInput.type ?? 'string');
 
-    /** string + enum/options/widget -> select */
-    const effective = mergeWithTypeDef(param, typesYaml);
-    // соберём опции (учтёт enum/options/check)
-    const builtOptions = buildOptions(effective, typesYaml);
-
-    const hasDropdown =
-        normalizeType(effective?.widget) === 'dropdown' ||
-        (finalEnum && finalEnum.length) ||
-        (Array.isArray(effective?.options) && effective.options.length > 0) ||
-        (Array.isArray((effective as any)?.check) && (effective as any).check.length > 0) ||
-        (builtOptions.length > 0);
-
-    if (normalizeType(effective?.type) === 'memo') {
-      nodes.push({
-        kind: 'field',
+    return {
         key,
         label,
-        rawType: paramType,
-        widget: 'textarea',
-        rules: buildRules((param as any).required),
-        placeholder: (effective?.placeholder as string) || undefined,
-      });
-      continue;
-    }
+        type,
+        required: rawInput.required,
+        enum: rawInput.enum,
+        options: rawInput.options,
+        widget: rawInput.widget,
+        min: rawInput.min,
+        max: rawInput.max,
+        step: rawInput.step,
+        placeholder: rawInput.placeholder,
+        multiple: rawInput.multiple,
+    };
+}
 
-    /** string + enum/options/check -> select */
-    if (resolved.base === 'string' && hasDropdown) {
-      const options = (
-          finalEnum ??
-          effective?.options ??
-          (effective as any)?.check ??
-          builtOptions
-      ).map((value: any) =>
-          typeof value === 'object' && value !== null
-              ? {
-                label: String(value.label ?? value.value ?? JSON.stringify(value)),
-                value: value.value ?? JSON.stringify(value),
-              }
-              : { label: String(value), value },
-      );
+/**  params → FieldNode[] */
+export function buildFieldTree(params: FieldCfg[] = [], typesYaml?: any): { nodes: FieldNode[] } {
+    const specs = (params ?? []).map(toSpec);
+    return buildNodesFromSpecs(specs, typesYaml);
+}
 
-      const isMultiple =
-          Boolean(effective?.multiple) ||
-          normalizeType(effective?.widget).includes('multi') ||
-          normalizeType(effective?.type).includes('multi') ||
-          Array.isArray((effective as any)?.check);
-
-      nodes.push({
-        kind: 'field',
-        key,
-        label,
-        rawType: paramType,
-        widget: 'select',
-        options,
-        rules: buildRules((param as any).required),
-        multiple: isMultiple,
-        placeholder: (effective?.placeholder as string) || undefined,
-      });
-      continue;
-    }
-
-    /** number / int */
-    if (resolved.base === 'number' || resolved.base === 'int') {
-      nodes.push({
-        kind: 'field',
-        key,
-        label,
-        rawType: paramType,
-        widget: 'number',
-        rules: buildRules((param as any).required),
-        min: (effective?.min as number | undefined) ?? undefined,
-        max: (effective?.max as number | undefined) ?? undefined,
-        step: (effective?.step as number | undefined) ?? undefined,
-        placeholder: (effective?.placeholder as string) || undefined,
-      });
-      continue;
-    }
-
-    // boolean
-    if (resolved.base === 'boolean') {
-      nodes.push({
-        kind: 'field',
-        key,
-        label,
-        rawType: paramType,
-        widget: 'checkbox',
-        rules: buildRules((param as any).required),
-      });
-      continue;
-    }
-
-    // Фолбэк: string (input)
-    nodes.push({
-      kind: 'field',
-      key,
-      label,
-      rawType: paramType,
-      widget: 'input',
-      rules: buildRules((param as any).required),
-      placeholder: (effective?.placeholder as string) || undefined,
-    });
-  }
-
-  return { nodes };
+/** Те же узлы для stages → FieldNode[] */
+export function buildFieldNodesFromStageFields(
+    stageFields: ReadonlyArray<Partial<StageFieldDef> & { key: string }> = [],
+    typesYaml?: any,
+): { nodes: FieldNode[] } {
+    const specs = (stageFields ?? []).map(toSpec);
+    return buildNodesFromSpecs(specs, typesYaml);
 }

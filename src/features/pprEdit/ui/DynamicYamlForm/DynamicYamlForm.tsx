@@ -286,7 +286,7 @@ export default function DynamicYamlForm({
 
       if (stageKeys.length) {
         addFromYaml({
-          label: schema?.headline || schema?.description || 'Новая23 запись',
+          label: schema?.headline || schema?.description || 'Новая запись',
           stageKeys,
           stagesField,
           execIds: executorIds,

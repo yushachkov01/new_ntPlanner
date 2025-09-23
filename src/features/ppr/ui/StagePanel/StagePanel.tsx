@@ -15,7 +15,6 @@ import {
 } from '@/shared/constants';
 import type { StageFieldDef } from '@/shared/types/fieldRenderer/types';
 import type { RoleKey } from '@/shared/utils/normalizeRoleKey';
-import { renderField } from '@/shared/utils/stagePanelUtils';
 import {
   isFileFieldGeneric,
   getFormatsGeneric,
@@ -31,6 +30,11 @@ import {
   StageFormValues,
   useStageFormStore
 } from "@entities/stageFormStore/model/store/stageFormStore";
+import { usePlannedTaskStore } from '@/entities/PlannedTask/model/store/plannedTaskStore';
+import type { FieldNode } from '@/features/pprEdit/model/typeSystem/FieldTreeBuilder';
+import { buildFieldNodesFromStageFields } from '@/features/pprEdit/model/typeSystem/FieldTreeBuilder';
+import FieldNodeRenderer from '@/shared/ui/form/FieldNodeRenderer';
+import CompositeNodeRenderer from "@/shared/ui/form/CompositeNodeRenderer";
 
 const { Text } = Typography;
 
@@ -71,10 +75,20 @@ export interface StagePanelProps {
   onStageFieldFilledChange?: (stageKey: string, fieldKey: string, isFilled: boolean) => void;
 }
 
-/**
- * Панель этапа: показывает назначенных исполнителей, динамические поля,
- * таймер и загрузку конфигураций.
- */
+/** options для ^device  */
+function useDeviceOptions() {
+    const devices = usePlannedTaskStore((state) => (state as any).device);
+    const deviceWhitelist = usePlannedTaskStore((state) => (state as any).deviceWhitelist);
+
+    return useMemo(() => {
+        const filtered =
+            deviceWhitelist && deviceWhitelist.length
+                ? (devices ?? []).filter((device: any) => deviceWhitelist.includes(device?.hostname))
+                : (devices ?? []);
+        return filtered.map((device: any) => ({ label: device?.hostname, value: String(device?.id) }));
+    }, [devices, deviceWhitelist]);
+}
+
 export const StagePanel: FC<StagePanelProps> = ({
   tplIdx,
   stageKey,
@@ -88,6 +102,7 @@ export const StagePanel: FC<StagePanelProps> = ({
   onStageRequiredChange,
   onStageFieldFilledChange,
 }) => {
+  const deviceOptions = useDeviceOptions();
   /** Текущий пользователь — для подстановки в uploadedBy при отсутствии значения */
   const currentUser = userStore((s) => s.user);
   const currentUserDisplayName = useMemo(() => {
@@ -157,21 +172,20 @@ export const StagePanel: FC<StagePanelProps> = ({
     (fd: StageFieldDef): boolean => isFileFieldGeneric(fd, types as any),
     [types],
   );
-
-  const getFormats = useCallback(
-    (fd: StageFieldDef): string[] => getFormatsGeneric(fd, types as any),
-    [types],
-  );
-
-  const getAccept = useCallback(
-    (fd: StageFieldDef): string | undefined => getAcceptGeneric(fd, types as any),
-    [types],
-  );
-
+    /**
+     * Мемоизированный список файловых полей (stageFields),
+     * отфильтрованных по предикату isFileField.
+     * Используется для рендера секции загрузки файлов.
+     */
   const fileFields = useMemo(
     () => (stageFields ?? []).filter(isFileField),
     [stageFields, isFileField],
   );
+    /**
+     * Мемоизированный список НЕ файловых полей (stageFields),
+     * отфильтрованных по отрицанию предиката isFileField.
+     * Используется для построения остальных FieldNode.
+     */
   const nonFileFields = useMemo(
     () => (stageFields ?? []).filter((fd) => !isFileField(fd)),
     [stageFields, isFileField],
@@ -202,12 +216,23 @@ export const StagePanel: FC<StagePanelProps> = ({
     return fileFields.length > 0 || Object.values(visibleByField).some((l) => (l?.length ?? 0) > 0);
   }, [fileFields, visibleByField]);
 
-  /** Вернуть строковый ключ записи (для удаления/поиска). */
-  const getRecordKey = useCallback((record: any): string => {
-    return String(
-      record?.uid ?? record?.id ?? record?.name ?? record?.path ?? JSON.stringify(record),
+  /**
+   * Возвращает список допустимых форматов для поля этапа.
+   * Использует универсальный хелпер getFormatsGeneric и переданные types.yaml.
+   */
+  const getFormats = useCallback(
+        (fd: StageFieldDef): string[] => getFormatsGeneric(fd, types as any),
+        [types],
     );
-  }, []);
+    const getAccept = useCallback(
+        (fd: StageFieldDef): string | undefined => getAcceptGeneric(fd, types as any),
+        [types],
+    );
+    const getRecordKey = useCallback(
+        (record: any): string =>
+            String(record?.uid ?? record?.id ?? record?.name ?? record?.path ?? JSON.stringify(record)),
+        [],
+    );
 
   /** при маунте — отметить заполненность НЕ файловых required по дефолтам/значениям */
   const [form] = Form.useForm();
@@ -344,6 +369,27 @@ export const StagePanel: FC<StagePanelProps> = ({
     [],
   );
 
+    /** FieldNode для НЕ файловых полей этапа — тем же билдером, что и params */
+    const nonFileFieldNodes: FieldNode[] = useMemo(() => {
+        const { nodes } = buildFieldNodesFromStageFields(
+            nonFileFields.map((fd) => ({
+                key: String(fd.key),
+                label: String(fd.label ?? fd.key),
+                type: String(fd.type ?? 'string'),
+                required: !!fd.required,
+                enum: fd.enum,
+                options: fd.options,
+                widget: (fd as any)?.widget,
+                min: (fd as any)?.min,
+                max: (fd as any)?.max,
+                step: (fd as any)?.step,
+                placeholder: (fd as any)?.placeholder,
+            })),
+            types as any,
+        );
+        return nodes;
+    }, [nonFileFields, types]);
+
   return (
     <section className="task-detail__stage">
       {filteredExecutors.map((user) => (
@@ -389,10 +435,25 @@ export const StagePanel: FC<StagePanelProps> = ({
             }}
            preserve
           >
-            {wrapTimer()}
-            {nonFileFields.map((fd) => renderField(fd, types as any))}
-          </Form>
-        </div>
+                        <Form.Item
+                            key={STAGE_PANEL_KEYS.TIMER_ITEM_NAME}
+                            label={STAGE_PANEL.form.timerLabel}
+                            name="timer"
+                            rules={[{ required: true, type: 'number', min: 1 }]}
+                        >
+                            <InputNumber style={STAGE_PANEL_UI.INPUT_NUMBER_STYLE} />
+                        </Form.Item>
+
+                        {/* Единый рендер: и простые поля, и сложные интерфейс-подобные */}
+                        {nonFileFieldNodes.map((node) =>
+                            node.kind === 'interface' ? (
+                                <CompositeNodeRenderer key={node.key} node={node} deviceOptions={deviceOptions} />
+                            ) : (
+                                <FieldNodeRenderer key={node.key} node={node} deviceOptions={deviceOptions} />
+                            ),
+                        )}
+                    </Form>
+                </div>
 
         {shouldShowConfigsSection && (
           <div className="stage-panel__configs">
@@ -437,22 +498,6 @@ export const StagePanel: FC<StagePanelProps> = ({
       </div>
     </section>
   );
-
-  /**
-   * Рендерит поле Таймер (мин)
-   */
-  function wrapTimer() {
-    return (
-      <Form.Item
-        key={STAGE_PANEL_KEYS.TIMER_ITEM_NAME}
-        label={STAGE_PANEL.form.timerLabel}
-        name="timer"
-        rules={[{ required: true, type: 'number', min: 1 }]}
-      >
-        <InputNumber style={STAGE_PANEL_UI.INPUT_NUMBER_STYLE} />
-      </Form.Item>
-    );
-  }
 };
 
 export default StagePanel;
