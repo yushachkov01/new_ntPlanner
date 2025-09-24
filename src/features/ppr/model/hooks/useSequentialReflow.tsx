@@ -1,9 +1,8 @@
 import { useEffect } from 'react';
 
-import { toAbs } from '@/features/ppr/lib/timeMath';
-import { parseTimeToMinutes, toTime } from '@/shared/ui/time/toTime';
 
 import type { Executor } from '../types';
+import {packRowBlocksToStart} from "@/shared/timeline/packing";
 
 /**
  * Хук: внутри каждой строки делает бандлы последовательными (без перекрытий).
@@ -17,28 +16,7 @@ type SetRowsState = (fn: (prev: Executor[]) => Executor[]) => void;
 
 /** Упаковать блоки в начало окна */
 function packToStart(blocks: any[], windowStartMin: number): any[] {
-  if (!blocks?.length) return blocks;
-  const items = blocks
-    .map((b) => {
-      const sMin = parseTimeToMinutes(b.startTime);
-      const eMin = parseTimeToMinutes(b.endTime);
-      const [, eAbs] = toAbs(sMin, eMin);
-      const duration = eAbs - sMin;
-
-      // нормализованный старт для корректной сортировки через полночь
-      const sAbsForSort = sMin < windowStartMin ? sMin + 1440 : sMin;
-
-      return { b, sAbsForSort, duration };
-    })
-    .sort((a, b) => a.sAbsForSort - b.sAbsForSort);
-
-  let cursor = windowStartMin;
-  return items.map(({ b, duration }) => {
-    const ns = cursor;
-    const ne = cursor + duration;
-    cursor = ne;
-    return { ...b, startTime: toTime(ns), endTime: toTime(ne) };
-  });
+  return packRowBlocksToStart(blocks, windowStartMin);
 }
 
 /**

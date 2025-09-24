@@ -4,10 +4,9 @@
  * - Обеспечивает компактное и последовательное отображение этапов.
  */
 
-import { parseTimeToMinutes, toTime } from '@/shared/ui/time/toTime';
+import { parseTimeToMinutes, toTime, absEnd } from '@/shared/time';
 
 import type { Executor, BlockExt } from '../types/types';
-import { absEnd } from '../utils/time';
 
 /**
  * Перепаковывает блоки строки так, чтобы они шли «влево» без зазоров.
