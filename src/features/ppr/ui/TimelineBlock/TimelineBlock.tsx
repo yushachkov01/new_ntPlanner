@@ -6,8 +6,8 @@ import type { FC, CSSProperties } from 'react';
 import { useState, useEffect, useRef, useCallback } from 'react';
 
 import './TimelineBlock.css';
-import { parseTimeToMinutes } from '@/shared/ui/time/toTime';
-import { getStatusClass } from '@features/ppr/lib/getStatusClass';
+import { parseTimeToMinutes } from '@/shared/time';
+import { getStatusClass, getContainerRoleClass } from '@/shared/ui/timeline/classNames';
 import type { TimelineBlockProps } from '@features/ppr/model/types';
 
 /**
@@ -119,13 +119,7 @@ const TimelineBlock: FC<TimelineBlockExProps> = ({
   const totalStageMin = stages.reduce((sum, st) => sum + (st.timer || 0), 0) || 1;
 
   /** Раскраска блока */
-  const containerRoleClass = (() => {
-    if (!showStages || stages.length === 0) return '';
-    const types = stages.map((s) => s.executorType);
-    if (types.includes('auditor')) return 'timeline-block--auditor'; // красный
-    if (types.includes('installer')) return 'timeline-block--installer'; // оранжевый
-    return ''; // engineer -> оставить базовый синий
-  })();
+  const containerRoleClass = getContainerRoleClass(stages);
 
   /** итоговый класс по статусу и покрытию */
   const className = [

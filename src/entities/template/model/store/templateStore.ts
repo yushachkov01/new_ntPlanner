@@ -3,6 +3,7 @@ import { devtools, persist } from 'zustand/middleware';
 
 import { parseYaml } from '@/shared/lib/yamlUtils/yamlUtils';
 import { getMinioClient } from '@/shared/minio/getMinioClient';
+import {loadYamlTemplatesNative} from "@/shared/integration/templates";
 
 /**
  * Описание поля в колонке таблицы шаблона
@@ -150,30 +151,27 @@ export const templateStore = create<TemplatesState>()(
           set((state) => ({ loading: new Set(state.loading).add(cacheKey) }));
 
           try {
-            const { listObjects, getObjectText } = await getMinioClient();
-            const objects = await listObjects(bucket, prefix);
-            const loadedTemplates: Template[] = [];
-
-            /** читаем и парсим каждый YAML-файл */
-            for (const obj of objects) {
-              if (!/\.(ya?ml)$/i.test(obj.Key ?? '')) continue;
-              const yamlText = await getObjectText(bucket, obj.Key as string);
-              const { data, error } = parseYaml(yamlText);
-              if (error) {
-                console.error('YAML parse error', obj.Key, error);
-                continue;
-              }
-              loadedTemplates.push({
-                templateName: (data as any).templateName ?? (data as any).name ?? obj.Key!,
+            const native = await getMinioClient();
+            const items = await loadYamlTemplatesNative(
+                native,
+                bucket,
+                prefix,
+                (yamlText: string) => {
+                    const { data } = parseYaml(yamlText);
+                    return (data ?? {}) as Record<string, unknown>;
+                    },
+            );
+              // маппим к нашей доменной сущности Template (сохраняем rawYaml!)
+             const loadedTemplates: Template[] = items.map(({ key, text, data }) => ({
+                templateName: (data as any).templateName ?? (data as any).name ?? key,
                 settings: (data as any).settings ?? {},
                 stage_status: (data as any).stage_status ?? '',
                 timer_default: (data as any).timer_default ?? 0,
                 current_stages: (data as any).current_stages ?? [],
                 stages_field: (data as any).stages_field ?? {},
-                rawYaml: yamlText,
+                rawYaml: text,
                 raw: data as Record<string, unknown>,
-              });
-            }
+             }));
 
             set((state) => ({
               memoryCache: {
