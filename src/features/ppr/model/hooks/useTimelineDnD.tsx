@@ -8,10 +8,11 @@ import { PointerSensor, TouchSensor, useSensor, useSensors } from '@dnd-kit/core
 import { useCallback } from 'react';
 
 import { parseOverRowId, parseOverTplIdx, parseOverTplMeta } from '@/features/ppr/lib/ids';
-import { toAbs } from '@/features/ppr/lib/timeMath';
 import { parseTimeToMinutes, toTime } from '@/shared/ui/time/toTime';
 
 import type { Executor } from '../types';
+import {toAbs} from "@/shared/time";
+import {calcRowLastEndAbs, shiftBlocksOfTpl} from "@/shared/timeline/packing";
 
 /**
  * Хук: сенсоры и обработчик DnD для переносов бандлов.
@@ -90,50 +91,6 @@ function packRowBlocksToStartInOrder(blocks: any[], windowStartMin: number): any
     const newEnd = cursor + duration;
     cursor = newEnd;
     return { ...block, startTime: toTime(newStart), endTime: toTime(newEnd) };
-  });
-}
-
-/**
- * Находит максимальное значение конца блока в строке (в абсолютных минутах).
- *
- * @param row — строка исполнителя
- * @param fallback — значение по умолчанию, если строка пустая
- * @returns максимальный конец (endTime) в минутах
- */
-function calcRowLastEndAbs(row: Executor, fallback: number): number {
-  const blocks = row.blocks ?? [];
-  if (!blocks.length) return fallback;
-
-  let lastEndAbs = -Infinity;
-  for (const block of blocks) {
-    const startMin = parseTimeToMinutes(block.startTime);
-    const endMin = parseTimeToMinutes(block.endTime);
-    const [, absEnd] = toAbs(startMin, endMin);
-    if (absEnd > lastEndAbs) lastEndAbs = absEnd;
-  }
-
-  return Number.isFinite(lastEndAbs) ? lastEndAbs : fallback;
-}
-
-/**
- * Сдвигает все блоки с определённым tplIdx на указанное количество минут.
- *
- * @param blocks — массив блоков
- * @param tplIdx — идентификатор бандла
- * @param deltaMin — смещение в минутах
- * @returns новый массив блоков со сдвигом
- */
-function shiftBlocksOfTpl(blocks: any[], tplIdx: number, deltaMin: number): any[] {
-  return blocks.map((block) => {
-    if (block.tplIdx !== tplIdx) return block;
-    const startMin = parseTimeToMinutes(block.startTime);
-    const endMin = parseTimeToMinutes(block.endTime);
-    const [absStart, absEnd] = toAbs(startMin, endMin);
-    return {
-      ...block,
-      startTime: toTime(absStart + deltaMin),
-      endTime: toTime(absEnd + deltaMin),
-    };
   });
 }
 
