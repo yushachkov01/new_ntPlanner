@@ -6,9 +6,10 @@ import type { FC, CSSProperties } from 'react';
 import { useState, useEffect, useRef, useCallback } from 'react';
 
 import './TimelineBlock.css';
-import { parseTimeToMinutes } from '@/shared/time';
+import { parseTimeToMinutes, normalizeIntervalToWindow, toPercentInterval } from '@/shared/time';
 import { getStatusClass, getContainerRoleClass } from '@/shared/ui/timeline/classNames';
 import type { TimelineBlockProps } from '@features/ppr/model/types';
+import { TIMELINE_CLASSES } from '@/shared/constants';
 
 /**
  *  пропсы для TimelineBlock.
@@ -72,22 +73,17 @@ const TimelineBlock: FC<TimelineBlockExProps> = ({
   /** абсолютные минуты начала/конца */
   let absStart = parseTimeToMinutes(block.startTime);
   let absEnd = parseTimeToMinutes(block.endTime);
-
-  /** учёт перехода через полночь */
-  if (absEnd <= absStart) absEnd += 1440;
-  if (totalWindowMin >= 1440) {
-    if (absStart < windowStartMin) absStart += 1440;
-    if (absEnd < windowStartMin) absEnd += 1440;
-  }
-  const relStart = absStart - windowStartMin;
-  const relEnd = absEnd - windowStartMin;
+  const normalizedInterval = normalizeIntervalToWindow(absStart, absEnd, windowStartMin, totalWindowMin);
 
   /** если блок вне видимой области — не рендерим */
-  if (relEnd <= 0 || relStart >= totalWindowMin) return null;
+  if (normalizedInterval.relEnd <= 0 || normalizedInterval.relStart >= totalWindowMin) return null;
 
-  const leftPercent = (Math.max(0, relStart) / totalWindowMin) * 100;
-  const widthPercent =
-    ((Math.min(totalWindowMin, relEnd) - Math.max(0, relStart)) / totalWindowMin) * 100;
+  /** проценты позиционирования/ширины */
+  const { leftPercent, widthPercent } = toPercentInterval(
+      normalizedInterval.relStart,
+      normalizedInterval.relEnd,
+      totalWindowMin,
+  );
 
   /** положение по вертикали */
   const laneH = 100 / laneParts;
@@ -116,17 +112,15 @@ const TimelineBlock: FC<TimelineBlockExProps> = ({
       })
     : [];
 
-  const totalStageMin = stages.reduce((sum, st) => sum + (st.timer || 0), 0) || 1;
-
   /** Раскраска блока */
   const containerRoleClass = getContainerRoleClass(stages);
 
   /** итоговый класс по статусу и покрытию */
   const className = [
-    'timeline-block',
+    TIMELINE_CLASSES.BASE,
     getStatusClass(block.status ?? 'info'),
-    expandedBlockId === block.id && 'timeline-block--active',
-    isCovered && 'timeline-block--covered',
+    expandedBlockId === block.id && TIMELINE_CLASSES.ACTIVE,
+    isCovered && TIMELINE_CLASSES.COVERED,
     containerRoleClass,
   ]
     .filter(Boolean)
@@ -153,7 +147,7 @@ const TimelineBlock: FC<TimelineBlockExProps> = ({
       }
     >
     <div ref={ref} className={className} style={style} onDoubleClick={handleDoubleClick}>
-      {!showStages && <div className="timeline-block__hover-text">{absEnd - absStart} мин</div>}
+      {!showStages && <div className="timeline-block__hover-text">{normalizedInterval.absEnd - normalizedInterval.absStart} мин</div>}
 
       {showStages && (
         <div className="timeline-block__stages">
@@ -173,7 +167,7 @@ const TimelineBlock: FC<TimelineBlockExProps> = ({
                 key={stageIndex}
                 title={stage.key}
                 className={stageClass}
-                style={{ width: `${(stage.timer / totalStageMin) * 100}%` }}
+                style={{ width: `${(stage.timer / (stages.reduce((absStart, st) => absStart + (st.timer || 0), 0) || 1)) * 100}%` }}
               />
             );
           })}

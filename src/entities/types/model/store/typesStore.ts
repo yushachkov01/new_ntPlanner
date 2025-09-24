@@ -5,6 +5,7 @@
 
 import * as YAML from 'js-yaml';
 import { create } from 'zustand';
+import {TYPES_FILENAME, YAML_BUCKET} from "@/shared/constants";
 
 /**
  * Универсальный парсер строки в объект.*
@@ -43,7 +44,7 @@ async function tryLoadViaMinio(): Promise<any | null> {
     const minioModule = await import('@/shared/minio/MinioClient');
     if (!minioModule?.getObjectText) return null;
 
-    const text: string = await minioModule.getObjectText('yamls', 'types.yaml');
+    const text: string = await minioModule.getObjectText(YAML_BUCKET, TYPES_FILENAME);
     const parsedObject = parseYamlOrJson(text);
     return parsedObject && typeof parsedObject === 'object' ? parsedObject : null;
   } catch {

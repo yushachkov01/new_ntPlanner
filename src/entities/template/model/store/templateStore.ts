@@ -4,6 +4,7 @@ import { devtools, persist } from 'zustand/middleware';
 import { parseYaml } from '@/shared/lib/yamlUtils/yamlUtils';
 import { getMinioClient } from '@/shared/minio/getMinioClient';
 import {loadYamlTemplatesNative} from "@/shared/integration/templates";
+import {TEMPLATES_STORE_PERSIST_KEY, TEMPLATES_STORE_PERSIST_VERSION} from "@/shared/constants";
 
 /**
  * Описание поля в колонке таблицы шаблона
@@ -204,8 +205,8 @@ export const templateStore = create<TemplatesState>()(
           }),
       }),
       {
-        name: 'templates-store',
-        version: 9,
+        name: TEMPLATES_STORE_PERSIST_KEY,
+        version: TEMPLATES_STORE_PERSIST_VERSION,
         partialize: (state) => ({
           currentTemplateKey: state.currentTemplateKey,
           templateValues: state.templateValues,

@@ -1,3 +1,4 @@
+import {TEMPLATE_IDX_MODULO} from "@/shared/constants";
 /**
  * Стабильный перевод произвольного id (string|number) в числовой rowId.
  * params
@@ -58,7 +59,7 @@ export const parseOverTplMeta = (overId: unknown): { rowId: number; tplIdx: numb
       if (Number.isFinite(composite)) {
         return {
           rowId: Math.floor(composite / 1000),
-          tplIdx: composite % 1000,
+          tplIdx: composite % TEMPLATE_IDX_MODULO,
         };
       }
     }
@@ -66,7 +67,7 @@ export const parseOverTplMeta = (overId: unknown): { rowId: number; tplIdx: numb
   if (typeof overId === 'number' && Number.isFinite(overId)) {
     return {
       rowId: Math.floor(overId / 1000),
-      tplIdx: overId % 1000,
+      tplIdx: overId % TEMPLATE_IDX_MODULO,
     };
   }
   return null;

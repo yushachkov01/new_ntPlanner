@@ -1,3 +1,4 @@
+import {TIMELINE_CLASSES} from "@/shared/constants";
 export type Status =
     | 'pending_manual'
     | 'pending_auto'
@@ -28,7 +29,7 @@ export function getStatusClass(status: Status): string {
 /** Класс контейнера по типам исполнителей в стадиях */
 export function getContainerRoleClass(stages: Array<{ executorType?: string }>) {
     const types = stages.map((s) => String(s.executorType ?? '').toLowerCase());
-    if (types.includes('auditor')) return 'timeline-block--auditor';
-    if (types.includes('installer')) return 'timeline-block--installer';
+    if (types.includes('auditor')) return TIMELINE_CLASSES.ROLE_AUDITOR;
+    if (types.includes('installer')) return TIMELINE_CLASSES.ROLE_INSTALLER;
     return '';
 }

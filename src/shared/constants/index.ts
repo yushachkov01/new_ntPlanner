@@ -133,3 +133,23 @@ export const ALL_TASKS_ROW_ID = 0 as const;
 
 /** Композитные (интерфейс-подобные) типы — идут в CompositeNodeRenderer */
 export const COMPOSITE_TYPE_SET = new Set<string>(['interface', 'interface_with_vlan', 'routing']);
+/** Количество минут в сутках */
+export const MINUTES_IN_DAY = 1440 as const;
+export const TEMPLATE_IDX_MODULO = 1000 as const;
+/** CSS-классы для блоков таймлайна */
+export const TIMELINE_CLASSES = {
+  BASE: 'timeline-block',
+  INFO: 'timeline-block--info',
+  ONTIME: 'timeline-block--ontime',
+  OVERTIME: 'timeline-block--overtime',
+  WINDOW: 'timeline-block--window',
+  COVERED: 'timeline-block--covered',
+  ACTIVE: 'timeline-block--active',
+  ROLE_AUDITOR: 'timeline-block--auditor',
+  ROLE_INSTALLER: 'timeline-block--installer',
+} as const;
+/** Имя файла с типами  */
+export const TYPES_FILENAME = 'types.yaml' as const;
+/** Ключ для сохранения templateStore в localStorage */
+export const TEMPLATES_STORE_PERSIST_KEY = 'templates-store' as const;
+export const TEMPLATES_STORE_PERSIST_VERSION = 9 as const;
