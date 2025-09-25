@@ -1,4 +1,3 @@
-// src/pages/PprEditorPage/ui/PprEditorPage.tsx
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 
 import './PprEditorPage.css';
@@ -121,6 +120,7 @@ const PprEditorPage: React.FC = () => {
       const incomingId = String(wsMessage.id ?? '');
       const incomingStatus = String(wsMessage.status ?? '');
       if (!incomingId) return;
+
       if (reviewForId && incomingId === reviewForId) {
         if (incomingStatus.toLowerCase() === 'verified') {
           setStatusVerified(true);
@@ -307,6 +307,10 @@ const PprEditorPage: React.FC = () => {
     const draft = draftForSelected || restoredDraft;
     if (!draft) return;
 
+    // 1) сразу переводим на шаг «Шаблон», чтобы пользователь видел восстановление
+    setTabsConfirmed(true);
+
+    // 2) восстанавливаем исполнителей/тайминги
     if (Array.isArray(draft.executorsByTemplate)) {
       setExecutorsByTemplate(draft.executorsByTemplate as any);
     }
@@ -315,8 +319,11 @@ const PprEditorPage: React.FC = () => {
         updateTplStageDuration?.({ tplIdx, stageKey, minutes: Number(minutes) || 0 });
       });
     }
+
+    // 3) передадим значения формы в будущую форму YAML
     pendingInitialFormValuesRef.current = draft.formValues ?? null;
 
+    // 4) загрузим шаблон и автоматически проскроллим к параметрам
     if (draft.mainTemplateKey) {
       try {
         if (navigator.onLine) {
@@ -326,16 +333,27 @@ const PprEditorPage: React.FC = () => {
           );
           if (resolved) {
             setMainTemplate(resolved);
-            setTimeout(() => paramsRef.current?.scrollIntoView({ behavior: 'smooth' }), 0);
+            setParamsConfirmed(false);
+            // немного подождём маунт формы, затем скролл
+            setTimeout(() => paramsRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
           }
         } else {
           setMainTemplate((prev: any) =>
               prev?.key ? prev : ({ key: draft.mainTemplateKey } as any),
           );
+          setTimeout(() => paramsRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
         }
-      } catch {}
+      } catch {
+        /* noop */
+      }
     }
+
+    // 5) триггеры для автосейва/рендера
+    document.dispatchEvent(new Event('ntp:form:changed'));
+    document.dispatchEvent(new Event('ntp:timeline:changed'));
+
     setRestoreOpen(false);
+    message.success('Черновик восстановлен');
   };
 
   const dismissDraft = () => setRestoreOpen(false);
