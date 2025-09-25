@@ -1,3 +1,4 @@
+// src/pages/PprEditorPage/ui/PprEditorPage.tsx
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 
 import './PprEditorPage.css';
@@ -33,15 +34,12 @@ import PprPage from '@pages/PprPage';
 
 import { Button, Steps, message, Tooltip, Progress, Modal } from 'antd';
 
-// ===== оффлайн: авто-сейв / восстановление =====
+// оффлайн-черновики
 import type { UUID } from '@/shared/types/offline/offline';
 import { useDraftAutosave } from '@features/pprEdit/model/hooks/useDraftAutosave';
 import { useDraftsStore } from '@/entities/PlannedTask/model/store/draftsStore';
 
 const PprEditorPage: React.FC = () => {
-  /**
-   * Хук мастера: текущее состояние шагов и выбранных сущностей
-   */
   const {
     selectedTaskId,
     setSelectedTaskId,
@@ -56,27 +54,19 @@ const PprEditorPage: React.FC = () => {
     step5Done,
   } = usePprWizard();
 
-  /**
-   * Пользователь и окно таймлайна
-   */
   const currentUser = userStore((state) => state.user)!;
   const workTimeStore = WorkTimeStore() as any;
   const { timelineWindow, setTimelineWindow } = workTimeStore;
   const selectedTimeWorkId: string | undefined = workTimeStore?.selectedTimeWorkId;
 
-  // Исполнители
   const addedExecutors = useUserStore((state) => state.addedExecutors);
 
-  // Задачи и выбранная
   const tasks = usePlannedTaskStore((state) => state.tasks);
   const selectedTask = useMemo(
       () => tasks.find((task) => task.id === selectedTaskId),
       [tasks, selectedTaskId],
   );
 
-  /**
-   * Исполнители и слоты
-   */
   const {
     executorsByTemplate,
     setExecutorsByTemplate,
@@ -88,7 +78,6 @@ const PprEditorPage: React.FC = () => {
     normalizeExecId,
   } = usePprExecutors(currentUser, mainTemplate);
 
-  /** точечное удаление блоков по префиксу sourceKey (templateKey) */
   const removeBySourcePrefix = useTimelineStore((state) => (state as any).removeBySourcePrefix);
   const updateTplStageDuration = useTimelineStore((state) => (state as any).updateTplStageDuration);
   const getMergedStageOverrides = useTimelineStore(
@@ -96,11 +85,9 @@ const PprEditorPage: React.FC = () => {
   );
   const getTimelineState = (useTimelineStore as any).getState;
 
-  /** дополнительные шаблоны */
   const [additionalTemplates, setAdditionalTemplates] = useState<Template[]>([]);
   const [hiddenExtraSlots, setHiddenExtraSlots] = useState<Set<number>>(new Set());
 
-  /** обработчик перемещения бандлов */
   const handleMoveBetweenExecutors = useTimelineMove({
     executorsByTemplate,
     setExecutorsByTemplate,
@@ -110,23 +97,20 @@ const PprEditorPage: React.FC = () => {
     additionalTemplates,
   });
 
-  /** наличие строк в таймлайне */
   const liveRowsCount = useTimelineStore((state) => state.rows?.length ?? 0);
   useEffect(() => {
     if (liveRowsCount > 0) setParamsConfirmed(true);
   }, [liveRowsCount, setParamsConfirmed]);
 
-  /** шаг 3 готовность */
   const paramsRef = useRef<HTMLDivElement | null>(null);
   const [tplReadyTick, setTplReadyTick] = useState(0);
   useEffect(() => {
-    if ((mainTemplate as any)?.raw) setTplReadyTick((tick) => tick + 1);
+    if ((mainTemplate as any)?.raw) setTplReadyTick((t) => t + 1);
   }, [mainTemplate]);
 
-  /** значения формы */
   const mainFormValuesRef = useRef<any>(null);
+  const pendingInitialFormValuesRef = useRef<any>(null);
 
-  /** статус проверки */
   const [reviewForId, setReviewForId] = useState<string | null>(null);
   const [statusVerified, setStatusVerified] = useState(false);
   const editingLocked = !!reviewForId && !statusVerified;
@@ -137,7 +121,6 @@ const PprEditorPage: React.FC = () => {
       const incomingId = String(wsMessage.id ?? '');
       const incomingStatus = String(wsMessage.status ?? '');
       if (!incomingId) return;
-
       if (reviewForId && incomingId === reviewForId) {
         if (incomingStatus.toLowerCase() === 'verified') {
           setStatusVerified(true);
@@ -149,7 +132,6 @@ const PprEditorPage: React.FC = () => {
     return () => unsubscribe?.();
   }, [reviewForId]);
 
-  /** добавить вторичный шаблон */
   const addTemplate = () => {
     if (editingLocked) return;
     const meExec = normalizeExec(currentUser);
@@ -164,7 +146,6 @@ const PprEditorPage: React.FC = () => {
     setAllowStep5(false);
   };
 
-  /** сменить вторичный шаблон */
   const changeTemplate = async (index: number, newTemplate: Template) => {
     if (editingLocked) return;
     const prevKey = (additionalTemplates[index] as any)?.key;
@@ -172,27 +153,22 @@ const PprEditorPage: React.FC = () => {
     if (prevKey) removeBySourcePrefix?.({ execIds: execIds, prefix: String(prevKey) });
 
     const resolved = await resolveTemplateWithRaw(newTemplate as Template, YAML_BUCKET);
-    if (!resolved) {
-      message.error('Не удалось загрузить YAML шаблона.');
-      return;
-    }
-    setAdditionalTemplates((prev) =>
-        prev.map((templateItem, idx) => (idx === index ? resolved : templateItem)),
-    );
+    if (!resolved) return message.error('Не удалось загрузить YAML шаблона.');
+
+    setAdditionalTemplates((prev) => prev.map((t, i) => (i === index ? resolved : t)));
     setHiddenExtraSlots((prev) => {
       const next = new Set(prev);
       next.delete(index);
       return next;
     });
     setAllowStep5(false);
+    document.dispatchEvent(new Event('ntp:form:changed'));
   };
 
-  /** модалка удаления шаблона */
   const [confirmState, setConfirmState] = useState<
       { open: true; kind: 'main' | 'extra'; index?: number } | { open: false }
   >({ open: false });
 
-  /** итоговые исполнители для таймлайна */
   const timelineExecutors = useMemo(() => {
     const list = (pprExecutors as any[]) ?? [];
     if (list.length > 0) return list;
@@ -201,52 +177,46 @@ const PprEditorPage: React.FC = () => {
 
   const authorUuid =
       pickUuid((currentUser as any)?.id, (currentUser as any)?.uuid) ??
-      pickUuid(...(addedExecutors ?? []).map((value) => value.id)) ??
+      pickUuid(...(addedExecutors ?? []).map((v) => v.id)) ??
       pickUuid((selectedTask as any)?.authorId, (selectedTask as any)?.author_id);
 
   const timeWorkUuid =
       (selectedTimeWorkId && isUuid(selectedTimeWorkId) ? selectedTimeWorkId : undefined) ??
       pickUuid((selectedTask as any)?.timeWorkId, (selectedTask as any)?.time_work_id);
 
-  /** сохранение */
   const [saving, setSaving] = useState(false);
   const templateChosen = Boolean((mainTemplate as any)?.key);
 
-  /** прогресс обязательных полей */
   const [progressMap, setProgressMap] = useState<ProgressMap>({});
   useEffect(() => {
-    const progressEventHandler = (event: Event) => {
-      const customEvent = event as CustomEvent<{ id: string; filled: number; required: number }>;
-      const { id, filled, required } = customEvent.detail || ({} as any);
+    const handler = (event: Event) => {
+      const e = event as CustomEvent<{ id: string; filled: number; required: number }>;
+      const { id, filled, required } = e.detail || ({} as any);
       if (!id) return;
       setProgressMap((prev) => ({ ...prev, [id]: { filled, required } }));
     };
-    window.addEventListener(PROGRESS_EVENT_NAME, progressEventHandler as EventListener);
-    return () =>
-        window.removeEventListener(PROGRESS_EVENT_NAME, progressEventHandler as EventListener);
+    window.addEventListener(PROGRESS_EVENT_NAME, handler as EventListener);
+    return () => window.removeEventListener(PROGRESS_EVENT_NAME, handler as EventListener);
   }, []);
 
   const totals = useMemo(
       () =>
           Object.values(progressMap).reduce(
-              (accumulator, value) => ({
-                filled: accumulator.filled + (value?.filled ?? 0),
-                required: accumulator.required + (value?.required ?? 0),
-              }),
+              (acc, v) => ({ filled: acc.filled + (v?.filled ?? 0), required: acc.required + (v?.required ?? 0) }),
               { filled: 0, required: 0 },
           ),
       [progressMap],
   );
 
   const yamlRequiredTotal = useMemo(() => {
-    let sumRequired = 0;
-    const mainRawSchema = (mainTemplate as any)?.raw;
-    if (mainRawSchema) sumRequired += countRequiredInYaml(mainRawSchema);
-    for (const templateItem of additionalTemplates) {
-      const rawSchema = (templateItem as any)?.raw;
-      if (rawSchema) sumRequired += countRequiredInYaml(rawSchema);
+    let sum = 0;
+    const mainRaw = (mainTemplate as any)?.raw;
+    if (mainRaw) sum += countRequiredInYaml(mainRaw);
+    for (const t of additionalTemplates) {
+      const raw = (t as any)?.raw;
+      if (raw) sum += countRequiredInYaml(raw);
     }
-    return sumRequired;
+    return sum;
   }, [mainTemplate, additionalTemplates]);
 
   const effectiveRequired = useMemo(
@@ -256,13 +226,12 @@ const PprEditorPage: React.FC = () => {
 
   const totalPercent = useMemo(() => {
     if (effectiveRequired <= 0) return 0;
-    const clampedFilled = Math.min(totals.filled, effectiveRequired);
-    return Math.round((clampedFilled / effectiveRequired) * 100);
+    const clamped = Math.min(totals.filled, effectiveRequired);
+    return Math.round((clamped / effectiveRequired) * 100);
   }, [totals.filled, effectiveRequired]);
 
   const isParamsComplete = effectiveRequired === 0 ? true : totals.filled >= effectiveRequired;
 
-  /** Разрешать шаг 5 только после клика «Сохранить» */
   const [allowStep5, setAllowStep5] = useState(false);
 
   const canSave =
@@ -280,10 +249,9 @@ const PprEditorPage: React.FC = () => {
                       ? 'Нет time_work_id (выберите смену/интервал)'
                       : undefined;
 
-  // ===== оффлайн: авто-сейв и восстановление (работает и online, и offline) =====
+  // === автосейв + восстановление ===
   const taskIdUUID = (selectedTaskId ?? selectedTask?.id ?? '') as UUID;
 
-  // «лёгкий» снэпшот текущего состояния
   const draftPayloadSupplier = () => {
     const overrides = getMergedStageOverrides?.() ?? {};
     const timelineOverrides =
@@ -300,45 +268,55 @@ const PprEditorPage: React.FC = () => {
       mainTemplateKey: (mainTemplate as any)?.key as string | undefined,
       executorsByTemplate: executorsByTemplate as Array<Array<Record<string, unknown>>>,
       timelineOverrides,
+      formValues: mainFormValuesRef.current ?? undefined,
     };
   };
 
-  // автосейв по событиям ntp:*
   const { restoredDraft } = useDraftAutosave(taskIdUUID, draftPayloadSupplier);
 
-  // ---- МОДАЛЬНОЕ ПРЕДЛОЖЕНИЕ ВОССТАНОВИТЬ ЧЕРНОВИК ----
-  const draftForSelected = useDraftsStore((s) =>
-      selectedTaskId ? (s.drafts as any)?.[selectedTaskId] : undefined,
+  const draftsMap = useDraftsStore((s) => s.drafts);
+  const [hydrated, setHydrated] = useState<boolean>(
+      (useDraftsStore as any).persist?.hasHydrated?.() ?? true,
   );
-  const [restoreOpen, setRestoreOpen] = useState(false);
-  const offeredRef = useRef<string | null>(null); // чтобы не предлагать повторно для того же id
-
-  // показываем модалку ТОЛЬКО если есть данные по именно этой задаче
   useEffect(() => {
+    const api = (useDraftsStore as any).persist;
+    if (!api?.onFinishHydration) return;
+    const unsub = api.onFinishHydration(() => setHydrated(true));
+    return () => unsub?.();
+  }, []);
+
+  const draftForSelected = useMemo(
+      () => (selectedTaskId ? (draftsMap as any)?.[selectedTaskId] : undefined),
+      [draftsMap, selectedTaskId],
+  );
+
+  const [restoreOpen, setRestoreOpen] = useState(false);
+  const offeredRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!hydrated) return;
     if (!selectedTaskId) return;
     if (offeredRef.current === selectedTaskId) return;
     if (draftForSelected && draftForSelected.id === selectedTaskId) {
       setRestoreOpen(true);
       offeredRef.current = selectedTaskId;
     }
-  }, [selectedTaskId, draftForSelected]);
+  }, [hydrated, selectedTaskId, draftForSelected]);
 
-  // применить черновик (по кнопке «Продолжить»)
   const applyDraft = async () => {
     const draft = draftForSelected || restoredDraft;
     if (!draft) return;
 
-    // 1) исполнители
     if (Array.isArray(draft.executorsByTemplate)) {
       setExecutorsByTemplate(draft.executorsByTemplate as any);
     }
-    // 2) тайминги стадий
     if (Array.isArray(draft.timelineOverrides)) {
       draft.timelineOverrides.forEach(({ tplIdx, stageKey, minutes }) => {
         updateTplStageDuration?.({ tplIdx, stageKey, minutes: Number(minutes) || 0 });
       });
     }
-    // 3) шаблон
+    pendingInitialFormValuesRef.current = draft.formValues ?? null;
+
     if (draft.mainTemplateKey) {
       try {
         if (navigator.onLine) {
@@ -355,21 +333,17 @@ const PprEditorPage: React.FC = () => {
               prev?.key ? prev : ({ key: draft.mainTemplateKey } as any),
           );
         }
-      } catch {
-        /* игнорируем — можно выбрать руками */
-      }
+      } catch {}
     }
     setRestoreOpen(false);
   };
 
-  // начать заново (просто закрываем модалку, черновик не трогаем)
   const dismissDraft = () => setRestoreOpen(false);
 
   const handleSave = async () => {
     if (saving || editingLocked) return;
     if (!templateChosen) return message.error('Не выбран YAML-шаблон (шаг «Шаблон»).');
     if (!isParamsComplete) return message.error('Заполните все обязательные поля (100%).');
-
     setAllowStep5(true);
 
     setSaving(true);
@@ -391,17 +365,11 @@ const PprEditorPage: React.FC = () => {
       if (result?.updatedId) setReviewForId(result.updatedId);
     } catch (error: any) {
       console.error('[PprEditorPage] save error:', error);
-      console.error(
-          `Не удалось сохранить: ${
-              error?.response?.errors?.[0]?.message ?? error?.message ?? 'unknown error'
-          }`,
-      );
     } finally {
       setSaving(false);
     }
   };
 
-  // Заголовок шага «На проверке»
   const pendingTitle: React.ReactNode =
       editingLocked && !statusVerified ? (
           <span className="ppr-step-title">
@@ -412,12 +380,10 @@ const PprEditorPage: React.FC = () => {
           'На проверке'
       );
 
-  /** Итоговый активный шаг */
   const computedStepsCurrent = (() => {
     let computed = currentStep;
     if (statusVerified) computed = Math.max(computed, 5);
     else if (editingLocked) computed = Math.max(computed, 4);
-
     if (computed >= 3) {
       if (!isParamsComplete) return 3;
       if (!allowStep5) return 3;
@@ -425,7 +391,6 @@ const PprEditorPage: React.FC = () => {
     return computed;
   })();
 
-  // Иконка процента
   const showStep4Progress = currentStep >= 3;
   const paramsStepIcon = showStep4Progress ? (
       <span className="ppr-steps__progress-icon" style={{ display: 'flex' }}>
@@ -435,14 +400,13 @@ const PprEditorPage: React.FC = () => {
           size={STEP_ICON_SIZE}
           strokeLinecap="round"
           status={totalPercent === 100 ? 'success' : 'normal'}
-          format={(percentValue) => `${percentValue ?? 0}%`}
+          format={(p) => `${p ?? 0}%`}
       />
     </span>
   ) : undefined;
 
   return (
       <section className="ppr-editor-card">
-        {/* Модалка восстановления черновика */}
         <Modal
             open={restoreOpen}
             onOk={applyDraft}
@@ -479,10 +443,8 @@ const PprEditorPage: React.FC = () => {
           <LocationOverview />
           <div className="ppr-location-divider" />
         </header>
-        <div
-            className="ppr-editor-card__controls"
-            style={{ display: 'flex', gap: 12, alignItems: 'center' }}
-        >
+
+        <div className="ppr-editor-card__controls" style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
           <div className="ppr-editor-card__controls-left" style={{ width: '100%' }}>
             <PlannedTaskDropdown
                 className="ppr-editor-card__select"
@@ -496,55 +458,52 @@ const PprEditorPage: React.FC = () => {
                   setMainTemplate(undefined);
                   setParamsConfirmed(false);
                   setAllowStep5(false);
+                  document.dispatchEvent(new Event('ntp:form:changed'));
+                  document.dispatchEvent(new Event('ntp:timeline:changed'));
                 }}
             />
           </div>
 
           <Tooltip title={saveTooltip || (editingLocked ? 'Заявка на проверке' : undefined)}>
-            <Button
-                type="primary"
-                onClick={handleSave}
-                loading={saving}
-                disabled={!canSave || editingLocked}
-            >
+            <Button type="primary" onClick={handleSave} loading={saving} disabled={!canSave || editingLocked}>
               Сохранить
             </Button>
           </Tooltip>
         </div>
+
         {!!selectedTaskId && (
             <div style={{ marginTop: 12 }}>
-              <div
-                  className="ppr-editor-card__controls-right"
-                  style={editingLocked ? { pointerEvents: 'none', opacity: 0.6 } : undefined}
-              >
+              <div className="ppr-editor-card__controls-right" style={editingLocked ? { pointerEvents: 'none', opacity: 0.6 } : undefined}>
                 <div className="ppr-editor-card__tabs">
                   <PprEditorTabs
                       taskId={selectedTaskId}
-                      onWorkTimeChange={setTimelineWindow}
+                      onWorkTimeChange={(tw) => {
+                        setTimelineWindow(tw);
+                        document.dispatchEvent(new Event('ntp:timeline:changed'));
+                      }}
                       executors={tabExecutors}
                       addExecutor={(executorToAdd) =>
-                          setTabExecutors((prev) =>
-                              prev.some(
-                                  (existing) => String(existing.id) === String((executorToAdd as any).id),
-                              )
-                                  ? prev
-                                  : [...prev, normalizeExec(executorToAdd)],
-                          )
+                          setTabExecutors((prev) => {
+                            const next =
+                                prev.some((ex) => String(ex.id) === String((executorToAdd as any).id))
+                                    ? prev
+                                    : [...prev, normalizeExec(executorToAdd)];
+                            document.dispatchEvent(new Event('ntp:form:changed'));
+                            return next;
+                          })
                       }
                       removeExecutor={(executorId) =>
-                          setTabExecutors((prev) =>
-                              prev.filter((existing) => String(existing.id) !== String(executorId)),
-                          )
+                          setTabExecutors((prev) => {
+                            const next = prev.filter((ex) => String(ex.id) !== String(executorId));
+                            document.dispatchEvent(new Event('ntp:form:changed'));
+                            return next;
+                          })
                       }
                   />
                 </div>
                 {!tabsConfirmed && (
                     <div style={{ marginTop: 12 }}>
-                      <Button
-                          type="primary"
-                          onClick={() => setTabsConfirmed(true)}
-                          disabled={editingLocked}
-                      >
+                      <Button type="primary" onClick={() => setTabsConfirmed(true)} disabled={editingLocked}>
                         Перейти к выбору шаблона
                       </Button>
                     </div>
@@ -552,14 +511,9 @@ const PprEditorPage: React.FC = () => {
               </div>
             </div>
         )}
+
         {tabsConfirmed && (
-            <div
-                className="ppr-template-wrap"
-                style={{
-                  marginTop: 16,
-                  ...(editingLocked ? { pointerEvents: 'none', opacity: 0.6 } : {}),
-                }}
-            >
+            <div className="ppr-template-wrap" style={{ marginTop: 16, ...(editingLocked ? { pointerEvents: 'none', opacity: 0.6 } : {}) }}>
               <YamlTemplateSelect
                   bucket={YAML_BUCKET}
                   value={(mainTemplate as any)?.key}
@@ -568,43 +522,41 @@ const PprEditorPage: React.FC = () => {
                     if (editingLocked) return;
                     const prevMainKey = (mainTemplate as any)?.key;
                     const execIds = (executorsByTemplate[0] ?? []).map(normalizeExecId);
-                    if (prevMainKey)
-                      removeBySourcePrefix?.({ execIds: execIds, prefix: String(prevMainKey) });
+                    if (prevMainKey) removeBySourcePrefix?.({ execIds, prefix: String(prevMainKey) });
+
                     if (currentUser) {
                       const meExec = normalizeExec(currentUser);
                       setExecutorsByTemplate((prev) => {
                         const next = [...prev];
                         const mainList = next[0] ?? [];
-                        const hasMe = mainList.some(
-                            (existing) => String(existing.id) === String(meExec.id),
-                        );
+                        const hasMe = mainList.some((ex) => String(ex.id) === String(meExec.id));
                         next[0] = hasMe ? mainList : [meExec, ...mainList];
                         return next;
                       });
                       setTabExecutors((prev) =>
-                          prev.some((existing) => String(existing.id) === String(meExec.id))
-                              ? prev
-                              : [meExec, ...prev],
+                          prev.some((ex) => String(ex.id) === String(meExec.id)) ? prev : [meExec, ...prev],
                       );
                     }
 
-                    const resolved = await resolveTemplateWithRaw(
-                        selectedTemplate as Template,
-                        YAML_BUCKET,
-                    );
-                    if (!resolved) {
-                      message.error('Не удалось загрузить YAML шаблона.');
-                      return;
-                    }
+                    const resolved = await resolveTemplateWithRaw(selectedTemplate as Template, YAML_BUCKET);
+                    if (!resolved) return message.error('Не удалось загрузить YAML шаблона.');
+
                     setMainTemplate(resolved);
                     setParamsConfirmed(false);
                     setAllowStep5(false);
 
+                    document.dispatchEvent(new Event('ntp:form:changed'));
                     setTimeout(() => paramsRef.current?.scrollIntoView({ behavior: 'smooth' }), 0);
                   }}
                   executors={(executorsByTemplate[0] ?? []).map(normalizeExec)}
-                  addExecutor={(executor) => addExecutor(0, executor)}
-                  removeExecutor={(executorId) => removeExecutor(0, executorId)}
+                  addExecutor={(executor) => {
+                    addExecutor(0, executor);
+                    document.dispatchEvent(new Event('ntp:form:changed'));
+                  }}
+                  removeExecutor={(executorId) => {
+                    removeExecutor(0, executorId);
+                    document.dispatchEvent(new Event('ntp:form:changed'));
+                  }}
                   tabCandidates={tabExecutors}
               />
               <Button
@@ -618,17 +570,16 @@ const PprEditorPage: React.FC = () => {
               </Button>
             </div>
         )}
+
         {step3Done && (
-            <div
-                ref={paramsRef}
-                style={editingLocked ? { pointerEvents: 'none', opacity: 0.6 } : undefined}
-            >
+            <div ref={paramsRef} style={editingLocked ? { pointerEvents: 'none', opacity: 0.6 } : undefined}>
               {(mainTemplate as any)?.key && (mainTemplate as any)?.raw && (
                   <DynamicYamlForm
                       key={`main-${(mainTemplate as any)?.key}-${tplReadyTick}`}
                       schema={(mainTemplate as any)?.raw}
                       templateKey={(mainTemplate as any)?.key}
                       executors={(executorsByTemplate[0] ?? []).map(normalizeExec)}
+                      initialValues={pendingInitialFormValuesRef.current ?? undefined}
                       onRowCountChange={(rowCount: number) => {
                         if (!paramsConfirmed && rowCount > 0) setParamsConfirmed(true);
                       }}
@@ -636,6 +587,7 @@ const PprEditorPage: React.FC = () => {
                         if (editingLocked) return;
                         mainFormValuesRef.current = formValues;
                         setAllowStep5(false);
+                        document.dispatchEvent(new Event('ntp:form:changed'));
                       }}
                   />
               )}
@@ -646,13 +598,7 @@ const PprEditorPage: React.FC = () => {
           if (hiddenExtraSlots.has(templateIndex)) return null;
           return (
               <React.Fragment key={templateIndex}>
-                <div
-                    className="ppr-template-wrap"
-                    style={{
-                      marginTop: 12,
-                      ...(editingLocked ? { pointerEvents: 'none', opacity: 0.6 } : {}),
-                    }}
-                >
+                <div className="ppr-template-wrap" style={{ marginTop: 12, ...(editingLocked ? { pointerEvents: 'none', opacity: 0.6 } : {}) }}>
                   <YamlTemplateSelect
                       bucket={YAML_BUCKET}
                       value={(templateItem as any).key}
@@ -660,10 +606,17 @@ const PprEditorPage: React.FC = () => {
                       onChange={(newTemplate) => {
                         changeTemplate(templateIndex, newTemplate);
                         setAllowStep5(false);
+                        document.dispatchEvent(new Event('ntp:form:changed'));
                       }}
                       executors={(executorsByTemplate[templateIndex + 1] ?? []).map(normalizeExec)}
-                      addExecutor={(executor) => addExecutor(templateIndex + 1, executor)}
-                      removeExecutor={(executorId) => removeExecutor(templateIndex + 1, executorId)}
+                      addExecutor={(executor) => {
+                        addExecutor(templateIndex + 1, executor);
+                        document.dispatchEvent(new Event('ntp:form:changed'));
+                      }}
+                      removeExecutor={(executorId) => {
+                        removeExecutor(templateIndex + 1, executorId);
+                        document.dispatchEvent(new Event('ntp:form:changed'));
+                      }}
                       tabCandidates={tabExecutors}
                   />
 
@@ -685,6 +638,11 @@ const PprEditorPage: React.FC = () => {
                         templateKey={(templateItem as any)?.key}
                         executors={(executorsByTemplate[templateIndex + 1] ?? []).map(normalizeExec)}
                         onRowCountChange={() => {}}
+                        onValuesChange={() => {
+                          if (editingLocked) return;
+                          setAllowStep5(false);
+                          document.dispatchEvent(new Event('ntp:form:changed'));
+                        }}
                     />
                 )}
               </React.Fragment>
@@ -693,18 +651,10 @@ const PprEditorPage: React.FC = () => {
 
         {step5Done && (
             <>
-              <Button
-                  type="dashed"
-                  onClick={addTemplate}
-                  style={{ marginTop: 12 }}
-                  disabled={editingLocked}
-              >
+              <Button type="dashed" onClick={addTemplate} style={{ marginTop: 12 }} disabled={editingLocked}>
                 Добавить шаблон
               </Button>
-              <div
-                  className="ppr-editor-card__timeline"
-                  style={editingLocked ? { pointerEvents: 'none', opacity: 0.6 } : undefined}
-              >
+              <div className="ppr-editor-card__timeline" style={editingLocked ? { pointerEvents: 'none', opacity: 0.6 } : undefined}>
                 <PprPage
                     gridStart={timelineWindow.start}
                     gridEnd={timelineWindow.end}
@@ -719,14 +669,17 @@ const PprEditorPage: React.FC = () => {
                         minutes: Number(newTimerMinutes) || 0,
                       });
                       setAllowStep5(false);
+                      document.dispatchEvent(new Event('ntp:timeline:changed'));
                     }}
                     onMoveBetweenExecutors={(args) => {
                       handleMoveBetweenExecutors(args);
+                      document.dispatchEvent(new Event('ntp:timeline:changed'));
                     }}
                 />
               </div>
             </>
         )}
+
         <ConfirmDeleteDialog
             open={!!confirmState.open}
             kind={confirmState.open ? confirmState.kind : undefined}
