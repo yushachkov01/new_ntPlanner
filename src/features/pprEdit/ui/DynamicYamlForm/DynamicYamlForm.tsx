@@ -2,7 +2,7 @@
  * Рендерит динамическую форму по YAML-схеме, ведёт таблицу добавленных строк,
  * синхронизирует каждую строку с таймлайном
  * поддерживает редактирование/удаление, и уведомляет родителя о количестве строк.
- *
+ * Авто-сохранение и восстановление из localStorage (params + stages)
  */
 
 import { Form, Typography, Button, message, Skeleton, Alert } from 'antd';
@@ -16,11 +16,31 @@ import { DeclarativeFormRenderer } from '@/features/pprEdit/ui/DeclarativeFormRe
 import useTimelineStore from '@entities/timeline/model/store/timelineStore';
 import { useTypesStore } from '@entities/types/model/store/typesStore';
 import type { User } from '@entities/users/model/mapping/mapping';
-
+import {
+  jsonParse,
+  jsonStringify,
+  readTemplateDraft,
+  saveStages,
+  TemplateDraft
+} from '@/shared/lib/persistence/localTemplateDraft';
 import { FieldsTable } from '../FieldsTable/FieldsTable';
 import { toArray } from './helpers/toArray';
 
 const { Title } = Typography;
+
+/** Прочитать бандл черновика по ключу */
+const readDraft = (key: string): TemplateDraft | undefined =>
+    jsonParse<TemplateDraft>(localStorage.getItem(key));
+
+/** Сохранить секцию params без потери table (локальная реализация) */
+const saveParams = (key: string, values: Record<string, unknown>) => {
+  const prev = readDraft(key) ?? {};
+  const next: TemplateDraft = {
+    ...prev,
+    params: { values, savedAt: new Date().toISOString() },
+  };
+  localStorage.setItem(key, jsonStringify(next));
+};
 
 /**
  * - schema: любая YAML-схема шаблона
@@ -83,6 +103,11 @@ export default function DynamicYamlForm({
    */
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
 
+  /** Ключ PPR_DRAFT::<templateId> совместимый со StagePanel */
+  const templateId = useMemo(
+      () => String(templateKey ?? schema?.headline ?? 'unknown'),
+      [templateKey, schema?.headline],
+  );
   /**
    * сеттер templateStore по ключу схемы
    */
@@ -182,21 +207,33 @@ export default function DynamicYamlForm({
      * сброс значений формы
      */
     form.resetFields();
-
-    /**
-     * очистка локальной таблицы
-     */
-    setLocalData([]);
-
     /**
      * выход из режима редактирования
      */
     setEditingIndex(null);
-  }, [schema?.headline, uiParams, form, templateKey]);
 
-  /**
-   * Уведомляем родителя о количестве строк в таблице.
-   */
+    const draft = readTemplateDraft(templateId);
+    const restoredParams = draft?.params?.values ?? {};
+    const restoredRows = (draft?.stages?.stages ?? []) as RowWithSource[];
+
+    if (restoredParams && Object.keys(restoredParams).length > 0) {
+      form.setFieldsValue(restoredParams);
+    }
+    setLocalData(restoredRows);
+
+    const templateSectionKey = schema?.headline;
+    const prevGlobalValues = Array.isArray(restoredRows) ? restoredRows : [];
+    const cleaned = prevGlobalValues.map((r) => ({ ...r }));
+    setTemplateValues(templateSectionKey, cleaned);
+  }, [schema?.headline, uiParams, form, templateId, setTemplateValues]);
+
+  /** Автосохранение ПАРАМЕТРОВ формы */
+  const handleValuesChange = useCallback(() => {
+    const allValues = form.getFieldsValue(true);
+    // локальная реализация saveParams
+    saveParams(templateId, allValues);
+  }, [form, templateId]);
+
   useEffect(() => {
     onRowCountChange?.(localData.length);
   }, [localData.length, onRowCountChange]);
@@ -281,11 +318,15 @@ export default function DynamicYamlForm({
        * новая строка таблицы с прикреплённым sourceKey
        */
       const nextRow: RowWithSource = { ...vals, __sourceKey: sourceKey };
-      setLocalData((prev) => [...prev, nextRow]);
+      setLocalData((prev) => {
+        const updated = [...prev, nextRow];
+        saveStages(templateId, updated);
+        return updated;
+      });
       setTemplateValues(templateSectionKey, [...prevGlobalValues, nextRow]);
 
       if (stageKeys.length) {
-        addFromYaml({
+        useTimelineStore.getState().addFromYaml?.({
           label: schema?.headline || schema?.description || 'Новая запись',
           stageKeys,
           stagesField,
@@ -305,9 +346,12 @@ export default function DynamicYamlForm({
        */
       const patchedRow: RowWithSource = { ...vals, __sourceKey: sourceKey };
 
-      setLocalData((prev) =>
-        prev.map((rowItem, index) => (index === editingIndex ? patchedRow : rowItem)),
-      );
+      setLocalData((prev) => {
+        const updated = prev.map((rowItem, index) => (index === editingIndex ? patchedRow : rowItem));
+        saveStages(templateId, updated);
+        return updated;
+      });
+
       setTemplateValues(
         templateSectionKey,
         prevGlobalValues.map((rowItem: any, index: number) =>
@@ -333,6 +377,9 @@ export default function DynamicYamlForm({
      */
     form.resetFields();
     setEditingIndex(null);
+
+    // Параметры формы (после очистки) — в params
+    saveParams(templateId, form.getFieldsValue(true));
   };
 
   /**
@@ -355,14 +402,23 @@ export default function DynamicYamlForm({
       /** Удаляем блоки с таймлайна по ключу (для всех исполнителей) */
       removeBySource({ sourceKey });
 
-      setLocalData((prev) => prev.filter((row) => (row as any)?.__sourceKey !== sourceKey));
+      setLocalData((prev) => {
+        const updated = prev.filter((row) => (row as any)?.__sourceKey !== sourceKey);
+        saveStages(templateId, updated);
+        return updated;
+      });
+
       setTemplateValues(
         templateSectionKey,
         (prevGlobalValues ?? []).filter((row: any) => row?.__sourceKey !== sourceKey),
       );
     } else {
-      /** если ключа нет, удаляем по индексу только в таблицах */
-      setLocalData((prev) => prev.filter((_, i) => i !== index));
+      setLocalData((prev) => {
+        const updated = prev.filter((_, i) => i !== index);
+        saveStages(templateId, updated);
+        return updated;
+      });
+
       setTemplateValues(
         templateSectionKey,
         (prevGlobalValues ?? []).filter((_: any, i: number) => i !== index),
@@ -375,6 +431,7 @@ export default function DynamicYamlForm({
     ) {
       form.resetFields();
       setEditingIndex(null);
+      saveParams(templateId, form.getFieldsValue(true));
     }
   };
 
@@ -399,6 +456,7 @@ export default function DynamicYamlForm({
      * проставление значений в форму
      */
     form.setFieldsValue(formRow);
+    saveParams(templateId, form.getFieldsValue(true));
   };
 
   /**

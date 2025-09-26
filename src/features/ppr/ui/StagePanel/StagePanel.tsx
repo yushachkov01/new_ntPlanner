@@ -3,6 +3,13 @@ import type { ColumnsType } from 'antd/es/table';
 import type { FC } from 'react';
 import { useMemo, useEffect, useState, useCallback, useRef } from 'react';
 
+import {
+  jsonParse,
+  jsonStringify,
+  saveStages as saveTemplateStages,
+  StageDraftBundle
+} from '@/shared/lib/persistence/localTemplateDraft';
+
 import type { StageField } from '@/entities/template/model/store/templateStore';
 import { useTypesStore } from '@/entities/types/model/store/typesStore';
 
@@ -18,7 +25,8 @@ import type { RoleKey } from '@/shared/utils/normalizeRoleKey';
 import {
   isFileFieldGeneric,
   getFormatsGeneric,
-  getAcceptGeneric, isFilledValue,
+  getAcceptGeneric,
+  isFilledValue,
 } from '@/shared/utils/TaskDetailUtils';
 import useTimelineStore from '@entities/timeline/model/store/timelineStore';
 import { getStageMinutes } from '@entities/timeline/model/utils/time';
@@ -28,15 +36,29 @@ import ConfigUploader from '@features/ppr/ui/ConfigUploader/ConfigUploader';
 import {
   StageFormPersistKey,
   StageFormValues,
-  useStageFormStore
-} from "@entities/stageFormStore/model/store/stageFormStore";
+  useStageFormStore,
+} from '@entities/stageFormStore/model/store/stageFormStore';
 import { usePlannedTaskStore } from '@/entities/PlannedTask/model/store/plannedTaskStore';
 import type { FieldNode } from '@/features/pprEdit/model/typeSystem/FieldTreeBuilder';
 import { buildFieldNodesFromStageFields } from '@/features/pprEdit/model/typeSystem/FieldTreeBuilder';
 import FieldNodeRenderer from '@/shared/ui/form/FieldNodeRenderer';
-import CompositeNodeRenderer from "@/shared/ui/form/CompositeNodeRenderer";
+import CompositeNodeRenderer from '@/shared/ui/form/CompositeNodeRenderer';
 
 const { Text } = Typography;
+
+const buildStagesKey = (tplIdx?: number) => `PPR_STAGES_DRAFT::${String(tplIdx ?? '0')}`;
+const readStagesDraft = (key: string): StageDraftBundle | undefined =>
+    jsonParse<StageDraftBundle>(localStorage.getItem(key)) ?? undefined;
+const saveStageValues = (key: string, stageKey: string, values: Record<string, unknown>) => {
+  const prev = readStagesDraft(key) ?? { stages: {} };
+  const next: StageDraftBundle = {
+    stages: {
+      ...prev.stages,
+      [stageKey]: { values, savedAt: new Date().toISOString() },
+    },
+  };
+  localStorage.setItem(key, jsonStringify(next));
+};
 
 /** Расширяем базовый тип файла конфига — добавляем метаданные загрузки. */
 export interface ConfigFile extends BaseConfigFile {
@@ -103,6 +125,17 @@ export const StagePanel: FC<StagePanelProps> = ({
   onStageFieldFilledChange,
 }) => {
   const deviceOptions = useDeviceOptions();
+
+  /**
+   * TemplateId под ключ PPR_DRAFT::<templateId>.
+   */
+  const templateId = useMemo(() => {
+    const yamlUrl = (meta as any)?.yaml_url ?? (meta as any)?.template_url ?? (meta as any)?.url;
+    const name = (meta as any)?.name ?? (meta as any)?.templateName;
+    const headline = (meta as any)?.headline;
+    return String(yamlUrl ?? name ?? tplIdx ?? headline ?? '0');
+  }, [meta, tplIdx]);
+
   /** Текущий пользователь — для подстановки в uploadedBy при отсутствии значения */
   const currentUser = userStore((s) => s.user);
   const currentUserDisplayName = useMemo(() => {
@@ -253,6 +286,21 @@ export const StagePanel: FC<StagePanelProps> = ({
   const isHydratedRef = useRef(false);
   const lastHydratedSavedRef = useRef<StageFormValues | undefined>(undefined);
 
+  /** LocalStorage ключ для всех этапов этого шаблона */
+  const stagesDraftKey = useMemo(() => buildStagesKey(tplIdx), [tplIdx]);
+
+  /** Синк всех этапов в общий черновик шаблона */
+  const syncAllStagesToTemplateDraft = useCallback(() => {
+    if (!templateId) return;
+    const bundle = readStagesDraft(stagesDraftKey);
+    const map = bundle?.stages ?? {};
+    const aggregated = Object.entries(map).map(([key, value]) => ({
+      __stageKey: key,
+      ...(value?.values ?? {}),
+    }));
+    saveTemplateStages(templateId, aggregated);
+  }, [stagesDraftKey, templateId]);
+
   /** при маунте — отметить заполненность НЕ файловых required по дефолтам/значениям */
   useEffect(() => {
     const values = form.getFieldsValue();
@@ -265,7 +313,16 @@ export const StagePanel: FC<StagePanelProps> = ({
 
   /** Гидрация формы из стора + восстановление списка файлов и первичный пересчёт заполненности */
   useEffect(() => {
-    const saved = getPersisted as StageFormValues | undefined;
+    let saved: StageFormValues | undefined = getPersisted as StageFormValues | undefined;
+
+    if (!saved) {
+      const ls = readStagesDraft(stagesDraftKey);
+      const fromLS = ls?.stages?.[stageKey]?.values;
+      if (fromLS && typeof fromLS === 'object') {
+        saved = fromLS as StageFormValues;
+      }
+    }
+
     if (saved && !isHydratedRef.current) {
       lastHydratedSavedRef.current = saved;
       form.setFieldsValue(saved);
@@ -288,7 +345,17 @@ export const StagePanel: FC<StagePanelProps> = ({
 
       isHydratedRef.current = true;
     }
-  }, [fileFields.map((field) => String(field.key)).join('|')]);
+
+    syncAllStagesToTemplateDraft();
+  }, [
+    fileFields.map((field) => String(field.key)).join('|'),
+    stagesDraftKey,
+    stageKey,
+    getPersisted,
+    form,
+    currentUserDisplayName,
+    syncAllStagesToTemplateDraft,
+  ]);
 
   /** после гидрации/обновления visibleByField пересчитываем filled для всех required */
   useEffect(() => {
@@ -345,21 +412,31 @@ export const StagePanel: FC<StagePanelProps> = ({
         // отметить заполненность файлового поля
         onStageFieldFilledChange?.(stageKey, fieldKey, uniqueList.length > 0);
 
-        patchPersisted(persistKey, { [fieldKey]: baseList as unknown });
-        return next;
-      });
-    },
-    [
-      currentUserDisplayName,
-      getRecordKey,
-      onConfigsChange,
-      removedByField,
-      setStageFieldValue,
-      stageKey,
-      onStageFieldFilledChange,
-      patchPersisted,
-      persistKey,
-    ],
+          // Persist
+          patchPersisted(persistKey, { [fieldKey]: baseList as unknown });
+          const all = { ...form.getFieldsValue(true), [fieldKey]: baseList };
+          saveStageValues(stagesDraftKey, stageKey, all);
+
+          // синк всех этапов в общий черновик шаблона
+          syncAllStagesToTemplateDraft();
+
+          return next;
+        });
+      },
+      [
+        currentUserDisplayName,
+        getRecordKey,
+        onConfigsChange,
+        removedByField,
+        setStageFieldValue,
+        stageKey,
+        onStageFieldFilledChange,
+        patchPersisted,
+        persistKey,
+        form,
+        stagesDraftKey,
+        syncAllStagesToTemplateDraft,
+      ],
   );
 
   const handleUploaderErrorFor = useCallback(
@@ -431,9 +508,12 @@ export const StagePanel: FC<StagePanelProps> = ({
                   isFilledValue((allValues as any)[changedKey]),
                 );
               });
+                  // Persist
               setAllPersisted(persistKey, allValues as unknown as StageFormValues);
-            }}
-           preserve
+                  saveStageValues(stagesDraftKey, stageKey, allValues as Record<string, unknown>);
+                  syncAllStagesToTemplateDraft();
+                }}
+          preserve
           >
                         <Form.Item
                             key={STAGE_PANEL_KEYS.TIMER_ITEM_NAME}
