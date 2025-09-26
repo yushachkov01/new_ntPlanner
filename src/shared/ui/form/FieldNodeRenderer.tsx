@@ -1,32 +1,42 @@
-import React from 'react';
+// src/features/pprEdit/ui/form/FieldNodeRenderer.tsx
+import React, { useCallback } from 'react';
 import { Form, Input, InputNumber, Select, Checkbox, Radio } from 'antd';
-import type { FieldNode } from '@/features/pprEdit/model/typeSystem/FieldTreeBuilder';
+
+type FieldNode = {
+    kind: 'field';
+    key: string;
+    label: string;
+    widget: 'input' | 'number' | 'select' | 'textarea' | 'checkbox' | 'radio';
+    options?: Array<{ label: string; value: any }>;
+    multiple?: boolean;
+    rawType?: string;
+    rules?: any[];
+    placeholder?: string;
+    min?: number;
+    max?: number;
+    step?: number;
+};
 
 type Props = {
     node: FieldNode;
-    /** для специальных типов вроде ^device */
     deviceOptions?: Array<{ label: string; value: string }>;
 };
 
 const FieldNodeRenderer: React.FC<Props> = ({ node, deviceOptions }) => {
     if (node.kind !== 'field') return null;
 
-    // checkbox
+    const emitChanged = useCallback(() => {
+        document.dispatchEvent(new Event('ntp:form:changed'));
+    }, []);
+
     if (node.widget === 'checkbox') {
         return (
-            <Form.Item
-                key={node.key}
-                name={node.key}
-                label={node.label}
-                rules={node.rules}
-                valuePropName="checked"
-            >
-                <Checkbox />
+            <Form.Item key={node.key} name={node.key} label={node.label} rules={node.rules} valuePropName="checked">
+                <Checkbox onChange={emitChanged} />
             </Form.Item>
         );
     }
 
-    // number
     if (node.widget === 'number') {
         return (
             <Form.Item key={node.key} name={node.key} label={node.label} rules={node.rules}>
@@ -36,12 +46,12 @@ const FieldNodeRenderer: React.FC<Props> = ({ node, deviceOptions }) => {
                     step={node.step}
                     placeholder={node.placeholder ?? 'Введите число'}
                     style={{ width: '100%' }}
+                    onChange={emitChanged}
                 />
             </Form.Item>
         );
     }
 
-    // select (+ специальный случай ^device)
     if (node.widget === 'select') {
         if (node.rawType === '^device') {
             return (
@@ -52,6 +62,7 @@ const FieldNodeRenderer: React.FC<Props> = ({ node, deviceOptions }) => {
                         showSearch
                         optionFilterProp="label"
                         placeholder={node.placeholder ?? 'Выберите устройство'}
+                        onChange={emitChanged}
                     />
                 </Form.Item>
             );
@@ -65,36 +76,31 @@ const FieldNodeRenderer: React.FC<Props> = ({ node, deviceOptions }) => {
                     showSearch
                     optionFilterProp="label"
                     placeholder={node.placeholder ?? 'Выберите значение'}
+                    onChange={emitChanged}
                 />
             </Form.Item>
         );
     }
 
-    // radio
     if (node.widget === 'radio') {
         return (
             <Form.Item key={node.key} name={node.key} label={node.label} rules={node.rules}>
-                <Radio.Group
-                    options={node.options}
-                    optionType="default"
-                />
+                <Radio.Group options={node.options} onChange={emitChanged} />
             </Form.Item>
         );
     }
 
-    // textarea
     if (node.widget === 'textarea') {
         return (
             <Form.Item key={node.key} name={node.key} label={node.label} rules={node.rules}>
-                <Input.TextArea placeholder={node.placeholder ?? 'Введите текст'} />
+                <Input.TextArea placeholder={node.placeholder ?? 'Введите текст'} onChange={emitChanged} />
             </Form.Item>
         );
     }
 
-    // default: input
     return (
         <Form.Item key={node.key} name={node.key} label={node.label} rules={node.rules}>
-            <Input placeholder={node.placeholder ?? 'Введите значение'} />
+            <Input placeholder={node.placeholder ?? 'Введите значение'} onChange={emitChanged} />
         </Form.Item>
     );
 };

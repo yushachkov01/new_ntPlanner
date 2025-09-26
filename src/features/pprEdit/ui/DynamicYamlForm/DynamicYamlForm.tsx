@@ -17,11 +17,11 @@ import useTimelineStore from '@entities/timeline/model/store/timelineStore';
 import { useTypesStore } from '@entities/types/model/store/typesStore';
 import type { User } from '@entities/users/model/mapping/mapping';
 import {
-  jsonParse,
-  jsonStringify,
-  readTemplateDraft,
-  saveStages,
-  TemplateDraft
+    jsonParse,
+    jsonStringify,
+    readTemplateDraft,
+    saveStages,
+    TemplateDraft
 } from '@/shared/lib/persistence/localTemplateDraft';
 import { FieldsTable } from '../FieldsTable/FieldsTable';
 import { toArray } from './helpers/toArray';
@@ -34,12 +34,12 @@ const readDraft = (key: string): TemplateDraft | undefined =>
 
 /** Сохранить секцию params без потери table (локальная реализация) */
 const saveParams = (key: string, values: Record<string, unknown>) => {
-  const prev = readDraft(key) ?? {};
-  const next: TemplateDraft = {
-    ...prev,
-    params: { values, savedAt: new Date().toISOString() },
-  };
-  localStorage.setItem(key, jsonStringify(next));
+    const prev = readDraft(key) ?? {};
+    const next: TemplateDraft = {
+        ...prev,
+        params: { values, savedAt: new Date().toISOString() },
+    };
+    localStorage.setItem(key, jsonStringify(next));
 };
 
 /**
@@ -49,16 +49,16 @@ const saveParams = (key: string, values: Record<string, unknown>) => {
  * - onRowCountChange?: (count: number) => void — уведомление о числе записей в таблице
  */
 interface Props {
-  schema: any;
-  executors?: Array<Pick<User, 'id'> & { author?: string; role?: string }>;
-  templateKey?: string;
-  onRowCountChange?: (count: number) => void;
-  onDisplayTableChange?: (
-    headers: string[],
-    rows: string[][],
-    sources: (string | undefined)[],
-    colKeys: string[],
-  ) => void;
+    schema: any;
+    executors?: Array<Pick<User, 'id'> & { author?: string; role?: string }>;
+    templateKey?: string;
+    onRowCountChange?: (count: number) => void;
+    onDisplayTableChange?: (
+        headers: string[],
+        rows: string[][],
+        sources: (string | undefined)[],
+        colKeys: string[],
+    ) => void;
 }
 
 type RowWithSource = Record<string, any> & { __sourceKey?: string };
@@ -68,463 +68,463 @@ type RowWithSource = Record<string, any> & { __sourceKey?: string };
  * Возвращает true, если значение "пустое"
  */
 const isEmptyValue = (value: unknown): boolean => {
-  if (value == null) return true;
-  if (typeof value === 'string') return value.trim() === '';
-  if (typeof value === 'boolean') return value === false;
-  if (typeof value === 'number') return Number.isNaN(value);
-  if (value instanceof Date) return Number.isNaN(+value);
-  if (Array.isArray(value)) return value.length === 0 || value.every(isEmptyValue);
-  if (typeof value === 'object') {
-    const vals = Object.values(value as Record<string, unknown>);
-    return vals.length === 0 || vals.every(isEmptyValue);
-  }
-  return false;
+    if (value == null) return true;
+    if (typeof value === 'string') return value.trim() === '';
+    if (typeof value === 'boolean') return value === false;
+    if (typeof value === 'number') return Number.isNaN(value);
+    if (value instanceof Date) return Number.isNaN(+value);
+    if (Array.isArray(value)) return value.length === 0 || value.every(isEmptyValue);
+    if (typeof value === 'object') {
+        const vals = Object.values(value as Record<string, unknown>);
+        return vals.length === 0 || vals.every(isEmptyValue);
+    }
+    return false;
 };
 /** true => есть хотя бы одно ЗАПОЛНЕННОЕ значение */
 const hasAnyFilled = (values: Record<string, any>): boolean =>
-  Object.values(values).some((value) => !isEmptyValue(value));
+    Object.values(values).some((value) => !isEmptyValue(value));
 /**
  * Компонент DynamicYamlForm: динамическая форма + таблица записей + связка с таймлайном.
  */
 export default function DynamicYamlForm({
-  schema,
-  executors = [],
-  templateKey,
-  onRowCountChange,
-  onDisplayTableChange,
-}: Props) {
-  /** Управление формой Ant Design */
-  const [form] = Form.useForm();
-  const [localData, setLocalData] = useState<RowWithSource[]>([]);
-
-  /**
-   * индекс редактируемой записи в таблице
-   * params
-   */
-  const [editingIndex, setEditingIndex] = useState<number | null>(null);
-
-  /** Ключ PPR_DRAFT::<templateId> совместимый со StagePanel */
-  const templateId = useMemo(
-      () => String(templateKey ?? schema?.headline ?? 'unknown'),
-      [templateKey, schema?.headline],
-  );
-  /**
-   * сеттер templateStore по ключу схемы
-   */
-  const setTemplateValues = templateStore((state) => state.setTemplateValues);
-
-  /**
-   * геттер templateStore по ключу схемы
-   * params
-   */
-  const getTemplateValues = templateStore((state) => state.getTemplateValues);
-
-  /**
-   * экшен стора таймлайна
-   */
-  const addFromYaml = useTimelineStore((state) => state.addFromYaml);
-
-  /**
-   * экшен стора таймлайна: удалить блоки по sourceKey
-   */
-  const removeBySource = useTimelineStore((state) => state.removeBySource);
-
-  /**
-   *   для декларативной формы:
-   * - types: загруженные типы
-   * - loadTypes: загрузка
-   * - isTypesLoading/error: состояние загрузки
-   */
-  const types = useTypesStore((state) => state.types);
-  const loadTypes = useTypesStore((state) => state.load);
-  const isTypesLoading = useTypesStore((state) => state.isLoading);
-  const typesError = useTypesStore((state) => state.error);
-
-  /**
-   * Флаг готовности типов: есть объект и в нём есть ключи.
-   */
-  const typesReady = !!types && typeof types === 'object' && Object.keys(types).length > 0;
-
-  /**
-   *  форс-загрузка типов при монтировании (первичный прогрев).
-   */
-  useEffect(() => {
-    void loadTypes(true);
-  }, [loadTypes]);
-
-  /**
-   * догрузка типов, если они ещё не готовы.
-   */
-  useEffect(() => {
-    if (!typesReady) void loadTypes();
-  }, [typesReady, loadTypes, types]);
-
-  /**
-   * Исходные параметры для формы (верхний уровень),
-   */
-  const rawParams = useMemo(() => {
-    return Array.isArray(schema?.params) && schema.params.length
-      ? (schema.params as FieldCfg[])
-      : (toArray({ fields: schema?.settings }) as FieldCfg[]);
-  }, [schema?.params, schema?.settings]);
-
-  /**
-   * Делаем ключи полей уникальными
-   */
-  const uiParams = useMemo(() => {
-    const seenCounters = new Map<string, number>();
-    return (rawParams ?? []).map((fieldConfig: any) => {
-      const originalKey = String(fieldConfig.key ?? fieldConfig.name ?? '');
-      if (!originalKey) return fieldConfig;
-      const ordinalIndex = seenCounters.get(originalKey) ?? 0;
-      seenCounters.set(originalKey, ordinalIndex + 1);
-      return ordinalIndex === 0
-        ? fieldConfig
-        : { ...fieldConfig, key: `${originalKey}__${ordinalIndex + 1}` };
-    }) as FieldCfg[];
-  }, [rawParams]);
-
-  /**
-   * Колонки таблицы (видимые заголовки) по текущей конфигурации полей.
-   */
-  const tableColumns = useMemo<FieldCfg[]>(
-    () =>
-      (uiParams ?? []).map((fieldConfig: any) => ({
-        key: fieldConfig.key ?? fieldConfig.name,
-        name: fieldConfig.label ?? fieldConfig.name ?? fieldConfig.key,
-        label: fieldConfig.label,
-        type: fieldConfig.type,
-        widget: (fieldConfig as any).widget,
-      })),
-    [uiParams],
-  );
-
-  /**
-   * Сброс формы/таблицы при смене схемы/шаблона.
-   */
-  useEffect(() => {
-    /**
-     * сброс значений формы
-     */
-    form.resetFields();
-    /**
-     * выход из режима редактирования
-     */
-    setEditingIndex(null);
-
-    const draft = readTemplateDraft(templateId);
-    const restoredParams = draft?.params?.values ?? {};
-    const restoredRows = (draft?.stages?.stages ?? []) as RowWithSource[];
-
-    if (restoredParams && Object.keys(restoredParams).length > 0) {
-      form.setFieldsValue(restoredParams);
-    }
-    setLocalData(restoredRows);
-
-    const templateSectionKey = schema?.headline;
-    const prevGlobalValues = Array.isArray(restoredRows) ? restoredRows : [];
-    const cleaned = prevGlobalValues.map((r) => ({ ...r }));
-    setTemplateValues(templateSectionKey, cleaned);
-  }, [schema?.headline, uiParams, form, templateId, setTemplateValues]);
-
-  /** Автосохранение ПАРАМЕТРОВ формы */
-  const handleValuesChange = useCallback(() => {
-    const allValues = form.getFieldsValue(true);
-    // локальная реализация saveParams
-    saveParams(templateId, allValues);
-  }, [form, templateId]);
-
-  useEffect(() => {
-    onRowCountChange?.(localData.length);
-  }, [localData.length, onRowCountChange]);
-
-  /**
-   * вычисляет упорядоченную цепочку стадий из YAML
-   * schema: исходная YAML-схема
-   * returns
-   * { stageKeys, stagesField }: массив ключей стадий и словарь метаданных
-   */
-  const stagesFromYaml = useMemo(() => {
-    /**
-     * копия входной схемы
-     */
-    const rawSchema = schema ?? {};
-    let startStageKey: string | undefined;
-    let stagesField: Record<string, any> = {};
-
-    if (rawSchema?.current_stages && rawSchema?.stages_field) {
-      const asArray = Array.isArray(rawSchema.current_stages)
-        ? rawSchema.current_stages
-        : [rawSchema.current_stages];
-      startStageKey = asArray?.[0];
-      stagesField = rawSchema.stages_field ?? {};
-    } else if (rawSchema?.start && rawSchema?.stages) {
-      startStageKey = rawSchema.start;
-      stagesField = rawSchema.stages ?? {};
-    }
-
-    const stageKeys: string[] = [];
-    let cursorKey = startStageKey;
-    let stepGuardCounter = 0;
-
-    while (cursorKey && cursorKey !== 'exit' && stagesField[cursorKey] && stepGuardCounter < 500) {
-      stageKeys.push(cursorKey);
-      const successNext = stagesField[cursorKey]?.if_success;
-      if (!successNext) break;
-      cursorKey = Array.isArray(successNext) ? successNext[0] : successNext;
-      stepGuardCounter++;
-    }
-
-    return { stageKeys, stagesField: stagesField as Record<string, any> };
-  }, [schema]);
-
-  /**
-   * сабмит формы — добавление или редактирование записи + синхронизация с таймлайном
-   * params:
-   * vals: значения полей формы
-   */
-  const onFinish = (vals: Record<string, any>) => {
-    /** Если не заполнено ни одного поля — ничего не добавляем/не сохраняем */
-    if (!hasAnyFilled(vals)) {
-      message.warning('Заполните хотя бы одно поле перед добавлением записи');
-      return;
-    }
+                                            schema,
+                                            executors = [],
+                                            templateKey,
+                                            onRowCountChange,
+                                            onDisplayTableChange,
+                                        }: Props) {
+    /** Управление формой Ant Design */
+    const [form] = Form.useForm();
+    const [localData, setLocalData] = useState<RowWithSource[]>([]);
 
     /**
-     * ключ раздела в templateStore
+     * индекс редактируемой записи в таблице
+     * params
      */
-    const templateSectionKey = schema?.headline;
-    const prevGlobalValues = getTemplateValues(templateSectionKey);
+    const [editingIndex, setEditingIndex] = useState<number | null>(null);
+
+    /** Ключ PPR_DRAFT::<templateId> совместимый со StagePanel */
+    const templateId = useMemo(
+        () => String(templateKey ?? schema?.headline ?? 'unknown'),
+        [templateKey, schema?.headline],
+    );
+    /**
+     * сеттер templateStore по ключу схемы
+     */
+    const setTemplateValues = templateStore((state) => state.setTemplateValues);
 
     /**
-     * список id исполнителей текущего шаблона (string|number как пришло)
+     * геттер templateStore по ключу схемы
+     * params
      */
-    const executorIds = (executors ?? []).map((executor: any) => executor.id);
+    const getTemplateValues = templateStore((state) => state.getTemplateValues);
 
     /**
-     * разобранная из YAML цепочка стадий и словарь метаданных
+     * экшен стора таймлайна
      */
-    const { stageKeys, stagesField } = stagesFromYaml;
+    const addFromYaml = useTimelineStore((state) => state.addFromYaml);
 
-    if (editingIndex === null) {
-      /**ДОБАВЛЕНИЕ
-       * уникальный ключ источника для связи «строка таблицы -> блоки таймлайна»
-       */
-      const sourceKey = `${
-        templateKey ?? templateSectionKey
-      }::${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    /**
+     * экшен стора таймлайна: удалить блоки по sourceKey
+     */
+    const removeBySource = useTimelineStore((state) => state.removeBySource);
 
-      /**
-       * новая строка таблицы с прикреплённым sourceKey
-       */
-      const nextRow: RowWithSource = { ...vals, __sourceKey: sourceKey };
-      setLocalData((prev) => {
-        const updated = [...prev, nextRow];
-        saveStages(templateId, updated);
-        return updated;
-      });
-      setTemplateValues(templateSectionKey, [...prevGlobalValues, nextRow]);
+    /**
+     *   для декларативной формы:
+     * - types: загруженные типы
+     * - loadTypes: загрузка
+     * - isTypesLoading/error: состояние загрузки
+     */
+    const types = useTypesStore((state) => state.types);
+    const loadTypes = useTypesStore((state) => state.load);
+    const isTypesLoading = useTypesStore((state) => state.isLoading);
+    const typesError = useTypesStore((state) => state.error);
 
-      if (stageKeys.length) {
-        useTimelineStore.getState().addFromYaml?.({
-          label: schema?.headline || schema?.description || 'Новая запись',
-          stageKeys,
-          stagesField,
-          execIds: executorIds,
-          sourceKey,
-        });
-      }
-    } else {
-      /**
-       * РЕДАКТИРОВАНИЕ
-       * исходный sourceKey редактируемой строки
-       */
-      const sourceKey = localData[editingIndex]?.__sourceKey;
+    /**
+     * Флаг готовности типов: есть объект и в нём есть ключи.
+     */
+    const typesReady = !!types && typeof types === 'object' && Object.keys(types).length > 0;
 
-      /**
-       * обновлённая строка с сохранением sourceKey
-       */
-      const patchedRow: RowWithSource = { ...vals, __sourceKey: sourceKey };
+    /**
+     *  форс-загрузка типов при монтировании (первичный прогрев).
+     */
+    useEffect(() => {
+        void loadTypes(true);
+    }, [loadTypes]);
 
-      setLocalData((prev) => {
-        const updated = prev.map((rowItem, index) => (index === editingIndex ? patchedRow : rowItem));
-        saveStages(templateId, updated);
-        return updated;
-      });
+    /**
+     * догрузка типов, если они ещё не готовы.
+     */
+    useEffect(() => {
+        if (!typesReady) void loadTypes();
+    }, [typesReady, loadTypes, types]);
 
-      setTemplateValues(
-        templateSectionKey,
-        prevGlobalValues.map((rowItem: any, index: number) =>
-          index === editingIndex ? patchedRow : rowItem,
-        ),
-      );
-      if (sourceKey) {
-        removeBySource({ sourceKey });
-        if (stageKeys.length) {
-          addFromYaml({
-            label: schema?.headline || schema?.templateName || 'Обновлённая запись',
-            stageKeys,
-            stagesField,
-            execIds: executorIds,
-            sourceKey,
-          });
+    /**
+     * Исходные параметры для формы (верхний уровень),
+     */
+    const rawParams = useMemo(() => {
+        return Array.isArray(schema?.params) && schema.params.length
+            ? (schema.params as FieldCfg[])
+            : (toArray({ fields: schema?.settings }) as FieldCfg[]);
+    }, [schema?.params, schema?.settings]);
+
+    /**
+     * Делаем ключи полей уникальными
+     */
+    const uiParams = useMemo(() => {
+        const seenCounters = new Map<string, number>();
+        return (rawParams ?? []).map((fieldConfig: any) => {
+            const originalKey = String(fieldConfig.key ?? fieldConfig.name ?? '');
+            if (!originalKey) return fieldConfig;
+            const ordinalIndex = seenCounters.get(originalKey) ?? 0;
+            seenCounters.set(originalKey, ordinalIndex + 1);
+            return ordinalIndex === 0
+                ? fieldConfig
+                : { ...fieldConfig, key: `${originalKey}__${ordinalIndex + 1}` };
+        }) as FieldCfg[];
+    }, [rawParams]);
+
+    /**
+     * Колонки таблицы (видимые заголовки) по текущей конфигурации полей.
+     */
+    const tableColumns = useMemo<FieldCfg[]>(
+        () =>
+            (uiParams ?? []).map((fieldConfig: any) => ({
+                key: fieldConfig.key ?? fieldConfig.name,
+                name: fieldConfig.label ?? fieldConfig.name ?? fieldConfig.key,
+                label: fieldConfig.label,
+                type: fieldConfig.type,
+                widget: (fieldConfig as any).widget,
+            })),
+        [uiParams],
+    );
+
+    /**
+     * Сброс формы/таблицы при смене схемы/шаблона.
+     */
+    useEffect(() => {
+        /**
+         * сброс значений формы
+         */
+        form.resetFields();
+        /**
+         * выход из режима редактирования
+         */
+        setEditingIndex(null);
+
+        const draft = readTemplateDraft(templateId);
+        const restoredParams = draft?.params?.values ?? {};
+        const restoredRows = (draft?.stages?.stages ?? []) as RowWithSource[];
+
+        if (restoredParams && Object.keys(restoredParams).length > 0) {
+            form.setFieldsValue(restoredParams);
         }
-      }
-    }
+        setLocalData(restoredRows);
+
+        const templateSectionKey = schema?.headline;
+        const prevGlobalValues = Array.isArray(restoredRows) ? restoredRows : [];
+        const cleaned = prevGlobalValues.map((r) => ({ ...r }));
+        setTemplateValues(templateSectionKey, cleaned);
+    }, [schema?.headline, uiParams, form, templateId, setTemplateValues]);
+
+    /** Автосохранение ПАРАМЕТРОВ формы */
+    const handleValuesChange = useCallback(() => {
+        const allValues = form.getFieldsValue(true);
+        // локальная реализация saveParams
+        saveParams(templateId, allValues);
+    }, [form, templateId]);
+
+    useEffect(() => {
+        onRowCountChange?.(localData.length);
+    }, [localData.length, onRowCountChange]);
 
     /**
-     * очистка формы и выход из режима редактирования
+     * вычисляет упорядоченную цепочку стадий из YAML
+     * schema: исходная YAML-схема
+     * returns
+     * { stageKeys, stagesField }: массив ключей стадий и словарь метаданных
      */
-    form.resetFields();
-    setEditingIndex(null);
+    const stagesFromYaml = useMemo(() => {
+        /**
+         * копия входной схемы
+         */
+        const rawSchema = schema ?? {};
+        let startStageKey: string | undefined;
+        let stagesField: Record<string, any> = {};
 
-    // Параметры формы (после очистки) — в params
-    saveParams(templateId, form.getFieldsValue(true));
-  };
+        if (rawSchema?.current_stages && rawSchema?.stages_field) {
+            const asArray = Array.isArray(rawSchema.current_stages)
+                ? rawSchema.current_stages
+                : [rawSchema.current_stages];
+            startStageKey = asArray?.[0];
+            stagesField = rawSchema.stages_field ?? {};
+        } else if (rawSchema?.start && rawSchema?.stages) {
+            startStageKey = rawSchema.start;
+            stagesField = rawSchema.stages ?? {};
+        }
 
-  /**
-   * удаляет запись из таблицы и соответствующие блоки с таймлайна по её sourceKey
-   * params
-   * - index: индекс удаляемой записи
-   */
-  const handleDelete = (index: number, passedSourceKey?: string) => {
-    const templateSectionKey = schema?.headline;
-    const prevGlobalValues = getTemplateValues(templateSectionKey);
+        const stageKeys: string[] = [];
+        let cursorKey = startStageKey;
+        let stepGuardCounter = 0;
 
-    const sourceKey = String(
-      passedSourceKey ??
-        (localData[index] as any)?.__sourceKey ??
-        (prevGlobalValues?.[index] as any)?.__sourceKey ??
-        '',
-    ).trim();
+        while (cursorKey && cursorKey !== 'exit' && stagesField[cursorKey] && stepGuardCounter < 500) {
+            stageKeys.push(cursorKey);
+            const successNext = stagesField[cursorKey]?.if_success;
+            if (!successNext) break;
+            cursorKey = Array.isArray(successNext) ? successNext[0] : successNext;
+            stepGuardCounter++;
+        }
 
-    if (sourceKey) {
-      /** Удаляем блоки с таймлайна по ключу (для всех исполнителей) */
-      removeBySource({ sourceKey });
-
-      setLocalData((prev) => {
-        const updated = prev.filter((row) => (row as any)?.__sourceKey !== sourceKey);
-        saveStages(templateId, updated);
-        return updated;
-      });
-
-      setTemplateValues(
-        templateSectionKey,
-        (prevGlobalValues ?? []).filter((row: any) => row?.__sourceKey !== sourceKey),
-      );
-    } else {
-      setLocalData((prev) => {
-        const updated = prev.filter((_, i) => i !== index);
-        saveStages(templateId, updated);
-        return updated;
-      });
-
-      setTemplateValues(
-        templateSectionKey,
-        (prevGlobalValues ?? []).filter((_: any, i: number) => i !== index),
-      );
-    }
-
-    if (
-      editingIndex === index ||
-      (sourceKey && localData[editingIndex ?? -1]?.__sourceKey === sourceKey)
-    ) {
-      form.resetFields();
-      setEditingIndex(null);
-      saveParams(templateId, form.getFieldsValue(true));
-    }
-  };
-
-  /**
-   * Загружает выбранную запись в форму для редактирования.
-   * params
-   * - index: индекс строки для редактирования
-   */
-  const handleEdit = (index: number) => {
-    /**
-     * установка индекса редактируемой записи
-     */
-    setEditingIndex(index);
+        return { stageKeys, stagesField: stagesField as Record<string, any> };
+    }, [schema]);
 
     /**
-     * копия строки без служебного поля __sourceKey
+     * сабмит формы — добавление или редактирование записи + синхронизация с таймлайном
+     * params:
+     * vals: значения полей формы
      */
-    const formRow = { ...localData[index] };
-    delete (formRow as any).__sourceKey;
+    const onFinish = (vals: Record<string, any>) => {
+        /** Если не заполнено ни одного поля — ничего не добавляем/не сохраняем */
+        if (!hasAnyFilled(vals)) {
+            message.warning('Заполните хотя бы одно поле перед добавлением записи');
+            return;
+        }
+
+        /**
+         * ключ раздела в templateStore
+         */
+        const templateSectionKey = schema?.headline;
+        const prevGlobalValues = getTemplateValues(templateSectionKey);
+
+        /**
+         * список id исполнителей текущего шаблона (string|number как пришло)
+         */
+        const executorIds = (executors ?? []).map((executor: any) => executor.id);
+
+        /**
+         * разобранная из YAML цепочка стадий и словарь метаданных
+         */
+        const { stageKeys, stagesField } = stagesFromYaml;
+
+        if (editingIndex === null) {
+            /**ДОБАВЛЕНИЕ
+             * уникальный ключ источника для связи «строка таблицы -> блоки таймлайна»
+             */
+            const sourceKey = `${
+                templateKey ?? templateSectionKey
+            }::${Date.now()}_${Math.random().toString(36).slice(2)}`;
+
+            /**
+             * новая строка таблицы с прикреплённым sourceKey
+             */
+            const nextRow: RowWithSource = { ...vals, __sourceKey: sourceKey };
+            setLocalData((prev) => {
+                const updated = [...prev, nextRow];
+                saveStages(templateId, updated);
+                return updated;
+            });
+            setTemplateValues(templateSectionKey, [...prevGlobalValues, nextRow]);
+
+            if (stageKeys.length) {
+                useTimelineStore.getState().addFromYaml?.({
+                    label: schema?.headline || schema?.description || 'Новая запись',
+                    stageKeys,
+                    stagesField,
+                    execIds: executorIds,
+                    sourceKey,
+                });
+            }
+        } else {
+            /**
+             * РЕДАКТИРОВАНИЕ
+             * исходный sourceKey редактируемой строки
+             */
+            const sourceKey = localData[editingIndex]?.__sourceKey;
+
+            /**
+             * обновлённая строка с сохранением sourceKey
+             */
+            const patchedRow: RowWithSource = { ...vals, __sourceKey: sourceKey };
+
+            setLocalData((prev) => {
+                const updated = prev.map((rowItem, index) => (index === editingIndex ? patchedRow : rowItem));
+                saveStages(templateId, updated);
+                return updated;
+            });
+
+            setTemplateValues(
+                templateSectionKey,
+                prevGlobalValues.map((rowItem: any, index: number) =>
+                    index === editingIndex ? patchedRow : rowItem,
+                ),
+            );
+            if (sourceKey) {
+                removeBySource({ sourceKey });
+                if (stageKeys.length) {
+                    addFromYaml({
+                        label: schema?.headline || schema?.templateName || 'Обновлённая запись',
+                        stageKeys,
+                        stagesField,
+                        execIds: executorIds,
+                        sourceKey,
+                    });
+                }
+            }
+        }
+
+        /**
+         * очистка формы и выход из режима редактирования
+         */
+        form.resetFields();
+        setEditingIndex(null);
+
+        // Параметры формы (после очистки) — в params
+        saveParams(templateId, form.getFieldsValue(true));
+    };
 
     /**
-     * проставление значений в форму
+     * удаляет запись из таблицы и соответствующие блоки с таймлайна по её sourceKey
+     * params
+     * - index: индекс удаляемой записи
      */
-    form.setFieldsValue(formRow);
-    saveParams(templateId, form.getFieldsValue(true));
-  };
+    const handleDelete = (index: number, passedSourceKey?: string) => {
+        const templateSectionKey = schema?.headline;
+        const prevGlobalValues = getTemplateValues(templateSectionKey);
 
-  /**
-   * Построение дерева полей (если types загружены).
-   */
-  const fieldTree = useMemo(() => {
-    if (!typesReady) return { nodes: [] };
-    try {
-      const { nodes } = buildFieldTree((uiParams ?? []) as FieldCfg[], types);
-      return { nodes };
-    } catch {
-      return { nodes: [] };
-    }
-  }, [uiParams, typesReady, types]);
+        const sourceKey = String(
+            passedSourceKey ??
+            (localData[index] as any)?.__sourceKey ??
+            (prevGlobalValues?.[index] as any)?.__sourceKey ??
+            '',
+        ).trim();
 
-  const handleDisplayTableChange = useCallback(
-    (headers: string[], rows: string[][], sources: (string | undefined)[], colKeys: string[]) => {
-      onDisplayTableChange?.(headers, rows, sources, colKeys);
-    },
-    [onDisplayTableChange],
-  );
-  return (
-    <section className="dyf__root">
-      <Title level={4}>{schema?.headline}</Title>
+        if (sourceKey) {
+            /** Удаляем блоки с таймлайна по ключу (для всех исполнителей) */
+            removeBySource({ sourceKey });
 
-      <div className="dyf__layout">
-        <div className="dyf__form-col">
-          <Form form={form} layout="vertical" onFinish={onFinish}>
-            {!typesReady ? (
-              <>
-                {typesError && (
-                  <Alert
-                    type="warning"
-                    showIcon
-                    message="Не удалось загрузить types.yaml"
-                    description={typesError}
-                    style={{ marginBottom: 12 }}
-                  />
-                )}
-                <Skeleton active paragraph={{ rows: 3 }} />
-              </>
-            ) : (
-              <DeclarativeFormRenderer nodes={fieldTree.nodes} />
-            )}
+            setLocalData((prev) => {
+                const updated = prev.filter((row) => (row as any)?.__sourceKey !== sourceKey);
+                saveStages(templateId, updated);
+                return updated;
+            });
 
-            <Form.Item>
-              <Button
-                type="primary"
-                htmlType="submit"
-                block
-                disabled={!typesReady && isTypesLoading}
-              >
-                {editingIndex === null ? 'Добавить запись' : 'Сохранить изменения'}
-              </Button>
-            </Form.Item>
-          </Form>
-        </div>
+            setTemplateValues(
+                templateSectionKey,
+                (prevGlobalValues ?? []).filter((row: any) => row?.__sourceKey !== sourceKey),
+            );
+        } else {
+            setLocalData((prev) => {
+                const updated = prev.filter((_, i) => i !== index);
+                saveStages(templateId, updated);
+                return updated;
+            });
 
-        <div className="dyf__table-col">
-          <FieldsTable
-            rootFields={tableColumns}
-            data={localData}
-            onEdit={handleEdit}
-            onDelete={handleDelete}
-            onDisplayTableChange={handleDisplayTableChange}
-          />
-        </div>
-      </div>
-    </section>
-  );
+            setTemplateValues(
+                templateSectionKey,
+                (prevGlobalValues ?? []).filter((_: any, i: number) => i !== index),
+            );
+        }
+
+        if (
+            editingIndex === index ||
+            (sourceKey && localData[editingIndex ?? -1]?.__sourceKey === sourceKey)
+        ) {
+            form.resetFields();
+            setEditingIndex(null);
+            saveParams(templateId, form.getFieldsValue(true));
+        }
+    };
+
+    /**
+     * Загружает выбранную запись в форму для редактирования.
+     * params
+     * - index: индекс строки для редактирования
+     */
+    const handleEdit = (index: number) => {
+        /**
+         * установка индекса редактируемой записи
+         */
+        setEditingIndex(index);
+
+        /**
+         * копия строки без служебного поля __sourceKey
+         */
+        const formRow = { ...localData[index] };
+        delete (formRow as any).__sourceKey;
+
+        /**
+         * проставление значений в форму
+         */
+        form.setFieldsValue(formRow);
+        saveParams(templateId, form.getFieldsValue(true));
+    };
+
+    /**
+     * Построение дерева полей (если types загружены).
+     */
+    const fieldTree = useMemo(() => {
+        if (!typesReady) return { nodes: [] };
+        try {
+            const { nodes } = buildFieldTree((uiParams ?? []) as FieldCfg[], types);
+            return { nodes };
+        } catch {
+            return { nodes: [] };
+        }
+    }, [uiParams, typesReady, types]);
+
+    const handleDisplayTableChange = useCallback(
+        (headers: string[], rows: string[][], sources: (string | undefined)[], colKeys: string[]) => {
+            onDisplayTableChange?.(headers, rows, sources, colKeys);
+        },
+        [onDisplayTableChange],
+    );
+    return (
+        <section className="dyf__root">
+            <Title level={4}>{schema?.headline}</Title>
+
+            <div className="dyf__layout">
+                <div className="dyf__form-col">
+                    <Form form={form} layout="vertical" onFinish={onFinish}>
+                        {!typesReady ? (
+                            <>
+                                {typesError && (
+                                    <Alert
+                                        type="warning"
+                                        showIcon
+                                        message="Не удалось загрузить types.yaml"
+                                        description={typesError}
+                                        style={{ marginBottom: 12 }}
+                                    />
+                                )}
+                                <Skeleton active paragraph={{ rows: 3 }} />
+                            </>
+                        ) : (
+                            <DeclarativeFormRenderer nodes={fieldTree.nodes} />
+                        )}
+
+                        <Form.Item>
+                            <Button
+                                type="primary"
+                                htmlType="submit"
+                                block
+                                disabled={!typesReady && isTypesLoading}
+                            >
+                                {editingIndex === null ? 'Добавить запись' : 'Сохранить изменения'}
+                            </Button>
+                        </Form.Item>
+                    </Form>
+                </div>
+
+                <div className="dyf__table-col">
+                    <FieldsTable
+                        rootFields={tableColumns}
+                        data={localData}
+                        onEdit={handleEdit}
+                        onDelete={handleDelete}
+                        onDisplayTableChange={handleDisplayTableChange}
+                    />
+                </div>
+            </div>
+        </section>
+    );
 }
