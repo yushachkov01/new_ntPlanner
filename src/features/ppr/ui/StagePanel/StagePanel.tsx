@@ -6,7 +6,7 @@ import { useMemo, useEffect, useState, useCallback, useRef } from 'react';
 import {
   jsonParse,
   jsonStringify,
-  saveStages as saveTemplateStages,
+  saveStageForms as persistStageForms,
   StageDraftBundle
 } from '@/shared/lib/persistence/localTemplateDraft';
 
@@ -285,6 +285,7 @@ export const StagePanel: FC<StagePanelProps> = ({
   const setAllPersisted = useStageFormStore((stage) => stage.setAll);
   const isHydratedRef = useRef(false);
   const lastHydratedSavedRef = useRef<StageFormValues | undefined>(undefined);
+  const setStageTimerTL = useTimelineStore((s) => s.setStageTimer);
 
   /** LocalStorage ключ для всех этапов этого шаблона */
   const stagesDraftKey = useMemo(() => buildStagesKey(tplIdx), [tplIdx]);
@@ -298,7 +299,7 @@ export const StagePanel: FC<StagePanelProps> = ({
       __stageKey: key,
       ...(value?.values ?? {}),
     }));
-    saveTemplateStages(templateId, aggregated);
+    persistStageForms(templateId, aggregated);
   }, [stagesDraftKey, templateId]);
 
   /** при маунте — отметить заполненность НЕ файловых required по дефолтам/значениям */
@@ -327,6 +328,17 @@ export const StagePanel: FC<StagePanelProps> = ({
       lastHydratedSavedRef.current = saved;
       form.setFieldsValue(saved);
 
+      // передадим таймер наверх и в таймлайн через общий путь
+      try {
+        const persistedTimer = Number((saved as any)?.timer);
+        if (!Number.isNaN(persistedTimer)) {
+          try { onTimerChange?.(stageKey, persistedTimer); } catch {}
+          try { setStageFieldValue?.({ stageKey, fieldKey: 'timer', value: persistedTimer }); } catch {}
+          try { setStageTimerTL?.({ tplIdx: Number(tplIdx ?? 0), stageKey, minutes: persistedTimer }); } catch {}
+        }
+      } catch (e) {
+        console.warn('hydrate timer sync error', e);
+      }
       const nextVisible: Record<string, ConfigFile[]> = {};
       for (const fd of fileFields) {
         const key = String(fd.key);
@@ -355,6 +367,9 @@ export const StagePanel: FC<StagePanelProps> = ({
     form,
     currentUserDisplayName,
     syncAllStagesToTemplateDraft,
+    setStageFieldValue,
+    tplIdx,
+    onTimerChange,
   ]);
 
   /** после гидрации/обновления visibleByField пересчитываем filled для всех required */
@@ -495,8 +510,18 @@ export const StagePanel: FC<StagePanelProps> = ({
             }}
             onValuesChange={(changedValues, allValues) => {
               if (changedValues.timer != null) {
-                onTimerChange?.(stageKey, changedValues.timer as number);
-              }
+                const newTimer = Number(changedValues.timer);
+                    try { onTimerChange?.(stageKey, newTimer); } catch (e) {}
+                    try {
+                      setStageFieldValue?.({ stageKey, fieldKey: 'timer', value: newTimer });
+                    } catch (e) {}
+                    try {
+                      setStageTimerTL?.({ tplIdx: Number(tplIdx ?? 0), stageKey, minutes: newTimer });
+                    } catch (e) {
+                      console.warn('setStageTimer failed', e);
+                    }
+                  }
+
               Object.entries(changedValues).forEach(([changedKey, changedValue]) => {
                 if (changedKey === 'timer') return;
                 try {
@@ -508,7 +533,6 @@ export const StagePanel: FC<StagePanelProps> = ({
                   isFilledValue((allValues as any)[changedKey]),
                 );
               });
-                  // Persist
               setAllPersisted(persistKey, allValues as unknown as StageFormValues);
                   saveStageValues(stagesDraftKey, stageKey, allValues as Record<string, unknown>);
                   syncAllStagesToTemplateDraft();

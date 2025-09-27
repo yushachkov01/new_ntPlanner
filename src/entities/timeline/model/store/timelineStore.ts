@@ -95,6 +95,8 @@ interface TimelineState {
 
   /** Привязать (снапнуть) блоки к левому краю с учётом ссылки */
   snapRowLeft?: (rowId: number, startRefMin?: number) => void;
+  /** Пересчёт лейаута/перерисовка (форс) */
+  recomputeLayout?: () => void;
   /** ===== доп. строка исполнителя ===== */
   addEmptyExtraRowFor?: (baseRowId: number) => void;
   /** алиас под существующий UI-колбэк */
@@ -113,6 +115,10 @@ interface TimelineState {
    */
   updateTplStageDuration?: (params: { tplIdx: number; stageKey: string; minutes: number }) => void;
 
+  /** Удобный публичный экшен (для UI) — меняет таймер стадии и пересчитывает лейаут */
+  setStageTimer?: (params: { tplIdx?: number | null; stageKey: string; minutes: number }) => void;
+
+  /** Редакции полей стадии */
   stageFieldEdits: Record<number, Record<string, Record<string, any>>>;
   setStageFieldValue: (params: {
     tplIdx?: number;
@@ -130,6 +136,8 @@ interface TimelineState {
 
   /** собрать id исполнителей, реально присутствующих в блоках данного шаблона */
   getTplExecutorIds?: (tplIdx: number) => string[];
+  /** Найти tplIdx по ключу стадии */
+  getTplIdxByStageKey?: (stageKey: string) => number | undefined;
 }
 
 /**
@@ -168,16 +176,36 @@ const useTimelineStore = create<TimelineState>((set, get) => ({
         blocks: [...(row.blocks ?? [])],
       }));
 
-      const execIdsRaw: string[] | undefined = execIds?.map((value) => String(value));
-      /**
-       * Целевые исполнители: либо те, что передали, либо все строки.
-       * Преобразуем идентификаторы в стабильные числовые rowId.
-       */
-      const targetRowIds = (execIds && execIds.length ? execIds : [toRowId('default')]).map(
-        toRowId,
-      );
+      // соберём оверрайды по stageKey из всего стора
+      const timeOverrideByStageKey = new Map<string, number>();
 
-      /** Если строки ещё нет — добавляем пустую */
+      // 1) из stageFieldEdits (где setStageTime кладёт __time)
+      const sf = (get().stageFieldEdits ?? {}) as Record<number, Record<string, any>>;
+      for (const tpl of Object.values(sf)) {
+        for (const [sk, fields] of Object.entries(tpl)) {
+          const t =
+              Number.isFinite((fields as any)?.__time) ? Number((fields as any).__time)
+                  : Number.isFinite((fields as any)?.time) ? Number((fields as any).time)
+                      : undefined;
+          if (t && t > 0) timeOverrideByStageKey.set(sk, Math.max(1, t|0));
+        }
+      }
+
+      // 2) из уже существующих блоков (если есть) — берём текущие фактические длительности
+      for (const r of nextRows) {
+        for (const b of (r.blocks ?? [])) {
+          const start = parseTimeToMinutes(b.startTime);
+          const end   = parseTimeToMinutes(b.endTime);
+          const dur   = Math.max(1, absEnd(start, end) - start);
+          for (const sk of b.stageKeys ?? []) {
+            if (!timeOverrideByStageKey.has(sk)) timeOverrideByStageKey.set(sk, dur);
+          }
+        }
+      }
+
+      const execIdsRaw: string[] | undefined = execIds?.map((v) => String(v));
+      const targetRowIds = (execIds && execIds.length ? execIds : [toRowId('default')]).map(toRowId);
+
       for (const rowId of targetRowIds) {
         if (!nextRows.some((row) => row.id === rowId)) {
           nextRows.push({ id: rowId, author: '', role: '', blocks: [] });
@@ -228,9 +256,11 @@ const useTimelineStore = create<TimelineState>((set, get) => ({
           const stageMeta = (stagesField as any)[stageKey];
           const rawDur = stageMeta?.duration ?? stageMeta?.time ?? 0;
           const parsed = parseDurationToMinutes(rawDur);
-          const durationMin = min1(parsed);
 
-          /** Старт и конец блока */
+          //  применяем оверрайд по stageKey, если он есть
+          const override = timeOverrideByStageKey.get(stageKey);
+          const durationMin = min1(Number.isFinite(override as number) ? (override as number) : parsed);
+
           const stageStartAbsMin = cursor;
           const stageEndAbsMin = stageStartAbsMin + durationMin;
 
@@ -390,6 +420,18 @@ const useTimelineStore = create<TimelineState>((set, get) => ({
     });
   },
 
+  /** Пересчёт лейаута/перерисовка (форс) */
+  recomputeLayout: () => {
+    set((state) => {
+      const rows = (state.rows ?? []).map((r) => {
+        const row = { ...r, blocks: [...(r.blocks ?? [])] };
+        repackRowLeft(row, 0);
+        return row;
+      });
+      return { rows };
+    });
+  },
+
   /** доп. строка исполнителя  */
 
   addEmptyExtraRowFor: (baseRowId: number) => {
@@ -538,6 +580,40 @@ const useTimelineStore = create<TimelineState>((set, get) => ({
       return { rows };
     });
   },
+
+  /** Найти tplIdx по ключу стадии (первое совпадение) */
+  getTplIdxByStageKey: (stageKey: string) => {
+    const rows = get().rows ?? [];
+    for (const row of rows) {
+      for (const block of row.blocks ?? []) {
+        if (Array.isArray(block.stageKeys) && block.stageKeys.includes(stageKey)) {
+          return block.tplIdx;
+        }
+      }
+    }
+    return undefined;
+  },
+
+  /**
+   * Публичный экшен для UI: изменить таймер стадии и пересчитать лейаут.
+   * Удобно дергать из StagePanel при изменении "Таймер (мин)".
+   */
+  setStageTimer: ({ tplIdx = null, stageKey, minutes }) => {
+    // Подберём корректный tplIdx, если не передан/ошибочный
+    let targetTplIdx: number | undefined =
+        tplIdx === null || tplIdx === undefined ? undefined : Number(tplIdx);
+
+    if (!Number.isFinite(targetTplIdx as number)) {
+      targetTplIdx = undefined;
+    }
+    if (targetTplIdx == null) {
+      targetTplIdx = get().getTplIdxByStageKey?.(stageKey);
+    }
+
+    get().updateTplStageDuration?.({ tplIdx: targetTplIdx, stageKey, minutes });
+    get().recomputeLayout?.();
+  },
+
   stageFieldEdits: {},
 
   /**

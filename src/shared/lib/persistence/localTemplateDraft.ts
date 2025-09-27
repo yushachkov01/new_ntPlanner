@@ -24,15 +24,21 @@ export interface TemplateParamsDraft {
     savedAt: string;
 }
 
-export interface TemplateStagesDraft {
-    stages: unknown[];
+export interface TemplateRowsDraft {
+    rows: unknown[];
+    savedAt: string;
+}
+
+export interface TemplateStageFormsDraft {
+    stageForms: unknown[];
     meta?: Record<string, unknown>;
     savedAt: string;
 }
 
 export interface TemplateDraftBundle {
     params?: TemplateParamsDraft;
-    stages?: TemplateStagesDraft;
+    rows?: TemplateRowsDraft;
+    stageForms?: TemplateStageFormsDraft;
 }
 
 /** Стабильный ключ под конкретный шаблон */
@@ -68,17 +74,28 @@ export function readTemplateDraft(templateId: string): TemplateDraftBundle | und
     return jsonParse<TemplateDraftBundle>(localStorage.getItem(key));
 }
 
-/** Сохранить секцию stages без потери */
-export function saveStages(
+/** Сохранить СТРОКИ ТАБЛИЦЫ (DynamicYamlForm) без потери остальных секций */
+export function saveRows(templateId: string, rows: unknown[]) {
+    const key = buildTemplateDraftKey(templateId);
+    const prev = readTemplateDraft(templateId) ?? {};
+    const next: TemplateDraftBundle = {
+        ...prev,
+        rows: { rows, savedAt: new Date().toISOString() },
+    };
+    localStorage.setItem(key, jsonStringify(next));
+}
+
+/** Сохранить АГРЕГИРОВАННЫЕ ФОРМЫ ЭТАПОВ (StagePanel) без потери остальных секций */
+export function saveStageForms(
     templateId: string,
-    stages: unknown[],
-    meta?: Record<string, unknown>
+    stageForms: unknown[],
+    meta?: Record<string, unknown>,
 ) {
     const key = buildTemplateDraftKey(templateId);
     const prev = readTemplateDraft(templateId) ?? {};
     const next: TemplateDraftBundle = {
         ...prev,
-        stages: { stages, meta, savedAt: new Date().toISOString() },
+        stageForms: { stageForms, meta, savedAt: new Date().toISOString() },
     };
     localStorage.setItem(key, jsonStringify(next));
 }

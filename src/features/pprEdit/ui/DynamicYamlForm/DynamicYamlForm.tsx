@@ -20,7 +20,7 @@ import {
     jsonParse,
     jsonStringify,
     readTemplateDraft,
-    saveStages,
+    saveRows,
     TemplateDraft
 } from '@/shared/lib/persistence/localTemplateDraft';
 import { FieldsTable } from '../FieldsTable/FieldsTable';
@@ -214,7 +214,10 @@ export default function DynamicYamlForm({
 
         const draft = readTemplateDraft(templateId);
         const restoredParams = draft?.params?.values ?? {};
-        const restoredRows = (draft?.stages?.stages ?? []) as RowWithSource[];
+        const restoredRows: RowWithSource[] =
+            (draft?.rows?.rows ??
+                (draft as any)?.stages?.stages ??
+                []) as RowWithSource[];
 
         if (restoredParams && Object.keys(restoredParams).length > 0) {
             form.setFieldsValue(restoredParams);
@@ -222,21 +225,60 @@ export default function DynamicYamlForm({
         setLocalData(restoredRows);
 
         const templateSectionKey = schema?.headline;
-        const prevGlobalValues = Array.isArray(restoredRows) ? restoredRows : [];
-        const cleaned = prevGlobalValues.map((r) => ({ ...r }));
+        const cleaned = (Array.isArray(restoredRows) ? restoredRows : []).map((r) => ({ ...r }));
         setTemplateValues(templateSectionKey, cleaned);
-    }, [schema?.headline, uiParams, form, templateId, setTemplateValues]);
+        //  пересобираем таймлайн из сохранённых строк
+        //    получаем цепочку стадий из YAML
+        const rawSchema = schema ?? {};
+        let startStageKey: string | undefined;
+        let stagesField: Record<string, any> = {};
 
-    /** Автосохранение ПАРАМЕТРОВ формы */
-    const handleValuesChange = useCallback(() => {
-        const allValues = form.getFieldsValue(true);
-        // локальная реализация saveParams
-        saveParams(templateId, allValues);
-    }, [form, templateId]);
+        if (rawSchema?.current_stages && rawSchema?.stages_field) {
+            const asArray = Array.isArray(rawSchema.current_stages)
+                ? rawSchema.current_stages
+                : [rawSchema.current_stages];
+            startStageKey = asArray?.[0];
+            stagesField = rawSchema.stages_field ?? {};
+        } else if (rawSchema?.start && rawSchema?.stages) {
+            startStageKey = rawSchema.start;
+            stagesField = rawSchema.stages ?? {};
+        }
 
-    useEffect(() => {
-        onRowCountChange?.(localData.length);
-    }, [localData.length, onRowCountChange]);
+        const stageKeys: string[] = [];
+        let cursorKey = startStageKey;
+        let guard = 0;
+        while (cursorKey && cursorKey !== 'exit' && stagesField[cursorKey] && guard < 500) {
+            stageKeys.push(cursorKey);
+            const next = stagesField[cursorKey]?.if_success;
+            if (!next) break;
+            cursorKey = Array.isArray(next) ? next[0] : next;
+            guard++;
+        }
+
+        // ids исполнителей текущего шаблона
+        const execIds = (executors ?? []).map((e: any) => e.id);
+
+        if (stageKeys.length && Array.isArray(restoredRows)) {
+            // restoredRows.forEach((row) => {
+                restoredRows.forEach((row) => {
+                const sourceKey = (row as any)?.__sourceKey;
+                if (!sourceKey) return;
+                    try { console.log('removeBySource', sourceKey); removeBySource({ sourceKey }); } catch {}
+                    try {
+                        console.log('addFromYaml', { sourceKey });
+                    addFromYaml({
+                        label: schema?.headline || schema?.description || 'Запись',
+                        stageKeys,
+                        stagesField,
+                        execIds,
+                        sourceKey,
+                    });
+                } catch {}
+            });
+            console.groupEnd();
+        }
+    }, [schema?.headline, schema, form, templateId, setTemplateValues, executors, addFromYaml, removeBySource]);
+
 
     /**
      * вычисляет упорядоченную цепочку стадий из YAML
@@ -320,7 +362,7 @@ export default function DynamicYamlForm({
             const nextRow: RowWithSource = { ...vals, __sourceKey: sourceKey };
             setLocalData((prev) => {
                 const updated = [...prev, nextRow];
-                saveStages(templateId, updated);
+                saveRows(templateId, updated);
                 return updated;
             });
             setTemplateValues(templateSectionKey, [...prevGlobalValues, nextRow]);
@@ -348,7 +390,7 @@ export default function DynamicYamlForm({
 
             setLocalData((prev) => {
                 const updated = prev.map((rowItem, index) => (index === editingIndex ? patchedRow : rowItem));
-                saveStages(templateId, updated);
+                saveRows(templateId, updated);
                 return updated;
             });
 
@@ -404,7 +446,7 @@ export default function DynamicYamlForm({
 
             setLocalData((prev) => {
                 const updated = prev.filter((row) => (row as any)?.__sourceKey !== sourceKey);
-                saveStages(templateId, updated);
+                saveRows(templateId, updated);
                 return updated;
             });
 
@@ -415,7 +457,7 @@ export default function DynamicYamlForm({
         } else {
             setLocalData((prev) => {
                 const updated = prev.filter((_, i) => i !== index);
-                saveStages(templateId, updated);
+                saveRows(templateId, updated);
                 return updated;
             });
 
