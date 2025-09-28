@@ -33,6 +33,10 @@ import PprPage from '@pages/PprPage';
 
 import { Button, Steps, message, Tooltip, Progress } from 'antd';
 
+// + новый импорт «моста» автосохранения
+import PprDraftAutosave from '@/features/pprEdit/ui/PprDraftAutosave/PprDraftAutosave';
+import {patchStageTimeInLocalStorage} from "@/shared/persist/pprDraft";
+
 const PprEditorPage: React.FC = () => {
   /**
    * Хук мастера: текущее состояние шагов и выбранных сущностей
@@ -65,8 +69,8 @@ const PprEditorPage: React.FC = () => {
   // Задачи и выбранная
   const tasks = usePlannedTaskStore((state) => state.tasks);
   const selectedTask = useMemo(
-    () => tasks.find((task) => task.id === selectedTaskId),
-    [tasks, selectedTaskId],
+      () => tasks.find((task) => task.id === selectedTaskId),
+      [tasks, selectedTaskId],
   );
 
   /**
@@ -88,7 +92,7 @@ const PprEditorPage: React.FC = () => {
   const removeBySourcePrefix = useTimelineStore((state) => (state as any).removeBySourcePrefix);
   const updateTplStageDuration = useTimelineStore((state) => (state as any).updateTplStageDuration);
   const getMergedStageOverrides = useTimelineStore(
-    (state) => (state as any).getMergedStageOverrides,
+      (state) => (state as any).getMergedStageOverrides,
   );
   const getTimelineState = (useTimelineStore as any).getState;
 
@@ -191,7 +195,7 @@ const PprEditorPage: React.FC = () => {
       return;
     }
     setAdditionalTemplates((prev) =>
-      prev.map((templateItem, idx) => (idx === index ? resolved : templateItem)),
+        prev.map((templateItem, idx) => (idx === index ? resolved : templateItem)),
     );
     setHiddenExtraSlots((prev) => {
       const next = new Set(prev);
@@ -204,7 +208,7 @@ const PprEditorPage: React.FC = () => {
 
   /** состояние модалки подтверждения */
   const [confirmState, setConfirmState] = useState<
-    { open: true; kind: 'main' | 'extra'; index?: number } | { open: false }
+      { open: true; kind: 'main' | 'extra'; index?: number } | { open: false }
   >({ open: false });
 
   /**
@@ -217,13 +221,13 @@ const PprEditorPage: React.FC = () => {
   }, [pprExecutors, tabExecutors]);
 
   const authorUuid =
-    pickUuid((currentUser as any)?.id, (currentUser as any)?.uuid) ??
-    pickUuid(...(addedExecutors ?? []).map((value) => value.id)) ??
-    pickUuid((selectedTask as any)?.authorId, (selectedTask as any)?.author_id);
+      pickUuid((currentUser as any)?.id, (currentUser as any)?.uuid) ??
+      pickUuid(...(addedExecutors ?? []).map((value) => value.id)) ??
+      pickUuid((selectedTask as any)?.authorId, (selectedTask as any)?.author_id);
 
   const timeWorkUuid =
-    (selectedTimeWorkId && isUuid(selectedTimeWorkId) ? selectedTimeWorkId : undefined) ??
-    pickUuid((selectedTask as any)?.timeWorkId, (selectedTask as any)?.time_work_id);
+      (selectedTimeWorkId && isUuid(selectedTimeWorkId) ? selectedTimeWorkId : undefined) ??
+      pickUuid((selectedTask as any)?.timeWorkId, (selectedTask as any)?.time_work_id);
 
   /**  Сохранение  */
   const [saving, setSaving] = useState(false);
@@ -240,19 +244,19 @@ const PprEditorPage: React.FC = () => {
     };
     window.addEventListener(PROGRESS_EVENT_NAME, progressEventHandler as EventListener);
     return () =>
-      window.removeEventListener(PROGRESS_EVENT_NAME, progressEventHandler as EventListener);
+        window.removeEventListener(PROGRESS_EVENT_NAME, progressEventHandler as EventListener);
   }, []);
 
   const totals = useMemo(
-    () =>
-      Object.values(progressMap).reduce(
-        (accumulator, value) => ({
-          filled: accumulator.filled + (value?.filled ?? 0),
-          required: accumulator.required + (value?.required ?? 0),
-        }),
-        { filled: 0, required: 0 },
-      ),
-    [progressMap],
+      () =>
+          Object.values(progressMap).reduce(
+              (accumulator, value) => ({
+                filled: accumulator.filled + (value?.filled ?? 0),
+                required: accumulator.required + (value?.required ?? 0),
+              }),
+              { filled: 0, required: 0 },
+          ),
+      [progressMap],
   );
 
   const yamlRequiredTotal = useMemo(() => {
@@ -267,8 +271,8 @@ const PprEditorPage: React.FC = () => {
   }, [mainTemplate, additionalTemplates]);
 
   const effectiveRequired = useMemo(
-    () => Math.max(totals.required, yamlRequiredTotal),
-    [totals.required, yamlRequiredTotal],
+      () => Math.max(totals.required, yamlRequiredTotal),
+      [totals.required, yamlRequiredTotal],
   );
 
   const totalPercent = useMemo(() => {
@@ -283,19 +287,19 @@ const PprEditorPage: React.FC = () => {
   const [allowStep5, setAllowStep5] = useState(false);
 
   const canSave =
-    isParamsComplete && templateChosen && Boolean(selectedTaskId && authorUuid && timeWorkUuid);
+      isParamsComplete && templateChosen && Boolean(selectedTaskId && authorUuid && timeWorkUuid);
 
   const saveTooltip = !isParamsComplete
-    ? 'Заполните все обязательные поля (100%)'
-    : !templateChosen
-      ? 'Выберите шаблон YAML'
-      : !selectedTaskId
-        ? 'Выберите задачу'
-        : !authorUuid
-          ? 'Нет author_id (UUID пользователя/исполнителя)'
-          : !timeWorkUuid
-            ? 'Нет time_work_id (выберите смену/интервал)'
-            : undefined;
+      ? 'Заполните все обязательные поля (100%)'
+      : !templateChosen
+          ? 'Выберите шаблон YAML'
+          : !selectedTaskId
+              ? 'Выберите задачу'
+              : !authorUuid
+                  ? 'Нет author_id (UUID пользователя/исполнителя)'
+                  : !timeWorkUuid
+                      ? 'Нет time_work_id (выберите смену/интервал)'
+                      : undefined;
 
   const handleSave = async () => {
     if (saving || editingLocked) return;
@@ -325,9 +329,9 @@ const PprEditorPage: React.FC = () => {
     } catch (error: any) {
       console.error('[PprEditorPage] save error:', error);
       console.error(
-        `Не удалось сохранить: ${
-          error?.response?.errors?.[0]?.message ?? error?.message ?? 'unknown error'
-        }`,
+          `Не удалось сохранить: ${
+              error?.response?.errors?.[0]?.message ?? error?.message ?? 'unknown error'
+          }`,
       );
     } finally {
       setSaving(false);
@@ -336,14 +340,14 @@ const PprEditorPage: React.FC = () => {
 
   // Заголовок шага «На проверке»
   const pendingTitle: React.ReactNode =
-    editingLocked && !statusVerified ? (
-      <span className="ppr-step-title">
+      editingLocked && !statusVerified ? (
+          <span className="ppr-step-title">
         <span className="ppr-step-pulse" />
         <span>На проверке</span>
       </span>
-    ) : (
-      'На проверке'
-    );
+      ) : (
+          'На проверке'
+      );
 
   /** Итоговый активный шаг: стиль старого файла + новые условия (100% и Save) */
   const computedStepsCurrent = (() => {
@@ -363,304 +367,329 @@ const PprEditorPage: React.FC = () => {
   // На шаге 4 показываем кольцо с процентом; до шага 4 — дефолтные кружки AntD
   const showStep4Progress = currentStep >= 3;
   const paramsStepIcon = showStep4Progress ? (
-    <span className="ppr-steps__progress-icon" style={{ display: 'flex' }}>
+      <span className="ppr-steps__progress-icon" style={{ display: 'flex' }}>
       <Progress
-        type="circle"
-        percent={totalPercent}
-        size={STEP_ICON_SIZE}
-        strokeLinecap="round"
-        status={totalPercent === 100 ? 'success' : 'normal'}
-        format={(percentValue) => `${percentValue ?? 0}%`}
+          type="circle"
+          percent={totalPercent}
+          size={STEP_ICON_SIZE}
+          strokeLinecap="round"
+          status={totalPercent === 100 ? 'success' : 'normal'}
+          format={(percentValue) => `${percentValue ?? 0}%`}
       />
     </span>
   ) : undefined;
 
   return (
-    <section className="ppr-editor-card">
-      <div style={{ padding: '8px 16px 0 16px' }}>
-        <Steps
-          current={computedStepsCurrent}
-          items={[
-            { title: 'Задача' },
-            { title: 'Значения (в табе)' },
-            { title: 'Шаблон' },
-            { title: 'Параметры шаблона', icon: paramsStepIcon },
-            { title: pendingTitle },
-            { title: 'Заявка готова' },
-          ]}
+      <section className="ppr-editor-card">
+        {/* Невидимый компонент автосохранения/гидрации драфта по ключам PPR_DRAFT::<taskId>::... */}
+        <PprDraftAutosave
+            taskId={selectedTaskId}
+            mainTemplate={mainTemplate}
+            executorsByTemplate={executorsByTemplate}
         />
-      </div>
 
-      <header className="ppr-editor-card__header">
-        <div className="ppr-location-divider" />
-        <LocationOverview />
-        <div className="ppr-location-divider" />
-      </header>
-      <div
-        className="ppr-editor-card__controls"
-        style={{ display: 'flex', gap: 12, alignItems: 'center' }}
-      >
-        <div className="ppr-editor-card__controls-left" style={{ width: '100%' }}>
-          <PlannedTaskDropdown
-            className="ppr-editor-card__select"
-            placeholder="Список выбранных планируемых работ"
-            value={selectedTaskId}
-            disabled={editingLocked}
-            onChange={(taskId) => {
-              if (editingLocked) return;
-              setSelectedTaskId(taskId);
-              setTabsConfirmed(false);
-              setMainTemplate(undefined);
-              setParamsConfirmed(false);
-              // сброс разрешения шага 5
-              setAllowStep5(false);
-            }}
+        <div style={{ padding: '8px 16px 0 16px' }}>
+          <Steps
+              current={computedStepsCurrent}
+              items={[
+                { title: 'Задача' },
+                { title: 'Значения (в табе)' },
+                { title: 'Шаблон' },
+                { title: 'Параметры шаблона', icon: paramsStepIcon },
+                { title: pendingTitle },
+                { title: 'Заявка готова' },
+              ]}
           />
         </div>
 
-        <Tooltip title={saveTooltip || (editingLocked ? 'Заявка на проверке' : undefined)}>
-          <Button
-            type="primary"
-            onClick={handleSave}
-            loading={saving}
-            disabled={!canSave || editingLocked}
-          >
-            Сохранить
-          </Button>
-        </Tooltip>
-      </div>
-      {!!selectedTaskId && (
-        <div style={{ marginTop: 12 }}>
-          <div
-            className="ppr-editor-card__controls-right"
-            style={editingLocked ? { pointerEvents: 'none', opacity: 0.6 } : undefined}
-          >
-            <div className="ppr-editor-card__tabs">
-              <PprEditorTabs
-                taskId={selectedTaskId}
-                onWorkTimeChange={setTimelineWindow}
-                executors={tabExecutors}
-                addExecutor={(executorToAdd) =>
-                  setTabExecutors((prev) =>
-                    prev.some(
-                      (existing) => String(existing.id) === String((executorToAdd as any).id),
-                    )
-                      ? prev
-                      : [...prev, normalizeExec(executorToAdd)],
-                  )
-                }
-                removeExecutor={(executorId) =>
-                  setTabExecutors((prev) =>
-                    prev.filter((existing) => String(existing.id) !== String(executorId)),
-                  )
-                }
-              />
-            </div>
-            {!tabsConfirmed && (
-              <div style={{ marginTop: 12 }}>
-                <Button
-                  type="primary"
-                  onClick={() => setTabsConfirmed(true)}
-                  disabled={editingLocked}
-                >
-                  Перейти к выбору шаблона
-                </Button>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-      {tabsConfirmed && (
+        <header className="ppr-editor-card__header">
+          <div className="ppr-location-divider" />
+          <LocationOverview />
+          <div className="ppr-location-divider" />
+        </header>
         <div
-          className="ppr-template-wrap"
-          style={{
-            marginTop: 16,
-            ...(editingLocked ? { pointerEvents: 'none', opacity: 0.6 } : {}),
-          }}
+            className="ppr-editor-card__controls"
+            style={{ display: 'flex', gap: 12, alignItems: 'center' }}
         >
-          <YamlTemplateSelect
-            bucket={YAML_BUCKET}
-            value={(mainTemplate as any)?.key}
-            disabled={editingLocked as any}
-            onChange={async (selectedTemplate) => {
-              if (editingLocked) return;
-              const prevMainKey = (mainTemplate as any)?.key;
-              const execIds = (executorsByTemplate[0] ?? []).map(normalizeExecId);
-              if (prevMainKey)
-                removeBySourcePrefix?.({ execIds: execIds, prefix: String(prevMainKey) });
-              if (currentUser) {
-                const meExec = normalizeExec(currentUser);
-                setExecutorsByTemplate((prev) => {
-                  const next = [...prev];
-                  const mainList = next[0] ?? [];
-                  const hasMe = mainList.some(
-                    (existing) => String(existing.id) === String(meExec.id),
-                  );
-                  next[0] = hasMe ? mainList : [meExec, ...mainList];
-                  return next;
-                });
-                setTabExecutors((prev) =>
-                  prev.some((existing) => String(existing.id) === String(meExec.id))
-                    ? prev
-                    : [meExec, ...prev],
-                );
-              }
-
-              // подгрузим raw при необходимости
-              const resolved = await resolveTemplateWithRaw(
-                selectedTemplate as Template,
-                YAML_BUCKET,
-              );
-              if (!resolved) {
-                message.error('Не удалось загрузить YAML шаблона.');
-                return;
-              }
-              setMainTemplate(resolved);
-              setParamsConfirmed(false);
-              setAllowStep5(false);
-
-              setTimeout(() => paramsRef.current?.scrollIntoView({ behavior: 'smooth' }), 0);
-            }}
-            executors={(executorsByTemplate[0] ?? []).map(normalizeExec)}
-            addExecutor={(executor) => addExecutor(0, executor)}
-            removeExecutor={(executorId) => removeExecutor(0, executorId)}
-            tabCandidates={tabExecutors}
-          />
-          <Button
-            className="ppr-template-wrap__delete"
-            danger
-            ghost
-            disabled={editingLocked || !(mainTemplate as any)?.key}
-            onClick={() => setConfirmState({ open: true, kind: 'main' })}
-          >
-            Удалить шаблон
-          </Button>
-        </div>
-      )}
-      {step3Done && (
-        <div
-          ref={paramsRef}
-          style={editingLocked ? { pointerEvents: 'none', opacity: 0.6 } : undefined}
-        >
-          {(mainTemplate as any)?.key && (mainTemplate as any)?.raw && (
-            <DynamicYamlForm
-              key={`main-${(mainTemplate as any)?.key}-${tplReadyTick}`}
-              schema={(mainTemplate as any)?.raw}
-              templateKey={(mainTemplate as any)?.key}
-              executors={(executorsByTemplate[0] ?? []).map(normalizeExec)}
-              onRowCountChange={(rowCount: number) => {
-                if (!paramsConfirmed && rowCount > 0) setParamsConfirmed(true);
-              }}
-              onValuesChange={(formValues: any) => {
-                if (editingLocked) return;
-                mainFormValuesRef.current = formValues;
-                setAllowStep5(false);
-              }}
-            />
-          )}
-        </div>
-      )}
-
-      {additionalTemplates.map((templateItem, templateIndex) => {
-        if (hiddenExtraSlots.has(templateIndex)) return null;
-        return (
-          <React.Fragment key={templateIndex}>
-            <div
-              className="ppr-template-wrap"
-              style={{
-                marginTop: 12,
-                ...(editingLocked ? { pointerEvents: 'none', opacity: 0.6 } : {}),
-              }}
-            >
-              <YamlTemplateSelect
-                bucket={YAML_BUCKET}
-                value={(templateItem as any).key}
-                disabled={editingLocked as any}
-                onChange={(newTemplate) => {
-                  changeTemplate(templateIndex, newTemplate);
+          <div className="ppr-editor-card__controls-left" style={{ width: '100%' }}>
+            <PlannedTaskDropdown
+                className="ppr-editor-card__select"
+                placeholder="Список выбранных планируемых работ"
+                value={selectedTaskId}
+                disabled={editingLocked}
+                onChange={(taskId) => {
+                  if (editingLocked) return;
+                  setSelectedTaskId(taskId);
+                  setTabsConfirmed(false);
+                  setMainTemplate(undefined);
+                  setParamsConfirmed(false);
+                  // сброс разрешения шага 5
                   setAllowStep5(false);
                 }}
-                executors={(executorsByTemplate[templateIndex + 1] ?? []).map(normalizeExec)}
-                addExecutor={(executor) => addExecutor(templateIndex + 1, executor)}
-                removeExecutor={(executorId) => removeExecutor(templateIndex + 1, executorId)}
-                tabCandidates={tabExecutors}
-              />
+            />
+          </div>
 
+          <Tooltip title={saveTooltip || (editingLocked ? 'Заявка на проверке' : undefined)}>
+            <Button
+                type="primary"
+                onClick={handleSave}
+                loading={saving}
+                disabled={!canSave || editingLocked}
+            >
+              Сохранить
+            </Button>
+          </Tooltip>
+        </div>
+        {!!selectedTaskId && (
+            <div style={{ marginTop: 12 }}>
+              <div
+                  className="ppr-editor-card__controls-right"
+                  style={editingLocked ? { pointerEvents: 'none', opacity: 0.6 } : undefined}
+              >
+                <div className="ppr-editor-card__tabs">
+                  <PprEditorTabs
+                      taskId={selectedTaskId}
+                      onWorkTimeChange={setTimelineWindow}
+                      executors={tabExecutors}
+                      addExecutor={(executorToAdd) =>
+                          setTabExecutors((prev) =>
+                              prev.some(
+                                  (existing) => String(existing.id) === String((executorToAdd as any).id),
+                              )
+                                  ? prev
+                                  : [...prev, normalizeExec(executorToAdd)],
+                          )
+                      }
+                      removeExecutor={(executorId) =>
+                          setTabExecutors((prev) =>
+                              prev.filter((existing) => String(existing.id) !== String(executorId)),
+                          )
+                      }
+                  />
+                </div>
+                {!tabsConfirmed && (
+                    <div style={{ marginTop: 12 }}>
+                      <Button
+                          type="primary"
+                          onClick={() => setTabsConfirmed(true)}
+                          disabled={editingLocked}
+                      >
+                        Перейти к выбору шаблона
+                      </Button>
+                    </div>
+                )}
+              </div>
+            </div>
+        )}
+        {tabsConfirmed && (
+            <div
+                className="ppr-template-wrap"
+                style={{
+                  marginTop: 16,
+                  ...(editingLocked ? { pointerEvents: 'none', opacity: 0.6 } : {}),
+                }}
+            >
+              <YamlTemplateSelect
+                  bucket={YAML_BUCKET}
+                  value={(mainTemplate as any)?.key}
+                  disabled={editingLocked as any}
+                  onChange={async (selectedTemplate) => {
+                    if (editingLocked) return;
+                    const prevMainKey = (mainTemplate as any)?.key;
+                    const execIds = (executorsByTemplate[0] ?? []).map(normalizeExecId);
+                    if (prevMainKey)
+                      removeBySourcePrefix?.({ execIds: execIds, prefix: String(prevMainKey) });
+                    if (currentUser) {
+                      const meExec = normalizeExec(currentUser);
+                      setExecutorsByTemplate((prev) => {
+                        const next = [...prev];
+                        const mainList = next[0] ?? [];
+                        const hasMe = mainList.some(
+                            (existing) => String(existing.id) === String(meExec.id),
+                        );
+                        next[0] = hasMe ? mainList : [meExec, ...mainList];
+                        return next;
+                      });
+                      setTabExecutors((prev) =>
+                          prev.some((existing) => String(existing.id) === String(meExec.id))
+                              ? prev
+                              : [meExec, ...prev],
+                      );
+                    }
+
+                    // подгрузим raw при необходимости
+                    const resolved = await resolveTemplateWithRaw(
+                        selectedTemplate as Template,
+                        YAML_BUCKET,
+                    );
+                    if (!resolved) {
+                      message.error('Не удалось загрузить YAML шаблона.');
+                      return;
+                    }
+                    setMainTemplate(resolved);
+                    setParamsConfirmed(false);
+                    setAllowStep5(false);
+
+                    setTimeout(() => paramsRef.current?.scrollIntoView({ behavior: 'smooth' }), 0);
+                  }}
+                  executors={(executorsByTemplate[0] ?? []).map(normalizeExec)}
+                  addExecutor={(executor) => addExecutor(0, executor)}
+                  removeExecutor={(executorId) => removeExecutor(0, executorId)}
+                  tabCandidates={tabExecutors}
+              />
               <Button
-                className="ppr-template-wrap__delete"
-                danger
-                ghost
-                disabled={editingLocked || !(templateItem as any)?.key}
-                onClick={() => setConfirmState({ open: true, kind: 'extra', index: templateIndex })}
+                  className="ppr-template-wrap__delete"
+                  danger
+                  ghost
+                  disabled={editingLocked || !(mainTemplate as any)?.key}
+                  onClick={() => setConfirmState({ open: true, kind: 'main' })}
               >
                 Удалить шаблон
               </Button>
             </div>
+        )}
+        {step3Done && (
+            <div
+                ref={paramsRef}
+                style={editingLocked ? { pointerEvents: 'none', opacity: 0.6 } : undefined}
+            >
+              {(mainTemplate as any)?.key && (mainTemplate as any)?.raw && (
+                  <DynamicYamlForm
+                      key={`main-${(mainTemplate as any)?.key}-${tplReadyTick}`}
+                      schema={(mainTemplate as any)?.raw}
+                      templateKey={(mainTemplate as any)?.key}
+                      executors={(executorsByTemplate[0] ?? []).map(normalizeExec)}
+                      onRowCountChange={(rowCount: number) => {
+                        if (!paramsConfirmed && rowCount > 0) setParamsConfirmed(true);
+                      }}
+                      onValuesChange={(formValues: any) => {
+                        if (editingLocked) return;
+                        mainFormValuesRef.current = formValues;
+                        setAllowStep5(false);
+                      }}
+                  />
+              )}
+            </div>
+        )}
 
-            {(templateItem as any)?.key && (templateItem as any)?.raw && (
-              <DynamicYamlForm
-                key={`extra-${templateIndex}-${(templateItem as any)?.key}-${tplReadyTick}`}
-                schema={(templateItem as any)?.raw}
-                templateKey={(templateItem as any)?.key}
-                executors={(executorsByTemplate[templateIndex + 1] ?? []).map(normalizeExec)}
-                onRowCountChange={() => {}}
-              />
-            )}
-          </React.Fragment>
-        );
-      })}
+        {additionalTemplates.map((templateItem, templateIndex) => {
+          if (hiddenExtraSlots.has(templateIndex)) return null;
+          return (
+              <React.Fragment key={templateIndex}>
+                <div
+                    className="ppr-template-wrap"
+                    style={{
+                      marginTop: 12,
+                      ...(editingLocked ? { pointerEvents: 'none', opacity: 0.6 } : {}),
+                    }}
+                >
+                  <YamlTemplateSelect
+                      bucket={YAML_BUCKET}
+                      value={(templateItem as any).key}
+                      disabled={editingLocked as any}
+                      onChange={(newTemplate) => {
+                        changeTemplate(templateIndex, newTemplate);
+                        setAllowStep5(false);
+                      }}
+                      executors={(executorsByTemplate[templateIndex + 1] ?? []).map(normalizeExec)}
+                      addExecutor={(executor) => addExecutor(templateIndex + 1, executor)}
+                      removeExecutor={(executorId) => removeExecutor(templateIndex + 1, executorId)}
+                      tabCandidates={tabExecutors}
+                  />
 
-      {step5Done && (
-        <>
-          <Button
-            type="dashed"
-            onClick={addTemplate}
-            style={{ marginTop: 12 }}
-            disabled={editingLocked}
-          >
-            Добавить шаблон
-          </Button>
-          <div
-            className="ppr-editor-card__timeline"
-            style={editingLocked ? { pointerEvents: 'none', opacity: 0.6 } : undefined}
-          >
-            <PprPage
-              gridStart={timelineWindow.start}
-              gridEnd={timelineWindow.end}
-              executors={timelineExecutors}
-              executorsByTemplate={executorsByTemplate}
-              onBlockClick={() => {}}
-              onTimerChange={(templateIdx, stageKey, newTimerMinutes) => {
-                if (editingLocked) return;
-                updateTplStageDuration?.({
-                  tplIdx: templateIdx,
-                  stageKey,
-                  minutes: Number(newTimerMinutes) || 0,
-                });
-                setAllowStep5(false);
-              }}
-              onMoveBetweenExecutors={handleMoveBetweenExecutors}
-            />
-          </div>
-        </>
-      )}
-      <ConfirmDeleteDialog
-        open={!!confirmState.open}
-        kind={confirmState.open ? confirmState.kind : undefined}
-        index={confirmState.open ? confirmState.index : undefined}
-        mainTemplate={mainTemplate}
-        additionalTemplates={additionalTemplates}
-        executorsByTemplate={executorsByTemplate}
-        normalizeExecId={normalizeExecId}
-        removeBySourcePrefix={removeBySourcePrefix}
-        setMainTemplate={setMainTemplate}
-        setParamsConfirmed={setParamsConfirmed}
-        setTabsConfirmed={setTabsConfirmed}
-        setAdditionalTemplates={setAdditionalTemplates}
-        setHiddenExtraSlots={setHiddenExtraSlots}
-        onCancel={() => setConfirmState({ open: false })}
-      />
-    </section>
+                  <Button
+                      className="ppr-template-wrap__delete"
+                      danger
+                      ghost
+                      disabled={editingLocked || !(templateItem as any)?.key}
+                      onClick={() => setConfirmState({ open: true, kind: 'extra', index: templateIndex })}
+                  >
+                    Удалить шаблон
+                  </Button>
+                </div>
+
+                {(templateItem as any)?.key && (templateItem as any)?.raw && (
+                    <DynamicYamlForm
+                        key={`extra-${templateIndex}-${(templateItem as any)?.key}-${tplReadyTick}`}
+                        schema={(templateItem as any)?.raw}
+                        templateKey={(templateItem as any)?.key}
+                        executors={(executorsByTemplate[templateIndex + 1] ?? []).map(normalizeExec)}
+                        onRowCountChange={() => {}}
+                    />
+                )}
+              </React.Fragment>
+          );
+        })}
+
+        {step5Done && (
+            <>
+              <Button
+                  type="dashed"
+                  onClick={addTemplate}
+                  style={{ marginTop: 12 }}
+                  disabled={editingLocked}
+              >
+                Добавить шаблон
+              </Button>
+              <div
+                  className="ppr-editor-card__timeline"
+                  style={editingLocked ? { pointerEvents: 'none', opacity: 0.6 } : undefined}
+              >
+                <PprPage
+                    gridStart={timelineWindow.start}
+                    gridEnd={timelineWindow.end}
+                    executors={timelineExecutors}
+                    executorsByTemplate={executorsByTemplate}
+                    onBlockClick={() => {}}
+                    onTimerChange={(templateIdx, stageKey, newTimerMinutes) => {
+                      if (editingLocked) return;
+
+                      // 1) Меняем время внутри таймлайна обычным публичным методом стора (как было)
+                      updateTplStageDuration?.({
+                        tplIdx: templateIdx,
+                        stageKey,
+                        minutes: Number(newTimerMinutes) || 0,
+                      });
+
+                      // 2) НОВОЕ: сразу патчим localStorage для этого конкретного этапа
+                      //    (без ожидания, пока zustand-стор смёрджится и автосейв сработает).
+                      if (selectedTaskId) {
+                        patchStageTimeInLocalStorage({
+                          taskId: selectedTaskId,
+                          tplIdx: templateIdx,
+                          stageKey,
+                          minutes: Number(newTimerMinutes) || 0,
+                          // Эти поля нужны, если вдруг в LS ещё нет снапшота — мы его соберём корректно
+                          mainTemplate,
+                          executorsByTemplate,
+                        });
+                      }
+
+                      // 3) Блокируем переход на шаг 5 до явного Save (ваша бизнес-логика)
+                      setAllowStep5(false);
+                    }}
+                    onMoveBetweenExecutors={handleMoveBetweenExecutors}
+                />
+              </div>
+            </>
+        )}
+        <ConfirmDeleteDialog
+            open={!!confirmState.open}
+            kind={confirmState.open ? confirmState.kind : undefined}
+            index={confirmState.open ? confirmState.index : undefined}
+            mainTemplate={mainTemplate}
+            additionalTemplates={additionalTemplates}
+            executorsByTemplate={executorsByTemplate}
+            normalizeExecId={normalizeExecId}
+            removeBySourcePrefix={removeBySourcePrefix}
+            setMainTemplate={setMainTemplate}
+            setParamsConfirmed={setParamsConfirmed}
+            setTabsConfirmed={setTabsConfirmed}
+            setAdditionalTemplates={setAdditionalTemplates}
+            setHiddenExtraSlots={setHiddenExtraSlots}
+            onCancel={() => setConfirmState({ open: false })}
+        />
+      </section>
   );
 };
 
