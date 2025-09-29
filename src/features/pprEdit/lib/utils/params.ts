@@ -93,9 +93,9 @@ function deepScanTemplateStore(paramKeys: string[]): any[] {
 
     /** массив объектов — собираем кандидатов */
     if (
-      Array.isArray(node) &&
-      node.length &&
-      node.every((elem) => elem && typeof elem === 'object')
+        Array.isArray(node) &&
+        node.length &&
+        node.every((elem) => elem && typeof elem === 'object')
     ) {
       if (!seenCollections.has(node)) {
         seenCollections.add(node);
@@ -130,8 +130,8 @@ function pickRowsFromFormValues(formValues: any, paramKeys: string[]): any[] {
   // formValues.rows — массив строк
   const rowsMaybe = (formValues as any)?.rows;
   if (
-    Array.isArray(rowsMaybe) &&
-    rowsMaybe.every((elem: any) => elem && typeof elem === 'object')
+      Array.isArray(rowsMaybe) &&
+      rowsMaybe.every((elem: any) => elem && typeof elem === 'object')
   ) {
     return rowsMaybe.filter((row: any) => looksLikeParamRow(row, paramKeys));
   }
@@ -140,9 +140,9 @@ function pickRowsFromFormValues(formValues: any, paramKeys: string[]): any[] {
     let bestArray: any[] | null = null;
     for (const value of Object.values(formValues)) {
       if (
-        Array.isArray(value) &&
-        value.length &&
-        value.every((elem) => elem && typeof elem === 'object')
+          Array.isArray(value) &&
+          value.length &&
+          value.every((elem) => elem && typeof elem === 'object')
       ) {
         if (!bestArray || value.length > bestArray.length) bestArray = value;
       }
@@ -159,6 +159,31 @@ function pickRowsFromFormValues(formValues: any, paramKeys: string[]): any[] {
 }
 
 /**
+ * Фоллбэк: собрать одну строку из дефолтов параметров схемы,
+ * если ничего не найдено в сторах/форме.
+ */
+function buildDefaultRowFromSchema(schemaRaw: any): any[] {
+  const paramsArray = Array.isArray(schemaRaw?.params) ? schemaRaw.params : [];
+  if (!paramsArray.length) return [];
+  const row: Record<string, any> = {};
+
+  for (const p of paramsArray) {
+    const key = String(p?.key ?? '').trim();
+    if (!key) continue;
+    // поддерживаем и defaultValue, и default
+    const def =
+        (p as any)?.defaultValue ??
+        (p as any)?.default ??
+        null;
+    row[key] = def;
+  }
+
+  // если получилась полностью пустая строка — не добавляем
+  const hasAny = Object.values(row).some((v) => v != null && v !== '');
+  return hasAny ? [row] : [];
+}
+
+/**
  * Собирает итоговый список строк параметров в порядке приоритетов
  * Удаляет дубликаты
  * @param {any} schemaRaw - Сырые данные схемы YAML.
@@ -167,9 +192,9 @@ function pickRowsFromFormValues(formValues: any, paramKeys: string[]): any[] {
  * @returns {any[]} Уникальные строки параметров, готовые к использованию.
  */
 export function collectAllParamRows(
-  schemaRaw: any,
-  templateKey: string | undefined,
-  formValues: any,
+    schemaRaw: any,
+    templateKey: string | undefined,
+    formValues: any,
 ): any[] {
   const paramKeys = getParamKeys(schemaRaw);
 
@@ -179,7 +204,11 @@ export function collectAllParamRows(
   // значения формы
   if (!rows.length) rows = pickRowsFromFormValues(formValues, paramKeys);
 
+  // глубокий скан стора
   if (!rows.length) rows = deepScanTemplateStore(paramKeys);
+
+  // ФОЛЛБЭК: из defaultValue/default в schemaRaw.params
+  if (!rows.length) rows = buildDefaultRowFromSchema(schemaRaw);
 
   const seenSignatures = new Set<string>();
   const resultRows: any[] = [];

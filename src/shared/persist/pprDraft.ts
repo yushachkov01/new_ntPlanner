@@ -183,34 +183,6 @@ export function loadV2Snapshots(
 }
 
 /** ===== V2: загрузка params (для мгновенной гидрации таблицы) ===== */
-// export function loadV2Params(
-//     taskId: string
-// ): Array<{ templateKey: string; executorId: string; rows: Record<string, any>[] }> {
-//     const out: Array<{ templateKey: string; executorId: string; rows: Record<string, any>[] }> = [];
-//     try {
-//         if (typeof window === 'undefined') return out;
-//         const prefix = draftPrefix(taskId);
-//         const suffix = '::params';
-//
-//         for (let i = 0; i < window.localStorage.length; i++) {
-//             const key = window.localStorage.key(i) || '';
-//             if (!key.startsWith(prefix) || !key.endsWith(suffix)) continue;
-//
-//             // key = PPR_DRAFT::<taskId>::<templateKey>::<executorId>::params
-//             const middle = key.slice(prefix.length, key.length - suffix.length);
-//             const parts = middle.split('::');
-//             if (parts.length !== 2) continue;
-//
-//             const [templateKey, executorId] = parts;
-//             const rows = loadDraftFromLocalStorage<Record<string, any>[]>(key) ?? [];
-//             out.push({ templateKey, executorId, rows: Array.isArray(rows) ? rows : [] });
-//         }
-//     } catch (e) {
-//         log('loadV2Params error', e);
-//     }
-//     return out;
-// }
-
 export function loadV2Params(
     taskId: string
 ): Array<{ templateKey: string; executorId: string; rows: Record<string, any>[] }> {
@@ -490,7 +462,6 @@ function buildUnifiedStagesSnapshot(args: {
             (stages as any)[stageKey].fields = {};
         }
 
-        // ⬇⬇⬇ ВАЖНО: обращаться через [stageKey], а не через .fields на корне
         for (const [fieldKey, rawField] of Object.entries(((stages as any)[stageKey].fields) ?? {})) {
             if (rawField && typeof rawField === 'object') {
                 if (!('value' in (rawField as any))) {
@@ -500,7 +471,6 @@ function buildUnifiedStagesSnapshot(args: {
                 (stages as any)[stageKey].fields[fieldKey] = { value: null };
             }
         }
-
     }
 
     // sections.unknown.inProgress — берём все записи текущего templateKey и сливаем
@@ -529,7 +499,7 @@ function buildUnifiedStagesSnapshot(args: {
     // Перекладываем прежние value/time из LS ТОЛЬКО если prev от того же templateKey
     if (prev?.stages && typeof prev.stages === 'object' && prev.mainTemplateKey === mainTemplateKey) {
         for (const [stageKey, prevStage] of Object.entries(prev.stages)) {
-            const ok = ensureStageFields({ stages, stageKey, knownStages: mainTemplateRaw?.stages });
+            const { ok } = ensureStageFields({ stages, stageKey, knownStages: mainTemplateRaw?.stages });
             if (!ok) continue;
 
             if (typeof (prevStage as any).time === 'string') {
@@ -554,7 +524,7 @@ function buildUnifiedStagesSnapshot(args: {
     const { minutesByStage, rowsCount, blocksCount } = snapshotMinutesFromTimeline();
     const byStageForTpl = minutesByStage[tplIdx] ?? {};
     for (const [stageKey, minutes] of Object.entries(byStageForTpl)) {
-        const ok = ensureStageFields({ stages, stageKey, knownStages: mainTemplateRaw?.stages });
+        const { ok } = ensureStageFields({ stages, stageKey, knownStages: mainTemplateRaw?.stages });
         if (!ok) continue;
         (stages as any)[stageKey].time = `${Math.max(0, Math.round(Number(minutes) || 0))}m`;
     }
@@ -563,7 +533,7 @@ function buildUnifiedStagesSnapshot(args: {
     const stageValuesRes = snapshotStageFieldValuesFromTimeline(tplIdx, mainTemplateRaw);
     if (stageValuesRes.map) {
         for (const [stageKey, map] of Object.entries(stageValuesRes.map)) {
-            const ok = ensureStageFields({ stages, stageKey, knownStages: mainTemplateRaw?.stages });
+            const { ok } = ensureStageFields({ stages, stageKey, knownStages: mainTemplateRaw?.stages });
             if (!ok) continue;
 
             for (const [fieldKey, value] of Object.entries(map)) {
@@ -582,7 +552,7 @@ function buildUnifiedStagesSnapshot(args: {
     if (formValuesForTpl && typeof formValuesForTpl === 'object') {
         const knownStages = mainTemplateRaw?.stages ?? {};
         for (const [stageKey, stageRaw] of Object.entries(knownStages)) {
-            const ok = ensureStageFields({ stages, stageKey, knownStages });
+            const { ok } = ensureStageFields({ stages, stageKey, knownStages });
             if (!ok) continue;
 
             const rawFields = (stageRaw as any)?.fields || {};
@@ -794,6 +764,94 @@ export function usePprDraftPersistence(
     }, [taskId, extras?.mainTemplate, extras?.executorsByTemplate, extras?.templates]);
 }
 
+// ======== Unified Snapshot → rows (для таблицы) и stage patches (для таймлайна) ========
+
+export function rowsFromUnifiedSnapshot(
+    snap: UnifiedStagesSnapshot
+): Array<Record<string, any>> {
+    if (!snap?.mainTemplateRaw) return [];
+
+    // Берём только те ключи, которые действительно описаны в params
+    const paramKeys: string[] = Array.isArray(snap.mainTemplateRaw.params)
+        ? snap.mainTemplateRaw.params
+            .map((p: any) => String(p?.key ?? '').trim())
+            .filter(Boolean)
+        : [];
+
+    if (paramKeys.length === 0) return [];
+
+    // 1) значения из формы (inProgress)
+    const inProgress = snap?.sections?.unknown?.inProgress ?? {};
+
+    // 2) значения из полей стадий (если имя совпадает с ключом параметра)
+    const stageFieldValue = (paramKey: string) => {
+        for (const stage of Object.values(snap.stages ?? {})) {
+            const fields = (stage as any)?.fields;
+            if (!fields || typeof fields !== 'object') continue;
+            if (Object.prototype.hasOwnProperty.call(fields, paramKey)) {
+                const rf = fields[paramKey];
+                const v = rf && typeof rf === 'object' && 'value' in (rf as any) ? (rf as any).value : rf;
+                if (v !== undefined && v !== null) return v;
+            }
+        }
+        return undefined;
+    };
+
+    // Собираем единственную валидную строку под таблицу
+    const row: Record<string, any> = {};
+    for (const key of paramKeys) {
+        const v1 = (inProgress as any)?.[key];
+        const v2 = v1 === undefined ? stageFieldValue(key) : v1;
+        row[key] = v2 ?? null;
+    }
+
+    // важная метка для вашей формы/таймлайна
+    if (snap.mainTemplateKey) row.__sourceKey = snap.mainTemplateKey;
+
+    return [row];
+}
+
+/**
+ * Достаёт тайминги стадий из unified-snapshot.
+ * Возвращает map: stageKey -> minutes (number)
+ */
+export function minutesFromUnifiedSnapshot(snap: UnifiedStagesSnapshot): Record<string, number> {
+    const out: Record<string, number> = {};
+    if (!snap?.stages) return out;
+
+    for (const [stageKey, stage] of Object.entries(snap.stages)) {
+        const t = (stage as any)?.time;
+        if (typeof t !== 'string') continue;
+        const mm = parseInt(t.replace(/\D+/g, ''), 10);
+        if (Number.isFinite(mm)) out[stageKey] = Math.max(0, mm);
+    }
+    return out;
+}
+
+/**
+ * Достаёт значения полей стадий (для таймлайна): stageKey -> { fieldKey: value }
+ */
+export function stageFieldValuesFromUnifiedSnapshot(snap: UnifiedStagesSnapshot): Record<string, Record<string, any>> {
+    const out: Record<string, Record<string, any>> = {};
+    if (!snap?.stages) return out;
+
+    for (const [stageKey, stage] of Object.entries(snap.stages)) {
+        const fields = (stage as any)?.fields;
+        if (!fields || typeof fields !== 'object') continue;
+
+        for (const [fieldKey, rawField] of Object.entries(fields)) {
+            const v = rawField && typeof rawField === 'object' && 'value' in (rawField as any)
+                ? (rawField as any).value
+                : rawField;
+            if (v === undefined) continue;
+            if (!out[stageKey]) out[stageKey] = {};
+            out[stageKey][fieldKey] = v;
+        }
+    }
+    return out;
+}
+
+
 /** =================== Мгновенный патч таймера =================== */
 
 export function patchStageTimeInLocalStorage(opts: {
@@ -850,4 +908,3 @@ export function patchStageTimeInLocalStorage(opts: {
         });
     }
 }
-
