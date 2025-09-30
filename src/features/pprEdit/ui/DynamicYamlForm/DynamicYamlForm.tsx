@@ -1,12 +1,15 @@
+
 /**
- * Рендерит динамическую форму по YAML-схеме, ведёт таблицу добавленных строк,
- * синхронизирует каждую строку с таймлайном
- * поддерживает редактирование/удаление, и уведомляет родителя о количестве строк.
- *
+ * DynamicYamlForm — форма по YAML + таблица.
+ * - Источник полей: LS(PPR_DRAFT.mainTemplateRaw.params) → schema.params → schema.settings.
+ * - Обогащение виджетов/опций из types.yaml (и fallback из самих params).
+ * - Гидрация инпутов из LS (params[*].value), с маппингом под актуальные ключи (__2/__3).
+ * - «ЗНАЧЕНИЕ ИЗ PARAMS»: первая непустая строка из templates-store.
+ * - Таблица: строки замаплены под текущие ключи колонок.
  */
 
 import { Form, Typography, Button, message, Skeleton, Alert } from 'antd';
-import { useEffect, useMemo, useState, useCallback } from 'react';
+import {useEffect, useMemo, useRef, useState, useCallback, useId} from 'react';
 
 import './DynamicYamlForm.css';
 import { templateStore } from '@/entities/template/model/store/templateStore';
@@ -22,451 +25,544 @@ import { toArray } from './helpers/toArray';
 
 const { Title } = Typography;
 
-/**
- * - schema: любая YAML-схема шаблона
- * - executors?: массив исполнителей
- * - templateKey?: ключ шаблона
- * - onRowCountChange?: (count: number) => void — уведомление о числе записей в таблице
- */
 interface Props {
   schema: any;
   executors?: Array<Pick<User, 'id'> & { author?: string; role?: string }>;
   templateKey?: string;
   onRowCountChange?: (count: number) => void;
   onDisplayTableChange?: (
-    headers: string[],
-    rows: string[][],
-    sources: (string | undefined)[],
-    colKeys: string[],
+      headers: string[],
+      rows: string[][],
+      sources: (string | undefined)[],
+      colKeys: string[],
   ) => void;
 }
 
 type RowWithSource = Record<string, any> & { __sourceKey?: string };
 
-/**
- * Универсальная проверка пустого значения.
- * Возвращает true, если значение "пустое"
- */
-const isEmptyValue = (value: unknown): boolean => {
-  if (value == null) return true;
-  if (typeof value === 'string') return value.trim() === '';
-  if (typeof value === 'boolean') return value === false;
-  if (typeof value === 'number') return Number.isNaN(value);
-  if (value instanceof Date) return Number.isNaN(+value);
-  if (Array.isArray(value)) return value.length === 0 || value.every(isEmptyValue);
-  if (typeof value === 'object') {
-    const vals = Object.values(value as Record<string, unknown>);
+/* ==================== Utils ==================== */
+
+const isEmptyValue = (v: unknown) => {
+  if (v == null) return true;
+  if (typeof v === 'string') return v.trim() === '';
+  if (typeof v === 'boolean') return v === false;
+  if (typeof v === 'number') return Number.isNaN(v);
+  if (v instanceof Date) return Number.isNaN(+v);
+  if (Array.isArray(v)) return v.length === 0 || v.every(isEmptyValue);
+  if (typeof v === 'object') {
+    const vals = Object.values(v as Record<string, unknown>);
     return vals.length === 0 || vals.every(isEmptyValue);
   }
   return false;
 };
-/** true => есть хотя бы одно ЗАПОЛНЕННОЕ значение */
-const hasAnyFilled = (values: Record<string, any>): boolean =>
-  Object.values(values).some((value) => !isEmptyValue(value));
-/**
- * Компонент DynamicYamlForm: динамическая форма + таблица записей + связка с таймлайном.
- */
+const hasAnyFilled = (obj: Record<string, any>) => Object.values(obj).some((v) => !isEmptyValue(v));
+
+const safeParse = <T,>(raw: string | null): T | null => {
+  if (!raw) return null;
+  try { return JSON.parse(raw) as T; } catch { return null; }
+};
+
+/** Прочитать КАРТУ значений из localStorage: PPR_DRAFT.* → mainTemplateRaw.params[*].value */
+function readParamsValueMapFromLS(targetMainTemplateKey?: string): Record<string, any> {
+  const rows: Array<{ key?: string; params?: any[]; updatedAt?: string }> = [];
+
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i) || '';
+    if (!k.startsWith('PPR_DRAFT::')) continue;
+    const v = safeParse<any>(localStorage.getItem(k));
+    if (!v) continue;
+
+    const mtKey = v?.mainTemplateKey ?? v?.mainTemplate?.mainTemplateKey;
+    const mtr = v?.mainTemplateRaw ?? v?.mainTemplate?.mainTemplateRaw ?? {};
+    const params = Array.isArray(mtr?.params) ? mtr.params : Array.isArray(v?.params) ? v.params : null;
+    if (!params) continue;
+
+    rows.push({ key: mtKey, params, updatedAt: v?.updatedAt || v?.updated_at || v?.time || '' });
+  }
+
+  if (!rows.length) return {};
+
+  let chosen =
+      rows.find((r) => (r.key || '') === (targetMainTemplateKey || '')) ||
+      rows.sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)))[0];
+
+  const out: Record<string, any> = {};
+  for (const p of chosen.params as any[]) {
+    const key = String(p?.key ?? p?.name ?? '').trim();
+    if (!key) continue;
+    if ('value' in (p ?? {})) out[key] = (p as any).value;
+  }
+  return out;
+}
+
+/** Прочитать МАССИВ параметров из LS (как в mainTemplateRaw.params[*]) — для построения UI */
+function readParamsArrayFromLS(targetMainTemplateKey?: string): any[] | undefined {
+  const candidates: Array<{ key?: string; params?: any[]; updatedAt?: string }> = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i) || '';
+    if (!k.startsWith('PPR_DRAFT::')) continue;
+    const v = safeParse<any>(localStorage.getItem(k));
+    if (!v) continue;
+    const mtKey = v?.mainTemplateKey ?? v?.mainTemplate?.mainTemplateKey;
+    const mtr = v?.mainTemplateRaw ?? v?.mainTemplate?.mainTemplateRaw ?? {};
+    const params = Array.isArray(mtr?.params) ? mtr.params : null;
+    if (!params) continue;
+    candidates.push({ key: mtKey, params, updatedAt: v?.updatedAt || v?.updated_at || v?.time || '' });
+  }
+  if (!candidates.length) return undefined;
+  const chosen =
+      candidates.find((c) => (c.key || '') === (targetMainTemplateKey || '')) ||
+      candidates.sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)))[0];
+  return chosen?.params ?? undefined;
+}
+
+/** map из schema.params[*].value (fallback) */
+function buildValueMapFromSchema(schema: any): Record<string, any> {
+  const arr = Array.isArray(schema?.params) ? schema.params : [];
+  const out: Record<string, any> = {};
+  for (const p of arr) {
+    const key = String(p?.key ?? p?.name ?? '').trim();
+    if (!key) continue;
+    if ('value' in (p ?? {})) out[key] = (p as any).value;
+  }
+  return out;
+}
+
+/** слить определения полей: LS(params) → schema.params → schema.settings  */
+function buildEffectiveParams(
+    lsParamsRaw: Array<{ key?: string; name?: string; label?: string; type?: string; widget?: string; enum?: any[]; options?: any[] }> | undefined,
+    schemaParams: FieldCfg[] | undefined,
+    settingsAsParams: FieldCfg[] | undefined,
+): FieldCfg[] {
+  const ls = Array.isArray(lsParamsRaw) ? lsParamsRaw : [];
+  const base = Array.isArray(schemaParams) && schemaParams.length
+      ? schemaParams
+      : Array.isArray(settingsAsParams) ? settingsAsParams : [];
+
+  const byKey = new Map<string, FieldCfg>();
+  for (const f of base) {
+    const k = String((f as any).key ?? (f as any).name ?? '').trim();
+    if (k) byKey.set(k, f);
+  }
+
+  for (const p of ls) {
+    const k = String(p?.key ?? p?.name ?? '').trim();
+    if (!k) continue;
+    const prev = byKey.get(k) ?? ({} as FieldCfg);
+    byKey.set(k, {
+      ...prev,
+      key: k,
+      name: prev?.name ?? k,
+      label: p?.label ?? prev?.label ?? k,
+      type: p?.type ?? prev?.type,
+      // прокинем, если в LS уже лежит widget/options/enum
+      ...(p?.widget ? { widget: (p as any).widget } : {}),
+      ...(p?.enum ? { enum: (p as any).enum } : {}),
+      ...(p?.options ? { options: (p as any).options } : {}),
+    } as FieldCfg);
+  }
+
+  return Array.from(byKey.values());
+}
+
+type AnyFieldCfg = FieldCfg & {
+  __originalKey?: string;
+  widget?: string;
+  options?: Array<{ label: string; value: any }>;
+};
+
+/** обогатить widget/options из types.yaml; если нет типа — выбрать безопасный widget */
+function enrichParamsWithTypes(params: FieldCfg[], types: any): AnyFieldCfg[] {
+  return (params ?? []).map((f: any) => {
+    const tKey = String(f?.type ?? '').trim();
+    const tDef = tKey && types ? types[tKey] : null;
+
+    const rawOptions = f?.options ?? f?.enum ?? tDef?.options ?? tDef?.enum ?? null;
+
+    const widget =
+        f?.widget ??
+        tDef?.widget ??
+        (Array.isArray(rawOptions) ? 'select' : 'input');
+
+    const options = Array.isArray(rawOptions)
+        ? rawOptions.map((opt: any) =>
+            typeof opt === 'object'
+                ? { label: String(opt.label ?? opt.name ?? opt.value ?? opt), value: opt.value ?? opt.key ?? opt }
+                : { label: String(opt), value: opt },
+        )
+        : undefined;
+
+    return { ...f, widget, options } as AnyFieldCfg;
+  });
+}
+
+/** объект без __sourceKey и пустых значений */
+function buildDisplayObjFromRow(row?: Record<string, any> | null): Record<string, any> | null {
+  if (!row) return null;
+  const clone = { ...row };
+  delete (clone as any).__sourceKey;
+  const entries = Object.entries(clone).filter(([, v]) => !isEmptyValue(v));
+  if (!entries.length) return null;
+  return Object.fromEntries(entries);
+}
+
+/** замапить одну строку (originalKeys → formKeys) под текущие uiParams */
+function mapRowToFormKeys(
+    row: Record<string, any>,
+    uiParams: (AnyFieldCfg & { __originalKey?: string })[],
+): RowWithSource {
+  const mapped: RowWithSource = { __sourceKey: (row as any).__sourceKey };
+  for (const f of uiParams) {
+    const formKey = (f as any).key ?? (f as any).name;
+    const originalKey = (f as any).__originalKey ?? formKey;
+    if (!formKey) continue;
+
+    if (Object.prototype.hasOwnProperty.call(row, formKey)) {
+      mapped[formKey] = (row as any)[formKey];
+    } else if (Object.prototype.hasOwnProperty.call(row, originalKey)) {
+      mapped[formKey] = (row as any)[originalKey];
+    }
+  }
+  return mapped;
+}
+
+/* ==================== Component ==================== */
+
 export default function DynamicYamlForm({
-  schema,
-  executors = [],
-  templateKey,
-  onRowCountChange,
-  onDisplayTableChange,
-}: Props) {
-  /** Управление формой Ant Design */
+                                          schema,
+                                          executors = [],
+                                          templateKey,
+                                          onRowCountChange,
+                                          onDisplayTableChange,
+                                        }: Props) {
   const [form] = Form.useForm();
   const [localData, setLocalData] = useState<RowWithSource[]>([]);
-
-  /**
-   * индекс редактируемой записи в таблице
-   * params
-   */
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
 
-  /**
-   * сеттер templateStore по ключу схемы
-   */
-  const setTemplateValues = templateStore((state) => state.setTemplateValues);
+  const setTemplateValues = templateStore((s) => s.setTemplateValues);
+  const getTemplateValues = templateStore((s) => s.getTemplateValues);
 
-  /**
-   * геттер templateStore по ключу схемы
-   * params
-   */
-  const getTemplateValues = templateStore((state) => state.getTemplateValues);
+  const addFromYaml = useTimelineStore((s) => s.addFromYaml);
+  const removeBySource = useTimelineStore((s) => s.removeBySource);
 
-  /**
-   * экшен стора таймлайна
-   */
-  const addFromYaml = useTimelineStore((state) => state.addFromYaml);
+  const types = useTypesStore((s) => s.types);
+  const loadTypes = useTypesStore((s) => s.load);
+  const isTypesLoading = useTypesStore((s) => s.isLoading);
+  const typesError = useTypesStore((s) => s.error);
 
-  /**
-   * экшен стора таймлайна: удалить блоки по sourceKey
-   */
-  const removeBySource = useTimelineStore((state) => state.removeBySource);
-
-  /**
-   *   для декларативной формы:
-   * - types: загруженные типы
-   * - loadTypes: загрузка
-   * - isTypesLoading/error: состояние загрузки
-   */
-  const types = useTypesStore((state) => state.types);
-  const loadTypes = useTypesStore((state) => state.load);
-  const isTypesLoading = useTypesStore((state) => state.isLoading);
-  const typesError = useTypesStore((state) => state.error);
-
-  /**
-   * Флаг готовности типов: есть объект и в нём есть ключи.
-   */
   const typesReady = !!types && typeof types === 'object' && Object.keys(types).length > 0;
 
-  /**
-   *  форс-загрузка типов при монтировании (первичный прогрев).
-   */
-  useEffect(() => {
-    void loadTypes(true);
-  }, [loadTypes]);
+  const storeKey = useMemo(
+      () => (templateKey ?? schema?.headline ?? 'unknown_template') as string,
+      [templateKey, schema?.headline],
+  );
+  const instanceId = useId();
+  const formKey = `${storeKey}::${instanceId}`;
 
-  /**
-   * догрузка типов, если они ещё не готовы.
-   */
-  useEffect(() => {
-    if (!typesReady) void loadTypes();
-  }, [typesReady, loadTypes, types]);
+  /* загрузка types */
+  useEffect(() => { void loadTypes(true); }, [loadTypes]);
+  useEffect(() => { if (!typesReady) void loadTypes(); }, [typesReady, loadTypes, types]);
 
-  /**
-   * Исходные параметры для формы (верхний уровень),
-   */
-  const rawParams = useMemo(() => {
-    return Array.isArray(schema?.params) && schema.params.length
-      ? (schema.params as FieldCfg[])
-      : (toArray({ fields: schema?.settings }) as FieldCfg[]);
-  }, [schema?.params, schema?.settings]);
+  /* читаем "сырой" список параметров из LS (для построения UI) */
+  const lsParamsArray = useMemo(() => readParamsArrayFromLS(templateKey), [templateKey]);
 
-  /**
-   * Делаем ключи полей уникальными
-   */
-  const uiParams = useMemo(() => {
-    const seenCounters = new Map<string, number>();
-    return (rawParams ?? []).map((fieldConfig: any) => {
-      const originalKey = String(fieldConfig.key ?? fieldConfig.name ?? '');
-      if (!originalKey) return fieldConfig;
-      const ordinalIndex = seenCounters.get(originalKey) ?? 0;
-      seenCounters.set(originalKey, ordinalIndex + 1);
-      return ordinalIndex === 0
-        ? fieldConfig
-        : { ...fieldConfig, key: `${originalKey}__${ordinalIndex + 1}` };
-    }) as FieldCfg[];
-  }, [rawParams]);
-
-  /**
-   * Колонки таблицы (видимые заголовки) по текущей конфигурации полей.
-   */
-  const tableColumns = useMemo<FieldCfg[]>(
-    () =>
-      (uiParams ?? []).map((fieldConfig: any) => ({
-        key: fieldConfig.key ?? fieldConfig.name,
-        name: fieldConfig.label ?? fieldConfig.name ?? fieldConfig.key,
-        label: fieldConfig.label,
-        type: fieldConfig.type,
-        widget: (fieldConfig as any).widget,
-      })),
-    [uiParams],
+  /* исходники параметров из schema */
+  const schemaParams = useMemo(
+      () => (Array.isArray(schema?.params) ? (schema.params as FieldCfg[]) : undefined),
+      [schema?.params],
+  );
+  const settingsAsParams = useMemo(
+      () => (toArray({ fields: schema?.settings }) as FieldCfg[]) ?? undefined,
+      [schema?.settings],
   );
 
-  /**
-   * Сброс формы/таблицы при смене схемы/шаблона.
-   */
-  useEffect(() => {
-    /**
-     * сброс значений формы
-     */
-    form.resetFields();
+  /* эффективные поля и их обогащение виджетами/опциями */
+  const effectiveParams = useMemo(
+      () => buildEffectiveParams(lsParamsArray, schemaParams, settingsAsParams),
+      [lsParamsArray, schemaParams, settingsAsParams],
+  );
 
-    /**
-     * очистка локальной таблицы
-     */
+  const enrichedParams = useMemo(
+      () => enrichParamsWithTypes(effectiveParams, types),
+      [effectiveParams, types],
+  );
+
+  /** делаем ключи уникальными и помним __originalKey */
+  const uiParams = useMemo(() => {
+    const seen = new Map<string, number>();
+    return (enrichedParams ?? []).map((f: any) => {
+      const originalKey = String(f.key ?? f.name ?? '').trim();
+      if (!originalKey) return f as AnyFieldCfg & { __originalKey?: string };
+      const idx = seen.get(originalKey) ?? 0;
+      seen.set(originalKey, idx + 1);
+      return idx === 0
+          ? { ...f, __originalKey: originalKey }
+          : { ...f, __originalKey: originalKey, key: `${originalKey}__${idx + 1}` };
+    }) as (AnyFieldCfg & { __originalKey?: string })[];
+  }, [enrichedParams]);
+
+  /** колонки таблицы (пробрасываем widget/options) */
+  const tableColumns = useMemo(
+      () =>
+          (uiParams ?? []).map((f: any) => ({
+            key: f.key ?? f.name,
+            name: f.label ?? f.name ?? f.key,
+            label: f.label,
+            type: f.type,
+            widget: f.widget,
+            options: f.options,
+          })),
+      [uiParams],
+  );
+
+  /** значения для гидрации инпутов: приоритет LS → schema */
+  const paramsFromLSMap   = useMemo(() => readParamsValueMapFromLS(templateKey), [templateKey]);
+  const paramsFromSchema  = useMemo(() => buildValueMapFromSchema(schema), [schema?.params]);
+  const rawParamsCombined = useMemo(() => ({ ...paramsFromSchema, ...paramsFromLSMap }), [paramsFromSchema, paramsFromLSMap]);
+
+  /** маппинг значений под текущие ключи формы */
+  const paramsValueMap = useMemo(() => {
+    if (!uiParams?.length) return {};
+    const res: Record<string, any> = {};
+    for (const f of uiParams) {
+      const formKey = (f as any).key ?? (f as any).name;
+      const originalKey = (f as any).__originalKey ?? formKey;
+      if (!formKey) continue;
+      if (originalKey in rawParamsCombined) res[formKey] = rawParamsCombined[originalKey];
+    }
+    return res;
+  }, [uiParams, rawParamsCombined]);
+
+  /** когда реально построены ноды формы */
+  const nodesReadyRef = useRef(false);
+  const fieldTree = useMemo(() => {
+    if (!uiParams?.length) return { nodes: [] as any[] };
+    try {
+      const { nodes } = buildFieldTree(uiParams as FieldCfg[], types ?? {});
+      nodesReadyRef.current = nodes.length > 0;
+      return { nodes };
+    } catch {
+      nodesReadyRef.current = false;
+      return { nodes: [] as any[] };
+    }
+  }, [uiParams, types]);
+
+  /** посев таблицы (и templates-store) при холодном старте */
+  useEffect(() => {
     setLocalData([]);
-
-    /**
-     * выход из режима редактирования
-     */
     setEditingIndex(null);
-  }, [schema?.headline, uiParams, form, templateKey]);
 
-  /**
-   * Уведомляем родителя о количестве строк в таблице.
-   */
+    const existing = getTemplateValues(storeKey);
+    if (Array.isArray(existing) && existing.length > 0) {
+      setLocalData(existing as RowWithSource[]);
+      return;
+    }
+    if (Object.keys(rawParamsCombined).length) {
+      const seeded: RowWithSource = {
+        ...rawParamsCombined,
+        __sourceKey: `${storeKey}::seed_${Date.now().toString(36)}`,
+      };
+      setLocalData([seeded]);
+      setTemplateValues(storeKey, [seeded]);
+    }
+  }, [storeKey, rawParamsCombined, getTemplateValues, setTemplateValues]);
+
+  /** гидрация формы — после монтирования полей */
   useEffect(() => {
-    onRowCountChange?.(localData.length);
-  }, [localData.length, onRowCountChange]);
+    const tick = setTimeout(() => {
+      if (nodesReadyRef.current && Object.keys(paramsValueMap).length) {
+        form.setFieldsValue(paramsValueMap);
+      }
+    }, 0);
+    return () => clearTimeout(tick);
+  }, [paramsValueMap, form, fieldTree.nodes]);
 
-  /**
-   * вычисляет упорядоченную цепочку стадий из YAML
-   * schema: исходная YAML-схема
-   * returns
-   * { stageKeys, stagesField }: массив ключей стадий и словарь метаданных
-   */
+  /** «ЗНАЧЕНИЕ ИЗ PARAMS»: первая непустая строка из templates-store */
+  const displayObjFromTemplatesStore = useMemo(() => {
+    const firstFilled = localData.find((row) => {
+      const clone = { ...row }; delete (clone as any).__sourceKey;
+      return Object.values(clone).some((v) => v !== undefined && v !== null && String(v).trim?.() !== '');
+    });
+    return buildDisplayObjFromRow(firstFilled || null);
+  }, [localData]);
+
+  const paramsValueString = useMemo(() => {
+    if (!displayObjFromTemplatesStore) return '';
+    const entries = Object.entries(displayObjFromTemplatesStore);
+    if (entries.length === 1) return String(entries[0][1] ?? '');
+    try { return JSON.stringify(displayObjFromTemplatesStore); } catch { return String(displayObjFromTemplatesStore); }
+  }, [displayObjFromTemplatesStore]);
+
+  /** данные для таблицы: строки → маппинг под form/table keys */
+  const tableDataMapped = useMemo<RowWithSource[]>(() => {
+    if (!Array.isArray(localData) || !uiParams?.length) return localData;
+    return localData.map((row) => mapRowToFormKeys(row, uiParams));
+  }, [localData, uiParams]);
+
+  /* служебные эффекты */
+  useEffect(() => { onRowCountChange?.(localData.length); }, [localData.length, onRowCountChange]);
+
+  /** этапы из YAML */
   const stagesFromYaml = useMemo(() => {
-    /**
-     * копия входной схемы
-     */
-    const rawSchema = schema ?? {};
+    const raw = schema ?? {};
     let startStageKey: string | undefined;
     let stagesField: Record<string, any> = {};
 
-    if (rawSchema?.current_stages && rawSchema?.stages_field) {
-      const asArray = Array.isArray(rawSchema.current_stages)
-        ? rawSchema.current_stages
-        : [rawSchema.current_stages];
-      startStageKey = asArray?.[0];
-      stagesField = rawSchema.stages_field ?? {};
-    } else if (rawSchema?.start && rawSchema?.stages) {
-      startStageKey = rawSchema.start;
-      stagesField = rawSchema.stages ?? {};
+    if (raw?.current_stages && raw?.stages_field) {
+      const asArr = Array.isArray(raw.current_stages) ? raw.current_stages : [raw.current_stages];
+      startStageKey = asArr?.[0];
+      stagesField = raw.stages_field ?? {};
+    } else if (raw?.start && raw?.stages) {
+      startStageKey = raw.start;
+      stagesField = raw.stages ?? {};
     }
 
     const stageKeys: string[] = [];
-    let cursorKey = startStageKey;
-    let stepGuardCounter = 0;
-
-    while (cursorKey && cursorKey !== 'exit' && stagesField[cursorKey] && stepGuardCounter < 500) {
-      stageKeys.push(cursorKey);
-      const successNext = stagesField[cursorKey]?.if_success;
-      if (!successNext) break;
-      cursorKey = Array.isArray(successNext) ? successNext[0] : successNext;
-      stepGuardCounter++;
+    let cursor = startStageKey;
+    let guard = 0;
+    while (cursor && cursor !== 'exit' && stagesField[cursor] && guard < 500) {
+      stageKeys.push(cursor);
+      const next = stagesField[cursor]?.if_success;
+      if (!next) break;
+      cursor = Array.isArray(next) ? next[0] : next;
+      guard++;
     }
-
     return { stageKeys, stagesField: stagesField as Record<string, any> };
   }, [schema]);
 
-  /**
-   * сабмит формы — добавление или редактирование записи + синхронизация с таймлайном
-   * params:
-   * vals: значения полей формы
-   */
+  /** сабмит */
   const onFinish = (vals: Record<string, any>) => {
-    /** Если не заполнено ни одного поля — ничего не добавляем/не сохраняем */
-    if (!hasAnyFilled(vals)) {
-      message.warning('Заполните хотя бы одно поле перед добавлением записи');
-      return;
-    }
+    if (!hasAnyFilled(vals)) { message.warning('Заполните хотя бы одно поле'); return; }
 
-    /**
-     * ключ раздела в templateStore
-     */
-    const templateSectionKey = schema?.headline;
-    const prevGlobalValues = getTemplateValues(templateSectionKey);
-
-    /**
-     * список id исполнителей текущего шаблона (string|number как пришло)
-     */
-    const executorIds = (executors ?? []).map((executor: any) => executor.id);
-
-    /**
-     * разобранная из YAML цепочка стадий и словарь метаданных
-     */
+    const prev = getTemplateValues(storeKey);
+    const executorIds = (executors ?? []).map((e: any) => e.id); // пока не используется, но сохраняю
     const { stageKeys, stagesField } = stagesFromYaml;
 
     if (editingIndex === null) {
-      /**ДОБАВЛЕНИЕ
-       * уникальный ключ источника для связи «строка таблицы -> блоки таймлайна»
-       */
-      const sourceKey = `${
-        templateKey ?? templateSectionKey
-      }::${Date.now()}_${Math.random().toString(36).slice(2)}`;
-
-      /**
-       * новая строка таблицы с прикреплённым sourceKey
-       */
+      const sourceKey = `${storeKey}::${Date.now()}_${Math.random().toString(36).slice(2)}`;
       const nextRow: RowWithSource = { ...vals, __sourceKey: sourceKey };
-      setLocalData((prev) => [...prev, nextRow]);
-      setTemplateValues(templateSectionKey, [...prevGlobalValues, nextRow]);
+      setLocalData((p) => [...p, nextRow]);
+      setTemplateValues(storeKey, [...prev, nextRow]);
 
       if (stageKeys.length) {
         addFromYaml({
           label: schema?.headline || schema?.description || 'Новая запись',
-          stageKeys,
-          stagesField,
-          execIds: executorIds,
-          sourceKey,
+          stageKeys, stagesField, execIds: executorIds, sourceKey,
         });
       }
     } else {
-      /**
-       * РЕДАКТИРОВАНИЕ
-       * исходный sourceKey редактируемой строки
-       */
       const sourceKey = localData[editingIndex]?.__sourceKey;
-
-      /**
-       * обновлённая строка с сохранением sourceKey
-       */
       const patchedRow: RowWithSource = { ...vals, __sourceKey: sourceKey };
+      setLocalData((p) => p.map((r, i) => (i === editingIndex ? patchedRow : r)));
+      setTemplateValues(storeKey, prev.map((r: any, i: number) => (i === editingIndex ? patchedRow : r)));
 
-      setLocalData((prev) =>
-        prev.map((rowItem, index) => (index === editingIndex ? patchedRow : rowItem)),
-      );
-      setTemplateValues(
-        templateSectionKey,
-        prevGlobalValues.map((rowItem: any, index: number) =>
-          index === editingIndex ? patchedRow : rowItem,
-        ),
-      );
       if (sourceKey) {
         removeBySource({ sourceKey });
         if (stageKeys.length) {
           addFromYaml({
             label: schema?.headline || schema?.templateName || 'Обновлённая запись',
-            stageKeys,
-            stagesField,
-            execIds: executorIds,
-            sourceKey,
+            stageKeys, stagesField, execIds: executorIds, sourceKey,
           });
         }
       }
     }
 
-    /**
-     * очистка формы и выход из режима редактирования
-     */
     form.resetFields();
     setEditingIndex(null);
   };
 
-  /**
-   * удаляет запись из таблицы и соответствующие блоки с таймлайна по её sourceKey
-   * params
-   * - index: индекс удаляемой записи
-   */
   const handleDelete = (index: number, passedSourceKey?: string) => {
-    const templateSectionKey = schema?.headline;
-    const prevGlobalValues = getTemplateValues(templateSectionKey);
-
+    const prev = getTemplateValues(storeKey);
     const sourceKey = String(
-      passedSourceKey ??
+        passedSourceKey ??
         (localData[index] as any)?.__sourceKey ??
-        (prevGlobalValues?.[index] as any)?.__sourceKey ??
+        (prev?.[index] as any)?.__sourceKey ??
         '',
     ).trim();
 
     if (sourceKey) {
-      /** Удаляем блоки с таймлайна по ключу (для всех исполнителей) */
       removeBySource({ sourceKey });
-
-      setLocalData((prev) => prev.filter((row) => (row as any)?.__sourceKey !== sourceKey));
-      setTemplateValues(
-        templateSectionKey,
-        (prevGlobalValues ?? []).filter((row: any) => row?.__sourceKey !== sourceKey),
-      );
+      setLocalData((p) => p.filter((row) => (row as any)?.__sourceKey !== sourceKey));
+      setTemplateValues(storeKey, (prev ?? []).filter((row: any) => row?.__sourceKey !== sourceKey));
     } else {
-      /** если ключа нет, удаляем по индексу только в таблицах */
-      setLocalData((prev) => prev.filter((_, i) => i !== index));
-      setTemplateValues(
-        templateSectionKey,
-        (prevGlobalValues ?? []).filter((_: any, i: number) => i !== index),
-      );
+      setLocalData((p) => p.filter((_, i) => i !== index));
+      setTemplateValues(storeKey, (prev ?? []).filter((_: any, i: number) => i !== index));
     }
 
-    if (
-      editingIndex === index ||
-      (sourceKey && localData[editingIndex ?? -1]?.__sourceKey === sourceKey)
-    ) {
+    if (editingIndex === index || (sourceKey && localData[editingIndex ?? -1]?.__sourceKey === sourceKey)) {
       form.resetFields();
       setEditingIndex(null);
     }
   };
 
-  /**
-   * Загружает выбранную запись в форму для редактирования.
-   * params
-   * - index: индекс строки для редактирования
-   */
   const handleEdit = (index: number) => {
-    /**
-     * установка индекса редактируемой записи
-     */
     setEditingIndex(index);
-
-    /**
-     * копия строки без служебного поля __sourceKey
-     */
-    const formRow = { ...localData[index] };
+    const formRow = mapRowToFormKeys(localData[index], uiParams);
     delete (formRow as any).__sourceKey;
-
-    /**
-     * проставление значений в форму
-     */
     form.setFieldsValue(formRow);
   };
 
-  /**
-   * Построение дерева полей (если types загружены).
-   */
-  const fieldTree = useMemo(() => {
-    if (!typesReady) return { nodes: [] };
-    try {
-      const { nodes } = buildFieldTree((uiParams ?? []) as FieldCfg[], types);
-      return { nodes };
-    } catch {
-      return { nodes: [] };
-    }
-  }, [uiParams, typesReady, types]);
-
   const handleDisplayTableChange = useCallback(
-    (headers: string[], rows: string[][], sources: (string | undefined)[], colKeys: string[]) => {
-      onDisplayTableChange?.(headers, rows, sources, colKeys);
-    },
-    [onDisplayTableChange],
+      (headers: string[], rows: string[][], sources: (string | undefined)[], colKeys: string[]) => {
+        onDisplayTableChange?.(headers, rows, sources, colKeys);
+      },
+      [onDisplayTableChange],
   );
+
   return (
-    <section className="dyf__root">
-      <Title level={4}>{schema?.headline}</Title>
+      <section className="dyf__root">
+        <Title level={4}>{schema?.headline}</Title>
 
-      <div className="dyf__layout">
-        <div className="dyf__form-col">
-          <Form form={form} layout="vertical" onFinish={onFinish}>
-            {!typesReady ? (
-              <>
-                {typesError && (
-                  <Alert
-                    type="warning"
-                    showIcon
-                    message="Не удалось загрузить types.yaml"
-                    description={typesError}
-                    style={{ marginBottom: 12 }}
-                  />
-                )}
-                <Skeleton active paragraph={{ rows: 3 }} />
-              </>
-            ) : (
-              <DeclarativeFormRenderer nodes={fieldTree.nodes} />
-            )}
+        {/* Вывод из первой непустой строки templates-store */}
+        <p style={{ margin: '0 0 12px 0', opacity: 0.85 }}>
+          <strong>ЗНАЧЕНИЕ ИЗ PARAMS:</strong>{' '}
+          <span>{paramsValueString || '—'}</span>
+        </p>
 
-            <Form.Item>
-              <Button
-                type="primary"
-                htmlType="submit"
-                block
-                disabled={!typesReady && isTypesLoading}
-              >
-                {editingIndex === null ? 'Добавить запись' : 'Сохранить изменения'}
-              </Button>
-            </Form.Item>
-          </Form>
+        <div className="dyf__layout">
+          <div className="dyf__form-col">
+            <Form
+                key={formKey}
+                form={form}
+                layout="vertical"
+                initialValues={paramsValueMap}
+                onFinish={onFinish}
+            >
+              {!fieldTree.nodes.length ? (
+                  <>
+                    {typesError && (
+                        <Alert
+                            type="warning"
+                            showIcon
+                            message="Не удалось загрузить types.yaml"
+                            description={typesError}
+                            style={{ marginBottom: 12 }}
+                        />
+                    )}
+                    <Skeleton active paragraph={{ rows: 3 }} />
+                  </>
+              ) : (
+                  <DeclarativeFormRenderer nodes={fieldTree.nodes} />
+              )}
+
+              <Form.Item>
+                <Button type="primary" htmlType="submit" block disabled={!fieldTree.nodes.length && isTypesLoading}>
+                  {editingIndex === null ? 'Добавить запись' : 'Сохранить изменения'}
+                </Button>
+              </Form.Item>
+            </Form>
+          </div>
+
+          <div className="dyf__table-col">
+            <FieldsTable
+                rootFields={tableColumns as any}
+                data={tableDataMapped}
+                onEdit={handleEdit}
+                onDelete={handleDelete}
+                onDisplayTableChange={handleDisplayTableChange}
+            />
+          </div>
         </div>
-
-        <div className="dyf__table-col">
-          <FieldsTable
-            rootFields={tableColumns}
-            data={localData}
-            onEdit={handleEdit}
-            onDelete={handleDelete}
-            onDisplayTableChange={handleDisplayTableChange}
-          />
-        </div>
-      </div>
-    </section>
+      </section>
   );
 }

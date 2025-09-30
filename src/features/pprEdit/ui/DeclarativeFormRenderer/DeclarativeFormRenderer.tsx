@@ -1,5 +1,6 @@
+
 /**
- * Компонент рендеринга формы
+ * DeclarativeFormRenderer — отрисовывает узлы декларативного дерева
  */
 import React, { useMemo } from 'react';
 import { Col, Row } from 'antd';
@@ -7,55 +8,40 @@ import { Col, Row } from 'antd';
 import { usePlannedTaskStore } from '@/entities/PlannedTask/model/store/plannedTaskStore';
 import type { FieldNode } from '@/features/pprEdit/model/typeSystem/FieldTreeBuilder';
 import FieldNodeRenderer from '@/shared/ui/form/FieldNodeRenderer';
-import CompositeNodeRenderer from "@/shared/ui/form/CompositeNodeRenderer";
+import CompositeNodeRenderer from '@/shared/ui/form/CompositeNodeRenderer';
 
-/**
- * Пропсы для компонента DeclarativeFormRenderer
- * @property nodes — массив узлов декларативного дерева (FieldNode[])
- */
 type Props = { nodes: FieldNode[] };
 
-/**
- * Хук получения списка устройств для ^device.
- * Использует store plannedTaskStore и фильтрует устройства
- *
- * @returns массив опций { label, value } для Select
- */
+/** Опции устройств для ^device */
 function useDeviceOptions() {
-  /** Все устройства из стора */
-  const devices = usePlannedTaskStore((store) => store.device);
+    const devices = usePlannedTaskStore((store) => store.device);
+    const deviceWhitelist = usePlannedTaskStore((store) => store.deviceWhitelist);
 
-  /** Белый список хостов, выбранный во вкладке «Сетевое оборудование» */
-  const deviceWhitelist = usePlannedTaskStore((store) => store.deviceWhitelist);
-
-  return useMemo(() => {
-    const filteredDevices =
-      deviceWhitelist && deviceWhitelist.length
-        ? (devices ?? []).filter((device: any) => deviceWhitelist.includes(device?.hostname))
-        : (devices ?? []);
-    return filteredDevices.map((device: any) => ({
-      label: device?.hostname,
-      value: String(device?.id),
-    }));
-  }, [devices, deviceWhitelist]);
+    return useMemo(() => {
+        const filtered =
+            deviceWhitelist && deviceWhitelist.length
+                ? (devices ?? []).filter((d: any) => deviceWhitelist.includes(d?.hostname))
+                : (devices ?? []);
+        return filtered.map((d: any) => ({ label: d?.hostname, value: String(d?.id) }));
+    }, [devices, deviceWhitelist]);
 }
 
 export const DeclarativeFormRenderer: React.FC<Props> = ({ nodes }) => {
-  const deviceOptions = useDeviceOptions();
+    const deviceOptions = useDeviceOptions();
 
-  if (import.meta.env && (import.meta as any).env?.DEV) {
-    console.debug(
-      '[DYF/Renderer] nodes',
-      nodes.map((node) => ({
-        key: (node as any).key,
-        kind: node.kind,
-        widget: (node as any).widget,
-        rawType: (node as any).rawType,
-        label: (node as any).label,
-        multiple: (node as any).multiple,
-      })),
-    );
-  }
+    if (import.meta.env && (import.meta as any).env?.DEV) {
+        console.debug(
+            '[DYF/Renderer] nodes',
+            nodes.map((node) => ({
+                key: (node as any).key,
+                kind: node.kind,
+                widget: (node as any).widget,
+                rawType: (node as any).rawType,
+                label: (node as any).label,
+                multiple: (node as any).multiple,
+            })),
+        );
+    }
 
     return (
         <Row gutter={[16, 8]}>
