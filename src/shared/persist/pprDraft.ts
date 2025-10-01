@@ -1,66 +1,159 @@
 /**
- * src/shared/persist/pprDraft.ts
- *
- * Персистентность драфта PPR строго через V2-ключи:
+ * Персистентность драфта ППР строго через ключи:
  *   PPR_DRAFT::<taskId>::<templateKey>::<executorId>::stages
- *
- * НИЧЕГО больше в localStorage не пишем (никаких ::params и совместимых V1).
- * Параметры формы живут в zustand-persist ("templates-store") и попадают в unified-snapshot
- * через sections.unknown.inProgress.
+ * В localStorage храним только снапшоты стадий.
  */
 
 import { useEffect, useRef } from 'react';
-import { templateStore } from '@/entities/template/model/store/templateStore';
-import useTimelineStore from '@entities/timeline/model/store/timelineStore';
 import YAML from 'yaml';
 
-const TAG = '[PPR DRAFT]';
-const log = (...args: any[]) => console.log(TAG, ...args);
+import { templateStore } from '@/entities/template/model/store/templateStore';
+import useTimelineStore from '@entities/timeline/model/store/timelineStore';
+import {LOG_TAG} from "@/shared/constants";
 
-/** =================== Типы =================== */
+
+const log = (...args: any[]) => console.log(LOG_TAG, ...args);
 
 export type ParamsDraft = Record<string, Record<string, any>[]>;
 
 export type MinutesByStageMap = Record<number, Record<string, number>>;
 
+/**
+ * UnifiedStagesSnapshot — «единый снимок» состояния пп для конкретного шаблона и исполнителя.
+ * Используется как полезная нагрузка в ключе:
+ *   PPR_DRAFT::<taskId>::<templateKey>::<executorId>::stages
+ */
 export interface UnifiedStagesSnapshot {
+    /**
+     * Матрица исполнителей по шаблонам.
+     * executorsByTemplate[i] — список исполнителей для шаблона с индексом i.
+     * Нужна, чтобы при восстановлении понимать «кто где» без внешних сто́ров.
+     */
     executorsByTemplate: any[][];
+
+    /**
+     * Ключ основного шаблона, к которому относится снапшот.
+     * Используется как __sourceKey для табличных строк и для валидации стадий.
+     */
     mainTemplateKey: string | undefined;
+
+    /**
+     * Нормализованный YAML/JSON текущего шаблона.
+     * Достаточен для построения порядка стадий и их полей (stages/stages_field, params и т.д.).
+     */
     mainTemplateRaw: Record<string, any> | undefined;
-    /** В снапшоте храним список параметров; value НЕ хранится отдельно в LS — это часть снапшота. */
+
+    /**
+     * Плоский список параметров шаблона (из schema.params),
+     * уже обогащённый фактическими value (если они известны).
+     * Это приоритетный источник для восстановления табличной формы.
+     */
     params: Array<{ key: string; label: string; type: string; value?: any }>;
+
+    /**
+     * Карта стадий: ключ — stageKey.
+     * Каждая стадия может содержать:
+     *   - time: строка вида "Xm" (например, "30m") — длительность этапа;
+     *   - fields: { [fieldKey]: { value: any, ...описание поля из raw } }.
+     * Эти данные нужны для реставрации таймлайна/блоков.
+     */
     stages: Record<string, any>;
+
+    /**
+     * Дополнительные секции снапшота.
+     * unknown.inProgress — «плоский» срез табличных значений (параметров),
+     * который помогает подставлять значения в поля стадий/формы, если они ещё не записаны в stages/params.
+     */
     sections: { unknown: { inProgress: Record<string, any> } };
+
+    /**
+     * ID задачи, к которой относится данный снапшот.
+     * Дублируем для самодостаточности и удобства отладки.
+     */
     taskId: string;
+
+    /**
+     * ISO-метка времени последнего обновления снапшота.
+     * Используется для «свежести»
+     */
     updatedAt: string;
+
+    /**
+     * Версия формата unified-снапшота.
+     * Сейчас — 1. На будущее: позволяет мигрировать структуру при изменениях.
+     */
     v: number;
+
+    /**
+     * Отладочная информация — не участвует в восстановлении UI, нужна для анализа.
+     */
     __debugInfo__?: {
+        /**
+         * Карта минут по стадиям, сгруппированная по индексу шаблона:
+         * minutesByStage[tplIdx][stageKey] = minutes
+         */
         minutesByStage: MinutesByStageMap;
+
+        /** Сколько рядов и блоков увидели в таймлайне в момент сборки снапшота. */
         rowsCount: number;
         blocksCount: number;
+
+        /**
+         * Откуда брали значения полей стадий:
+         *  - 'mergedOverrides' — объединённые правки из стора таймлайна;
+         *  - 'stageFieldEdits' — сырые правки полей;
+         *  - 'none' — не нашли, брали из sections.unknown.inProgress или оставили null.
+         */
         stageValuesFrom: 'mergedOverrides' | 'stageFieldEdits' | 'none';
+
+        /** Произвольный пример пары [stageKey, fieldsMap] для быстрой диагностики. */
         stageValuesSample?: any;
     };
 }
 
-/** =================== Helpers: key encoding =================== */
 
-const enc = (s: string) => encodeURIComponent(String(s ?? '')).replace(/%20/g, '+');
-const dec = (s: string) => decodeURIComponent(String(s ?? '').replace(/\+/g, '%20'));
+/**
+ * Кодирует часть ключа, чтобы её можно было
+ * безопасно вставить между разделителями "::".
+ * Пробелы → "+", остальное — как в encodeURIComponent.
+ */
+const encodeKeyPart = (input: unknown) =>
+    encodeURIComponent(String(input ?? '')).replace(/%20/g, '+');
 
-/** =================== Ключи LS =================== */
+/**
+ * Декодирует часть ключа, преобразуя "+" обратно в пробел
+ * (через "%20"), затем обычный decodeURIComponent.
+ */
+const decodeKeyPart = (input: unknown) =>
+    decodeURIComponent(String(input ?? '').replace(/\+/g, '%20'));
 
-const baseV2 = (taskId: string, templateKey: string, executorId: string) =>
-    `PPR_DRAFT::${enc(taskId)}::${enc(templateKey)}::${enc(executorId)}`;
+/**Формирование ключей LS */
 
+/**
+ * Базовый префикс V2: PPR_DRAFT::<taskId>::<templateKey>::<executorId>
+ */
+const baseKeyV2 = (taskId: string, templateKey: string, executorId: string) =>
+    `PPR_DRAFT::${encodeKeyPart(taskId)}::${encodeKeyPart(templateKey)}::${encodeKeyPart(executorId)}`;
+
+/**
+ * Полный ключ для stages V2.
+ */
 export const stagesKeyV2 = (taskId: string, templateKey: string, executorId: string) =>
-    `${baseV2(taskId, templateKey, executorId)}::stages`;
+    `${baseKeyV2(taskId, templateKey, executorId)}::stages`;
 
-/** =================== Безопасный JSON / анти-луп =================== */
+/** Безопасный JSON и сравнение  */
 
-const takeScalar = (v: any) => (v && typeof v === 'object' && 'value' in v ? (v as any).value : v);
+/**
+ * Возвращает внутреннее значение из объектов вида { value }.
+ * Если передан скаляр — возвращает его, если объект без value — вернёт сам объект.
+ */
+const unwrapScalar = (v: any) => (v && typeof v === 'object' && 'value' in v ? (v as any).value : v);
 
-const deepChanged = (a: unknown, b: unknown) => {
+/**
+ * Глубокое сравнение через JSON (fail-safe).
+ * @returns true, если объекты отличаются (или не сериализуются).
+ */
+const hasDeepChange = (a: unknown, b: unknown) => {
     try {
         return JSON.stringify(a) !== JSON.stringify(b);
     } catch {
@@ -68,6 +161,9 @@ const deepChanged = (a: unknown, b: unknown) => {
     }
 };
 
+/**
+ * Безопасная сериализация объекта в JSON
+ */
 export function safeStringify(value: unknown): string {
     try {
         return JSON.stringify(value);
@@ -76,6 +172,10 @@ export function safeStringify(value: unknown): string {
     }
 }
 
+/**
+ * Безопасный парсинг JSON-строки.
+ * @returns Объект T или undefined, если парсинг не удался/пусто.
+ */
 export function safeParse<T = unknown>(text: string | null | undefined): T | undefined {
     if (typeof text !== 'string' || text.trim() === '') return undefined;
     try {
@@ -85,11 +185,16 @@ export function safeParse<T = unknown>(text: string | null | undefined): T | und
     }
 }
 
+/**
+ * Сохраняет значение по ключу в localStorage, если оно реально изменилось.
+ * @param key Ключ LS
+ * @param data Любой сериализуемый объект
+ */
 export function saveDraftToLocalStorage<T>(key: string, data: T): void {
     try {
         if (typeof window === 'undefined') return;
         const prev = loadDraftFromLocalStorage<T>(key);
-        if (!deepChanged(prev, data)) return;
+        if (!hasDeepChange(prev, data)) return;
         window.localStorage.setItem(key, safeStringify(data));
         log('LS SAVE', key, data);
     } catch (e) {
@@ -97,6 +202,10 @@ export function saveDraftToLocalStorage<T>(key: string, data: T): void {
     }
 }
 
+/**
+ * Загружает значение по ключу из localStorage.
+ * @param key Ключ LS
+ */
 export function loadDraftFromLocalStorage<T>(key: string): T | undefined {
     try {
         if (typeof window === 'undefined') return undefined;
@@ -109,19 +218,25 @@ export function loadDraftFromLocalStorage<T>(key: string): T | undefined {
     }
 }
 
-/** =================== Утилиты обнаружения/очистки =================== */
 
-export const draftPrefix = (taskId: string) => `PPR_DRAFT::${enc(taskId)}::`;
+/**
+ * Префикс всех ключей
+ */
+export const draftPrefix = (taskId: string) => `PPR_DRAFT::${encodeKeyPart(taskId)}::`;
 
+/**
+ * Есть ли в браузере черновики для указанной задачи.
+ * @param taskId ID задачи
+ */
 export function hasDraftForTask(taskId: string): boolean {
     try {
         if (typeof window === 'undefined') return false;
         const prefix = draftPrefix(taskId);
         const suffix = '::stages';
         for (let i = 0; i < window.localStorage.length; i++) {
-            const k = window.localStorage.key(i) || '';
-            if (k.startsWith(prefix) && k.endsWith(suffix)) {
-                log('hasDraftForTask: found key', k);
+            const key = window.localStorage.key(i) || '';
+            if (key.startsWith(prefix) && key.endsWith(suffix)) {
+                log('hasDraftForTask: found key', key);
                 return true;
             }
         }
@@ -132,14 +247,18 @@ export function hasDraftForTask(taskId: string): boolean {
     }
 }
 
+/**
+ * Полностью очищает все черновики по задаче.
+ * @param taskId ID задачи
+ */
 export function clearDraftForTask(taskId: string): void {
     try {
         if (typeof window === 'undefined') return;
         const prefix = draftPrefix(taskId);
         const toDelete: string[] = [];
         for (let i = 0; i < window.localStorage.length; i++) {
-            const k = window.localStorage.key(i) || '';
-            if (k.startsWith(prefix)) toDelete.push(k);
+            const key = window.localStorage.key(i) || '';
+            if (key.startsWith(prefix)) toDelete.push(key);
         }
         toDelete.forEach((k) => window.localStorage.removeItem(k));
         log('LS CLEAR ALL for task', taskId, 'removed=', toDelete);
@@ -148,7 +267,10 @@ export function clearDraftForTask(taskId: string): void {
     }
 }
 
-/** ===== V2: загрузка снапшотов стадий по шаблонам/исполнителям ===== */
+/**
+ * Сканирует localStorage и собирает все снапшоты для taskId.
+ * @param taskId ID задачи
+ */
 export function loadV2Snapshots(
     taskId: string
 ): Array<{ templateKey: string; executorId: string; snapshot: UnifiedStagesSnapshot }> {
@@ -167,11 +289,11 @@ export function loadV2Snapshots(
             if (parts.length !== 2) continue;
 
             const [templateKeyEnc, executorIdEnc] = parts;
-            const templateKey = dec(templateKeyEnc);
-            const executorId = dec(executorIdEnc);
+            const templateKey = decodeKeyPart(templateKeyEnc);
+            const executorId = decodeKeyPart(executorIdEnc);
 
-            const snap = loadDraftFromLocalStorage<UnifiedStagesSnapshot>(key);
-            if (snap) out.push({ templateKey, executorId, snapshot: snap });
+            const snapshot = loadDraftFromLocalStorage<UnifiedStagesSnapshot>(key);
+            if (snapshot) out.push({ templateKey, executorId, snapshot });
         }
     } catch (e) {
         log('loadV2Snapshots error', e);
@@ -179,8 +301,9 @@ export function loadV2Snapshots(
     return out;
 }
 
-/** =================== Снимки сто́ров =================== */
-
+/**
+ * Забирает текущие значения таблиц параметров из templateStore.
+ */
 function snapshotParamsFromTemplateStore(): ParamsDraft {
     const state = templateStore.getState();
     const values = (state?.templateValues ?? {}) as ParamsDraft;
@@ -188,19 +311,21 @@ function snapshotParamsFromTemplateStore(): ParamsDraft {
     return values;
 }
 
-/** =================== Helpers =================== */
-
+/**
+ * Превращает raw (YAML/JSON/объект/строка) в объект схемы.
+ * @param raw Любая форма raw
+ */
 function normalizeRaw(raw: any): any {
     if (!raw) return undefined;
     if (typeof raw === 'object') return raw;
+
     if (typeof raw === 'string') {
         try {
-            const parsedY = YAML.parse(raw);
-            if (parsedY && typeof parsedY === 'object') return parsedY;
+            const y = YAML.parse(raw);
+            if (y && typeof y === 'object') return y;
         } catch {}
         try {
-            const parsedJ = JSON.parse(raw);
-            return parsedJ;
+            return JSON.parse(raw);
         } catch {}
         return undefined;
     }
@@ -210,32 +335,44 @@ function normalizeRaw(raw: any): any {
 const toArray = (v: any) => (v == null ? [] : Array.isArray(v) ? v : [v]);
 const isTerminal = (v: any) => v === 'exit' || v == null;
 
+/**
+ * Чистит некорректные ссылки переходов между стадиями (if_success/if_failure).
+ * @param stages Редактируемая карта стадий
+ * @param known Полная оригинальная карта стадий для валидации
+ */
 function normalizeStageLinks(stages: Record<string, any>, known: Record<string, any> | undefined) {
     if (!known) return;
-    for (const [key, s] of Object.entries(stages)) {
-        const nexts = [...toArray((s as any)?.if_success), ...toArray((s as any)?.if_failure)];
+
+    for (const [stageKey, stage] of Object.entries(stages)) {
+        const nexts = [...toArray((stage as any)?.if_success), ...toArray((stage as any)?.if_failure)];
         const valid: string[] = [];
+
         for (const to of nexts) {
             if (isTerminal(to)) continue;
             if (!Object.prototype.hasOwnProperty.call(known, to)) {
-                console.warn('[PPR DRAFT] Unknown stage link', { from: key, to });
+                console.warn(LOG_TAG, 'Unknown stage link', { from: stageKey, to });
                 continue;
             }
             valid.push(String(to));
         }
-        if (Array.isArray((s as any)?.if_success)) {
-            (s as any).if_success = (s as any).if_success.filter((x: any) => valid.includes(String(x)));
-        } else if (typeof (s as any)?.if_success === 'string' && !valid.includes(String((s as any).if_success))) {
-            (s as any).if_success = undefined;
+
+        if (Array.isArray((stage as any)?.if_success)) {
+            (stage as any).if_success = (stage as any).if_success.filter((x: any) => valid.includes(String(x)));
+        } else if (typeof (stage as any)?.if_success === 'string' && !valid.includes(String((stage as any).if_success))) {
+            (stage as any).if_success = undefined;
         }
-        if (Array.isArray((s as any)?.if_failure)) {
-            (s as any).if_failure = (s as any).if_failure.filter((x: any) => valid.includes(String(x)));
-        } else if (typeof (s as any)?.if_failure === 'string' && !valid.includes(String((s as any).if_failure))) {
-            (s as any).if_failure = undefined;
+
+        if (Array.isArray((stage as any)?.if_failure)) {
+            (stage as any).if_failure = (stage as any).if_failure.filter((x: any) => valid.includes(String(x)));
+        } else if (typeof (stage as any)?.if_failure === 'string' && !valid.includes(String((stage as any).if_failure))) {
+            (stage as any).if_failure = undefined;
         }
     }
 }
-
+/**
+ * Гарантирует наличие контейнера fields для указанной стадии.
+ * @returns true, если стадия существует (известна), иначе false.
+ */
 function ensureStageFields(args: {
     stages: Record<string, any>;
     stageKey: string;
@@ -243,28 +380,36 @@ function ensureStageFields(args: {
 }): boolean {
     const { stages, stageKey, knownStages } = args;
     if (!knownStages || !Object.prototype.hasOwnProperty.call(knownStages, stageKey)) return false;
-    const s = stages[stageKey];
-    if (!s || typeof s !== 'object') {
+
+    const current = stages[stageKey];
+    if (!current || typeof current !== 'object') {
         stages[stageKey] = { fields: {} };
-    } else if (!s.fields || typeof s.fields !== 'object') {
-        s.fields = {};
+    } else if (!current.fields || typeof current.fields !== 'object') {
+        current.fields = {};
     }
     return true;
 }
 
-/** Собираем строки формы, относящиеся к templateKey (включая «мусорные» ключи по __sourceKey). */
+/**
+ * Собирает все строки таблиц, относящиеся к templateKey
+ * @param templateValues Полный набор значений из templateStore
+ * @param templateKey Ключ шаблона
+ */
 function collectRowsForTemplate(templateValues: ParamsDraft, templateKey?: string): Record<string, any>[] {
     if (!templateKey) return [];
+
     const rows: Record<string, any>[] = [];
     const pushAll = (arr?: any[]) => {
         if (!Array.isArray(arr)) return;
         for (const r of arr) if (r && typeof r === 'object') rows.push(r);
     };
+
+    // прямые строки
     pushAll((templateValues as any)[templateKey]);
 
+    // косвенные строки с __sourceKey
     for (const [k, arr] of Object.entries(templateValues || {})) {
-        if (k === templateKey) continue;
-        if (!Array.isArray(arr)) continue;
+        if (k === templateKey || !Array.isArray(arr)) continue;
         for (const r of arr) {
             const src = String((r as any)?.__sourceKey ?? '').trim();
             if (!src) continue;
@@ -273,6 +418,7 @@ function collectRowsForTemplate(templateValues: ParamsDraft, templateKey?: strin
         }
     }
 
+    // уникализация
     const seen = new Set<string>();
     const uniq: Record<string, any>[] = [];
     for (const r of rows) {
@@ -284,7 +430,10 @@ function collectRowsForTemplate(templateValues: ParamsDraft, templateKey?: strin
     return uniq;
 }
 
-/** Стабильный сбор ВСЕХ шаблонов из extras + templateStore (на случай, если extras.templates не прокинут). */
+/**
+ * Собирает список всех шаблонов из extras и (как запасной путь) из templateStore.
+ * Нужен, чтобы мультисейв работал даже если снаружи прокинули не всё.
+ */
 function collectTemplatesEverywhere(extras?: {
     mainTemplate?: any;
     templates?: Array<any | undefined>;
@@ -292,20 +441,10 @@ function collectTemplatesEverywhere(extras?: {
     const list: any[] = [];
 
     const normalizeKey = (t: any): string => {
-        const raw =
-            t?.key ??
-            t?.templateKey ??
-            t?.templateName ??
-            t?.name ??
-            t?.id ??
-            t?.template;
+        const raw = t?.key ?? t?.templateKey ?? t?.templateName ?? t?.name ?? t?.id ?? t?.template;
         let key = String(raw ?? '').trim();
         if (!key) {
-            const fromRaw =
-                t?.raw?.templateName ??
-                t?.raw?.name ??
-                t?.raw?.key ??
-                t?.raw?.id;
+            const fromRaw = t?.raw?.templateName ?? t?.raw?.name ?? t?.raw?.key ?? t?.raw?.id;
             key = String(fromRaw ?? '').trim();
         }
         return key;
@@ -321,12 +460,13 @@ function collectTemplatesEverywhere(extras?: {
 
     // 1) из extras
     if (extras?.mainTemplate) push(extras.mainTemplate);
-    if (Array.isArray(extras?.templates)) extras!.templates!.forEach(push);
+    if (Array.isArray(extras?.templates)) extras.templates.forEach(push);
 
-    // 2) из templateStore
+    // 2) из templateStore (все популярные поля)
     try {
         const st = (templateStore as any)?.getState?.() ?? {};
-        const possibleArrays = [
+
+        const arrays = [
             st.templates,
             st.items,
             st.list,
@@ -335,16 +475,19 @@ function collectTemplatesEverywhere(extras?: {
             st.selectedTemplates,
             st.templateList,
         ].filter(Array.isArray) as any[][];
-        for (const arr of possibleArrays) arr.forEach(push);
 
-        const possibleMaps = [st.templatesMap, st.byKey, st.templatesByKey, st.map].filter(
+        arrays.forEach((arr) => arr.forEach(push));
+
+        const maps = [st.templatesMap, st.byKey, st.templatesByKey, st.map].filter(
             (m: any) => m && typeof m === 'object'
         ) as Record<string, any>[];
-        for (const m of possibleMaps) Object.values(m).forEach(push);
+
+        maps.forEach((m) => Object.values(m).forEach(push));
     } catch (e) {
         log('collectTemplatesEverywhere store scan error:', e);
     }
 
+    // уникализация по ключу
     const seen = new Set<string>();
     const uniq: any[] = [];
     for (const t of list) {
@@ -352,12 +495,15 @@ function collectTemplatesEverywhere(extras?: {
         seen.add(t.key);
         uniq.push(t);
     }
+
     log('TEMPLATES collected:', uniq.map((t) => t.key));
     return uniq;
 }
 
-/** =================== Построение единого среза =================== */
-
+/**
+ * Снимает карту из таймлайна.
+ * Используется как источник истинных таймеров при сборке снапшота.
+ */
 function snapshotMinutesFromTimeline(): {
     minutesByStage: MinutesByStageMap;
     rowsCount: number;
@@ -369,33 +515,37 @@ function snapshotMinutesFromTimeline(): {
     let blocksCount = 0;
 
     const add = (tplIdx: number, stageKey: string, minutes: number) => {
-        if (!Number.isFinite(minutes)) return;
-        if (minutes <= 0) return;
+        if (!Number.isFinite(minutes) || minutes <= 0) return;
         if (!minutesByStage[tplIdx]) minutesByStage[tplIdx] = {};
         minutesByStage[tplIdx][stageKey] = Math.round(minutes);
     };
 
     if (tl && Array.isArray(tl.rows)) {
         rowsCount = tl.rows.length;
+
         for (const row of tl.rows as any[]) {
             const blocks = Array.isArray(row?.blocks) ? row.blocks : [];
             blocksCount += blocks.length;
+
             for (const block of blocks) {
                 const tplIdx: number | undefined =
                     typeof block?.tplIdx === 'number'
                         ? block.tplIdx
                         : typeof block?.templateIdx === 'number'
                             ? block.templateIdx
-                            : typeof block?.templateIndex === 'number'
-                                ? block.templateIndex
                                 : undefined;
 
                 const stageKey: string | undefined =
                     block?.stageKey ?? block?.stage ?? block?.stage_id ?? block?.stage_name;
 
-                const minutesRaw = block?.minutes ?? block?.duration ?? block?.timer ?? block?.timerMinutes;
+                const minutesRaw =
+                    block?.minutes ?? block?.duration ?? block?.timer ?? block?.timerMinutes;
 
-                if (typeof tplIdx === 'number' && typeof stageKey === 'string' && typeof minutesRaw === 'number') {
+                if (
+                    typeof tplIdx === 'number' &&
+                    typeof stageKey === 'string' &&
+                    typeof minutesRaw === 'number'
+                ) {
                     add(tplIdx, stageKey, minutesRaw);
                 }
             }
@@ -406,6 +556,12 @@ function snapshotMinutesFromTimeline(): {
     return { minutesByStage, rowsCount, blocksCount };
 }
 
+/**
+ * Достаёт значения полей стадий из таймлайна (mergedOverrides → stageFieldEdits → none).
+ * Возвращает плоскую карту { [stageKey]: { [fieldKey]: value } } только по стадиям текущего шаблона.
+ * @param tplIdx Индекс шаблона
+ * @param templateRaw Нормализованный raw шаблона
+ */
 function snapshotStageFieldValuesFromTimeline(
     tplIdx: number,
     templateRaw?: any
@@ -414,28 +570,27 @@ function snapshotStageFieldValuesFromTimeline(
     if (!tl) return { source: 'none' };
 
     const rows: any[] = Array.isArray(tl.rows) ? tl.rows : [];
-
     const rowsOfTpl: { row: any; idxInAll: number }[] = [];
+
     rows.forEach((r, i) => {
         const rTplIdx =
             typeof r?.tplIdx === 'number'
                 ? r.tplIdx
                 : typeof r?.templateIdx === 'number'
                     ? r.templateIdx
-                    : typeof r?.templateIndex === 'number'
-                        ? r.templateIndex
                         : undefined;
         if (rTplIdx === tplIdx) rowsOfTpl.push({ row: r, idxInAll: i });
     });
 
-    const idSet = new Set<string>();
-    const indexSet = new Set<string>();
+    const rowIdSet = new Set<string>();
+    const rowIndexSet = new Set<string>();
     const stageKeysInBlocks = new Set<string>();
 
     for (const { row, idxInAll } of rowsOfTpl) {
-        const rid = row?.id ?? row?.rowId ?? row?.row_id ?? row?.uuid ?? row?.key ?? row?._id ?? row?.hash;
-        if (rid != null && String(rid)) idSet.add(String(rid));
-        indexSet.add(String(idxInAll));
+        const rid =
+            row?.id ?? row?.rowId ?? row?.row_id ?? row?.uuid ?? row?.key ?? row?._id ?? row?.hash;
+        if (rid != null && String(rid)) rowIdSet.add(String(rid));
+        rowIndexSet.add(String(idxInAll));
 
         const blocks = Array.isArray(row?.blocks) ? row.blocks : [];
         for (const b of blocks) {
@@ -450,17 +605,18 @@ function snapshotStageFieldValuesFromTimeline(
     const filterFlatByStageKeys = (flat: Record<string, any>) => {
         const out: Record<string, Record<string, any>> = {};
         const mustCheckBlocks = stageKeysInBlocks.size > 0;
+
         for (const [stageKey, fields] of Object.entries(flat || {})) {
             if (!stageKeysForTpl.has(stageKey)) continue;
             if (mustCheckBlocks && !stageKeysInBlocks.has(stageKey)) continue;
 
-            const payload = takeScalar(fields);
+            const payload = unwrapScalar(fields);
             if (!payload || typeof payload !== 'object') continue;
 
             out[stageKey] = {};
             for (const [fieldKey, v] of Object.entries(payload)) {
                 if (String(fieldKey).startsWith('__')) continue;
-                out[stageKey][fieldKey] = takeScalar(v) ?? null;
+                out[stageKey][fieldKey] = unwrapScalar(v) ?? null;
             }
         }
         return out;
@@ -471,7 +627,8 @@ function snapshotStageFieldValuesFromTimeline(
         let matched = false;
 
         for (const [rowKey, byStage] of Object.entries(perRowObj || {})) {
-            const accept = idSet.has(rowKey) || indexSet.has(rowKey) || /^\d+$/.test(rowKey);
+            const accept =
+                rowIdSet.has(rowKey) || rowIndexSet.has(rowKey) || /^\d+$/.test(rowKey);
             if (!accept) continue;
             matched = true;
 
@@ -480,13 +637,13 @@ function snapshotStageFieldValuesFromTimeline(
                 if (!stageKeysForTpl.has(stageKey)) continue;
                 if (stageKeysInBlocks.size && !stageKeysInBlocks.has(stageKey)) continue;
 
-                const payload = takeScalar(rawFields);
+                const payload = unwrapScalar(rawFields);
                 if (!payload || typeof payload !== 'object') continue;
 
                 out[stageKey] = out[stageKey] || {};
                 for (const [fieldKey, v] of Object.entries(payload)) {
                     if (String(fieldKey).startsWith('__')) continue;
-                    out[stageKey][fieldKey] = takeScalar(v) ?? null;
+                    out[stageKey][fieldKey] = unwrapScalar(v) ?? null;
                 }
             }
         }
@@ -499,14 +656,18 @@ function snapshotStageFieldValuesFromTimeline(
             if (merged && typeof merged === 'object' && Object.keys(merged).length > 0) {
                 const keys = Object.keys(merged);
                 const looksPerRow =
-                    keys.some((k) => idSet.has(k)) || keys.some((k) => indexSet.has(k)) || keys.every((k) => /^\d+$/.test(k));
+                    keys.some((k) => rowIdSet.has(k)) ||
+                    keys.some((k) => rowIndexSet.has(k)) ||
+                    keys.every((k) => /^\d+$/.test(k));
 
                 if (looksPerRow) {
                     const { out, matched } = collapsePerRow(merged as Record<string, any>);
-                    if (matched && Object.keys(out).length > 0) return { source: 'mergedOverrides', map: out };
+                    if (matched && Object.keys(out).length > 0)
+                        return { source: 'mergedOverrides', map: out };
                 } else {
                     const filtered = filterFlatByStageKeys(merged as Record<string, any>);
-                    if (Object.keys(filtered).length > 0) return { source: 'mergedOverrides', map: filtered };
+                    if (Object.keys(filtered).length > 0)
+                        return { source: 'mergedOverrides', map: filtered };
                 }
             }
         }
@@ -531,6 +692,15 @@ function snapshotStageFieldValuesFromTimeline(
     }
 }
 
+/**
+ * Собирает единый снапшот стадий для конкретного шаблона (tplIdx) и задачи.
+ * Включает: таймеры, значения полей, params (с value), sections.unknown.inProgress.
+ * @param args.taskId ID задачи
+ * @param args.mainTemplate Шаблон (key + raw)
+ * @param args.executorsByTemplate Матрица исполнителей
+ * @param args.prev Предыдущий снапшот (для наследования time/fields)
+ * @param args.tplIdx Индекс шаблона
+ */
 function buildUnifiedStagesSnapshot(args: {
     taskId: string;
     mainTemplate?: any;
@@ -543,8 +713,12 @@ function buildUnifiedStagesSnapshot(args: {
     const mainTemplateKey: string | undefined = (mainTemplate as any)?.key;
 
     const normalizedRaw: Record<string, any> | undefined = normalizeRaw(
-        (mainTemplate as any)?.raw ?? (mainTemplate as any)?.content ?? (mainTemplate as any)?.yaml ?? (mainTemplate as any)?.text
+        (mainTemplate as any)?.raw ??
+        (mainTemplate as any)?.content ??
+        (mainTemplate as any)?.yaml ??
+        (mainTemplate as any)?.text
     );
+
     const rawClone: Record<string, any> | undefined = normalizedRaw
         ? JSON.parse(JSON.stringify(normalizedRaw))
         : undefined;
@@ -558,27 +732,28 @@ function buildUnifiedStagesSnapshot(args: {
 
     const stages: Record<string, any> = JSON.parse(JSON.stringify(knownStagesRaw));
 
+    // Валидация ссылок и подготовка полей
     normalizeStageLinks(stages, knownStagesRaw);
-
-    for (const [stageKey, stage] of Object.entries(stages)) {
+    for (const [sKey, stage] of Object.entries(stages)) {
         if (!stage || typeof stage !== 'object') {
-            (stages as any)[stageKey] = { fields: {} };
+            (stages as any)[sKey] = { fields: {} };
             continue;
         }
         if (!(stage as any).fields || typeof (stage as any).fields !== 'object') {
-            (stages as any)[stageKey].fields = {};
+            (stages as any)[sKey].fields = {};
         }
-        for (const [fieldKey, rawField] of Object.entries(((stages as any)[stageKey].fields) ?? {})) {
+        for (const [fKey, rawField] of Object.entries(((stages as any)[sKey].fields) ?? {})) {
             if (rawField && typeof rawField === 'object') {
                 if (!('value' in (rawField as any))) {
-                    (stages as any)[stageKey].fields[fieldKey] = { ...(rawField as any), value: null };
+                    (stages as any)[sKey].fields[fKey] = { ...(rawField as any), value: null };
                 }
             } else {
-                (stages as any)[stageKey].fields[fieldKey] = { value: null };
+                (stages as any)[sKey].fields[fKey] = { value: null };
             }
         }
     }
 
+    // params (табличные значения) → sections.unknown.inProgress
     const templateValues = snapshotParamsFromTemplateStore();
     const rowsForTpl = collectRowsForTemplate(templateValues, mainTemplateKey);
 
@@ -587,11 +762,12 @@ function buildUnifiedStagesSnapshot(args: {
         if (!chunk || typeof chunk !== 'object') continue;
         for (const [k, v] of Object.entries(chunk)) {
             if (String(k).startsWith('__')) continue;
-            inProgress[k] = takeScalar(v);
+            inProgress[k] = unwrapScalar(v);
         }
     }
     const sections = { unknown: { inProgress } };
 
+    // Наследуем time/fields из предыдущего снапшота (если совпадает шаблон)
     if (prev?.stages && typeof prev.stages === 'object' && prev.mainTemplateKey === mainTemplateKey) {
         for (const [stageKey, prevStage] of Object.entries(prev.stages)) {
             if (!ensureStageFields({ stages, stageKey, knownStages: knownStagesRaw })) continue;
@@ -599,18 +775,18 @@ function buildUnifiedStagesSnapshot(args: {
             if (typeof (prevStage as any).time === 'string') {
                 (stages as any)[stageKey].time = (prevStage as any).time;
             }
-
             const prevFields = (prevStage as any).fields;
             if (prevFields && typeof prevFields === 'object') {
                 for (const [fieldKey, pf] of Object.entries(prevFields)) {
                     const rawField = (((stages as any)[stageKey].fields ?? {})[fieldKey] ?? {}) as Record<string, any>;
-                    const prevValue = takeScalar(pf);
+                    const prevValue = unwrapScalar(pf);
                     (stages as any)[stageKey].fields[fieldKey] = { ...rawField, value: prevValue ?? null };
                 }
             }
         }
     }
 
+    // Таймеры из таймлайна → time в минутах (Xm)
     const { minutesByStage, rowsCount, blocksCount } = snapshotMinutesFromTimeline();
     const byStageForTpl = minutesByStage[tplIdx] ?? {};
     for (const [stageKey, minutes] of Object.entries(byStageForTpl)) {
@@ -618,17 +794,19 @@ function buildUnifiedStagesSnapshot(args: {
         (stages as any)[stageKey].time = `${Math.max(0, Math.round(Number(minutes) || 0))}m`;
     }
 
+    // Значения полей стадий из таймлайна (mergedOverrides/stageFieldEdits)
     const stageValuesRes = snapshotStageFieldValuesFromTimeline(tplIdx, rawClone);
     if (stageValuesRes.map) {
-        for (const [stageKey, map] of Object.entries(stageValuesRes.map)) {
+        for (const [stageKey, fieldsMap] of Object.entries(stageValuesRes.map)) {
             if (!ensureStageFields({ stages, stageKey, knownStages: knownStagesRaw })) continue;
-            for (const [fieldKey, value] of Object.entries(map)) {
+            for (const [fieldKey, value] of Object.entries(fieldsMap)) {
                 const rawField = (((stages as any)[stageKey].fields ?? {})[fieldKey] ?? {}) as Record<string, any>;
-                (stages as any)[stageKey].fields[fieldKey] = { ...rawField, value: takeScalar(value) ?? null };
+                (stages as any)[stageKey].fields[fieldKey] = { ...rawField, value: unwrapScalar(value) ?? null };
             }
         }
     }
 
+    // Фоллбэк: если в поле стадии нет value — подставляем из inProgress (params)
     if (inProgress && typeof inProgress === 'object') {
         const knownStages = knownStagesRaw;
         for (const [stageKey, stageRaw] of Object.entries(knownStages)) {
@@ -637,7 +815,7 @@ function buildUnifiedStagesSnapshot(args: {
             for (const fieldKey of Object.keys(rawFields)) {
                 const current = (stages as any)[stageKey].fields?.[fieldKey]?.value;
                 if (current === undefined || current === null) {
-                    const fallback = takeScalar((inProgress as any)[fieldKey]);
+                    const fallback = unwrapScalar((inProgress as any)[fieldKey]);
                     const rawField = (((stages as any)[stageKey].fields ?? {})[fieldKey] ?? {}) as Record<string, any>;
                     (stages as any)[stageKey].fields[fieldKey] = { ...rawField, value: fallback ?? null };
                 }
@@ -645,6 +823,7 @@ function buildUnifiedStagesSnapshot(args: {
         }
     }
 
+    // params (список определений + value)
     const paramDefs: Array<{ key: string; label: string; type: string }> = Array.isArray(rawClone?.params)
         ? (rawClone!.params as any[]).map((p) => ({
             key: String(p?.key ?? ''),
@@ -668,9 +847,12 @@ function buildUnifiedStagesSnapshot(args: {
 
     const paramsWithValue = paramDefs.map((pd) => {
         const aliases = Array.from(
-            new Set([pd.key, pd.label, (pd as any).name, (pd as any).widget, pd.type].map((v) => String(v ?? '').trim()).filter(Boolean))
+            new Set([pd.key, pd.label, (pd as any).name, (pd as any).widget, pd.type]
+                .map((v) => String(v ?? '').trim())
+                .filter(Boolean))
         );
 
+        // 1) inProgress (табличные)
         let vFromForm: any = undefined;
         for (const a of aliases) {
             if ((sections.unknown.inProgress as any)?.hasOwnProperty(a)) {
@@ -679,20 +861,22 @@ function buildUnifiedStagesSnapshot(args: {
             }
         }
 
-        let v: any = vFromForm;
-        if (v === undefined) {
+        // 2) стадии
+        let value: any = vFromForm;
+        if (value === undefined) {
             for (const a of aliases) {
                 const vv = pickFromStages(a);
                 if (vv !== undefined && vv !== null) {
-                    v = vv;
+                    value = vv;
                     break;
                 }
             }
         }
 
-        return { ...pd, value: v ?? null };
+        return { ...pd, value: value ?? null };
     });
 
+    // Проставим value обратно в rawClone.params (для самодостаточного снапшота)
     if (Array.isArray(rawClone?.params)) {
         const byKey = new Map(paramsWithValue.map((p) => [p.key, p.value]));
         rawClone!.params = (rawClone!.params as any[]).map((p) => {
@@ -734,33 +918,44 @@ function buildUnifiedStagesSnapshot(args: {
     return snapshot;
 }
 
-/** =================== Подписки =================== */
-
-function subscribePlain(store: any, onAnyChange: () => void, tag: string): () => void {
+/**
+ * Универсальная подписка на любой zustand-store; дергает onChange при любом апдейте.
+ * @param store zustand store (с .subscribe)
+ * @param onChange Колбэк на изменение
+ * @param tag Метка для логов
+ */
+function subscribeStorePlain(store: any, onChange: () => void, tag: string): () => void {
     try {
         if (!store?.subscribe) return () => {};
         return store.subscribe(() => {
             log(`${tag} <- change detected`);
-            onAnyChange();
+            onChange();
         });
     } catch {
         return () => {};
     }
 }
 
-/** =================== Вспомогательное: где взять executorId =================== */
-
-function deriveExecutorsByTemplateIdx(idx: number, extras?: { executorsByTemplate?: any[][] }): string[] {
+/**
+ * Возвращает список executorId для указанного индекса шаблона.
+ * 1) Пытается взять из extras.executorsByTemplate[index] (или [0]).
+ * 2) Пробует вытащить из templateStore (популярные поля).
+ * 3) Возвращает ['__noexec__'] как безопасный фоллбэк.
+ */
+function deriveExecutorsByTemplateIdx(
+    index: number,
+    extras?: { executorsByTemplate?: any[][] }
+): string[] {
     // 1) из extras
     const xbt = extras?.executorsByTemplate ?? [];
-    if (Array.isArray(xbt[idx]) && (xbt[idx] as any[]).length > 0) {
-        return (xbt[idx] as any[]).map((e: any) => String(e?.id ?? e?.uuid ?? e?.login ?? e?.userId ?? e));
+    if (Array.isArray(xbt[index]) && (xbt[index] as any[]).length > 0) {
+        return (xbt[index] as any[]).map((e: any) => String(e?.id ?? e?.uuid ?? e?.login ?? e?.userId ?? e));
     }
     if (Array.isArray(xbt[0]) && (xbt[0] as any[]).length > 0) {
         return (xbt[0] as any[]).map((e: any) => String(e?.id ?? e?.uuid ?? e?.login ?? e?.userId ?? e));
     }
 
-    // 2) из templateStore (частые варианты названий)
+    // 2) из templateStore
     try {
         const st = (templateStore as any)?.getState?.() ?? {};
         const candidates =
@@ -771,18 +966,31 @@ function deriveExecutorsByTemplateIdx(idx: number, extras?: { executorsByTemplat
             st.templateExecutors ??
             st.selectedExecutors;
 
-        const arr = Array.isArray(candidates?.[idx]) ? candidates[idx] : Array.isArray(candidates?.[0]) ? candidates[0] : [];
+        const arr = Array.isArray(candidates?.[index])
+            ? candidates[index]
+            : Array.isArray(candidates?.[0])
+                ? candidates[0]
+                : [];
+
         if (arr?.length) {
-            return (arr as any[]).map((e: any) => String(e?.id ?? e?.uuid ?? e?.login ?? e?.userId ?? e));
+            return (arr as any[]).map((e: any) =>
+                String(e?.id ?? e?.uuid ?? e?.login ?? e?.userId ?? e)
+            );
         }
     } catch {}
 
-    // 3) фоллбэк: чтобы сегмент не пустел
+    // 3) фоллбэк
     return ['__noexec__'];
 }
 
-/** =================== Публичный хук =================== */
-
+/**
+ * Включает автоперсистенцию:
+ * — на любое изменение templateStore/timeline/stageFormStore снимается unified-snapshot
+ * — для каждого шаблона и каждого executorId кладём свою запись:
+ *     PPR_DRAFT::<taskId>::<templateKey>::<executorId>::stages
+ *
+ * @param taskId ID задачи
+ */
 export function usePprDraftPersistence(
     taskId: string | undefined,
     extras?: {
@@ -799,8 +1007,12 @@ export function usePprDraftPersistence(
         log('MOUNT taskId=', taskId, 'extras.mainTemplate?.key=', extras?.mainTemplate?.key);
         lastTaskRef.current = taskId;
 
+        /** Записать снапшоты для всех (template × executorId) */
         const savePerTemplateExecutor = () => {
-            const templates = collectTemplatesEverywhere({ mainTemplate: extras?.mainTemplate, templates: extras?.templates });
+            const templates = collectTemplatesEverywhere({
+                mainTemplate: extras?.mainTemplate,
+                templates: extras?.templates,
+            });
 
             log(
                 'AUTOSAVE templates:',
@@ -811,48 +1023,52 @@ export function usePprDraftPersistence(
                 }))
             );
 
-            templates.forEach((tpl, idx) => {
-                const tKey = String((tpl as any)?.key ?? '').trim();
-                let raw = normalizeRaw((tpl as any)?.raw ?? (tpl as any)?.content ?? (tpl as any)?.yaml ?? (tpl as any)?.text ?? (tpl as any)?.rawYaml);
+            templates.forEach((tpl, tplIdx) => {
+                const templateKey = String((tpl as any)?.key ?? '').trim();
+                let raw = normalizeRaw(
+                    (tpl as any)?.raw ?? (tpl as any)?.content ?? (tpl as any)?.yaml ?? (tpl as any)?.text ?? (tpl as any)?.rawYaml
+                );
 
-                if (!tKey) return;
+                if (!templateKey) return;
                 if (!raw) raw = { params: [], stages: {} }; // безопасный фоллбэк — чтобы ключ появился
 
-                const execIds = deriveExecutorsByTemplateIdx(idx, { executorsByTemplate: extras?.executorsByTemplate });
+                const executorIds = deriveExecutorsByTemplateIdx(tplIdx, {
+                    executorsByTemplate: extras?.executorsByTemplate,
+                });
 
-                execIds.forEach((eid) => {
-                    const sKey2 = stagesKeyV2(taskId, tKey, String(eid));
-                    const prev2 = loadDraftFromLocalStorage<UnifiedStagesSnapshot>(sKey2);
-                    const unified2 = buildUnifiedStagesSnapshot({
+                executorIds.forEach((executorId) => {
+                    const lsKey = stagesKeyV2(taskId, templateKey, String(executorId));
+                    const prevSnap = loadDraftFromLocalStorage<UnifiedStagesSnapshot>(lsKey);
+
+                    const unified = buildUnifiedStagesSnapshot({
                         taskId,
                         mainTemplate: { ...(tpl as any), raw },
                         executorsByTemplate: extras?.executorsByTemplate,
-                        prev: prev2,
-                        tplIdx: idx,
+                        prev: prevSnap,
+                        tplIdx,
                     });
 
-                    log('AUTOSAVE →', { tplIdx: idx, templateKey: tKey, executorId: String(eid), lsKey: sKey2 });
-                    saveDraftToLocalStorage<UnifiedStagesSnapshot>(sKey2, unified2);
+                    log('AUTOSAVE →', {
+                        tplIdx,
+                        templateKey,
+                        executorId: String(executorId),
+                        lsKey,
+                    });
+
+                    saveDraftToLocalStorage<UnifiedStagesSnapshot>(lsKey, unified);
                 });
             });
         };
 
-        const unsubTemplate = subscribePlain(templateStore, () => {
-            savePerTemplateExecutor();
-        }, 'templateStore');
-
-        const unsubTimeline = subscribePlain((useTimelineStore as any), () => {
-            savePerTemplateExecutor();
-        }, 'timelineStore');
+        // Подписки на изменения
+        const unsubTemplate = subscribeStorePlain(templateStore, savePerTemplateExecutor, 'templateStore');
+        const unsubTimeline = subscribeStorePlain((useTimelineStore as any), savePerTemplateExecutor, 'timelineStore');
 
         let unsubStageForm: undefined | (() => void);
         try {
-            // eslint-disable-next-line @typescript-eslint/no-var-requires
             const maybe = require('@/entities/stageFormStore/model/store/stageFormStore');
             if (maybe?.useStageFormStore?.subscribe) {
-                unsubStageForm = subscribePlain(maybe.useStageFormStore, () => {
-                    savePerTemplateExecutor();
-                }, 'stageFormStore');
+                unsubStageForm = subscribeStorePlain(maybe.useStageFormStore, savePerTemplateExecutor, 'stageFormStore');
             }
         } catch {}
 
@@ -867,17 +1083,20 @@ export function usePprDraftPersistence(
     }, [taskId, extras?.mainTemplate, extras?.executorsByTemplate, extras?.templates]);
 }
 
-/** ======== Unified Snapshot → rows / minutes / fields ======== */
-
+/**
+ * Достаёт одну «табличную» строку params из unified-snapshot.
+ * Если в snap.params уже есть value — используем их; иначе соберем из raw/sections.
+ */
 export function rowsFromUnifiedSnapshot(snap: UnifiedStagesSnapshot): Array<Record<string, any>> {
     if (!snap) return [];
 
+    // 1) приоритет — snap.params
     if (Array.isArray(snap.params) && snap.params.length > 0) {
         const row: Record<string, any> = {};
         for (const p of snap.params) {
-            const k = String(p?.key ?? '').trim();
-            if (!k) continue;
-            if ('value' in (p as any)) row[k] = (p as any).value ?? null;
+            const key = String(p?.key ?? '').trim();
+            if (!key) continue;
+            if ('value' in (p as any)) row[key] = (p as any).value ?? null;
         }
         if (Object.keys(row).length > 0) {
             if (snap.mainTemplateKey) row.__sourceKey = snap.mainTemplateKey;
@@ -885,6 +1104,7 @@ export function rowsFromUnifiedSnapshot(snap: UnifiedStagesSnapshot): Array<Reco
         }
     }
 
+    // 2) собрать из raw + sections
     const raw = normalizeRaw(snap.mainTemplateRaw) ?? snap.mainTemplateRaw;
 
     const paramKeys: string[] = Array.isArray(raw?.params)
@@ -918,44 +1138,20 @@ export function rowsFromUnifiedSnapshot(snap: UnifiedStagesSnapshot): Array<Reco
     return [row];
 }
 
-export function minutesFromUnifiedSnapshot(snap: UnifiedStagesSnapshot): Record<string, number> {
-    const out: Record<string, number> = {};
-    if (!snap?.stages) return out;
+/** =================== Мгновенный патч таймера (V2) =================== */
 
-    for (const [stageKey, stage] of Object.entries(snap.stages)) {
-        const t = (stage as any)?.time;
-        if (typeof t !== 'string') continue;
-        const mm = parseInt(t.replace(/\D+/g, ''), 10);
-        if (Number.isFinite(mm)) out[stageKey] = Math.max(0, mm);
-    }
-    return out;
-}
-
-export function stageFieldValuesFromUnifiedSnapshot(
-    snap: UnifiedStagesSnapshot
-): Record<string, Record<string, any>> {
-    const out: Record<string, Record<string, any>> = {};
-    if (!snap?.stages) return out;
-
-    for (const [stageKey, stage] of Object.entries(snap.stages)) {
-        const fields = (stage as any)?.fields;
-        if (!fields || typeof fields !== 'object') continue;
-
-        for (const [fieldKey, rawField] of Object.entries(fields)) {
-            const v =
-                rawField && typeof rawField === 'object' && 'value' in (rawField as any)
-                    ? (rawField as any).value
-                    : rawField;
-            if (v === undefined) continue;
-            if (!out[stageKey]) out[stageKey] = {};
-            out[stageKey][fieldKey] = v;
-        }
-    }
-    return out;
-}
-
-/** =================== Мгновенный патч таймера (только V2) =================== */
-
+/**
+ * Мгновенно обновляет таймер одной стадии во всех LS-ключах (template × executorId) выбранного tplIdx.
+ * Если под ключом нет снапшота — создаёт его на лету.
+ *
+ * @param opts.taskId ID задачи
+ * @param opts.tplIdx Индекс шаблона (0 — главный)
+ * @param opts.stageKey Ключ стадии
+ * @param opts.minutes Новое значение таймера (минуты)
+ * @param opts.mainTemplate Главный шаблон (для сборки снапшота, если его ещё нет)
+ * @param opts.executorsByTemplate Матрица исполнителей
+ * @param opts.templates Полный список шаблонов (главный + дополнительные)
+ */
 export function patchStageTimeInLocalStorage(opts: {
     taskId: string;
     tplIdx: number;
@@ -965,36 +1161,50 @@ export function patchStageTimeInLocalStorage(opts: {
     executorsByTemplate?: any[][];
     templates?: Array<any | undefined>;
 }): void {
-    const { taskId, tplIdx, stageKey, minutes, mainTemplate, executorsByTemplate, templates } = opts;
+    const {
+        taskId,
+        tplIdx,
+        stageKey,
+        minutes,
+        mainTemplate,
+        executorsByTemplate,
+        templates,
+    } = opts;
 
     const tpl =
-        (Array.isArray(templates) && templates[tplIdx]) ??
-        (tplIdx === 0 ? mainTemplate : undefined);
-    const tKey = String((tpl as any)?.key ?? '').trim();
-    if (!tKey) return;
+        (Array.isArray(templates) && templates[tplIdx]) || (tplIdx === 0 ? mainTemplate : undefined);
 
-    const execIds =
+    const templateKey = String((tpl as any)?.key ?? '').trim();
+    if (!templateKey) return;
+
+    const executorIds =
         Array.isArray(executorsByTemplate?.[tplIdx]) && executorsByTemplate![tplIdx].length
-            ? executorsByTemplate![tplIdx].map((e: any) => String(e?.id ?? e?.uuid ?? e?.login ?? e?.userId ?? e))
-            : ['__noexec__']; // фоллбэк — сегмент не пустеет
+            ? executorsByTemplate![tplIdx].map((e: any) =>
+                String(e?.id ?? e?.uuid ?? e?.login ?? e?.userId ?? e)
+            )
+            : ['__noexec__'];
 
     const mm = Math.max(0, Math.round(Number(minutes) || 0));
 
-    execIds.forEach((eid) => {
-        const sKey2 = stagesKeyV2(taskId, tKey, String(eid));
-        let uni2 = loadDraftFromLocalStorage<UnifiedStagesSnapshot>(sKey2);
-        if (!uni2) {
-            uni2 = buildUnifiedStagesSnapshot({
+    executorIds.forEach((executorId) => {
+        const lsKey = stagesKeyV2(taskId, templateKey, String(executorId));
+        let snapshot = loadDraftFromLocalStorage<UnifiedStagesSnapshot>(lsKey);
+
+        if (!snapshot) {
+            snapshot = buildUnifiedStagesSnapshot({
                 taskId,
                 mainTemplate: tpl,
                 executorsByTemplate,
                 tplIdx,
             });
         }
-        if (!uni2.stages) uni2.stages = {};
-        if (!uni2.stages[stageKey]) uni2.stages[stageKey] = { fields: {} };
-        (uni2.stages as any)[stageKey].time = `${mm}m`;
-        uni2.updatedAt = new Date().toISOString();
-        saveDraftToLocalStorage<UnifiedStagesSnapshot>(sKey2, uni2);
+
+        if (!snapshot.stages) snapshot.stages = {};
+        if (!snapshot.stages[stageKey]) snapshot.stages[stageKey] = { fields: {} };
+
+        (snapshot.stages as any)[stageKey].time = `${mm}m`;
+        snapshot.updatedAt = new Date().toISOString();
+
+        saveDraftToLocalStorage<UnifiedStagesSnapshot>(lsKey, snapshot);
     });
 }

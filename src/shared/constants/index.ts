@@ -153,3 +153,5 @@ export const TYPES_FILENAME = 'types.yaml' as const;
 /** Ключ для сохранения templateStore в localStorage */
 export const TEMPLATES_STORE_PERSIST_KEY = 'templates-store' as const;
 export const TEMPLATES_STORE_PERSIST_VERSION = 9 as const;
+
+export const LOG_TAG = '[PPR DRAFT]';
