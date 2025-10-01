@@ -1,13 +1,14 @@
+
 /* eslint-disable react-hooks/exhaustive-deps */
 /**
- * src/pages/PprEditorPage/PprEditorPage.tsx
- * Автовывод таймлайна из mainTemplateRaw (робастный поиск стадий + value на этапы).
- * Ключевые логи: [TL][RAW:head], [TL][RAW], [TL][SCAN:found], [TL][CHAIN], [TL][TIME],
- * [TL][ADD:req], [TL][ADD:call], [TL][AFTER], [TL][ADD:done], [TL][WARN], [TL][ERR].
+ * Автопостроение таймлайна:
+ * 1) При выборе YAML — строим по raw.
+ * 2) При восстановлении из LS (V2) — строим по snapshot.stages (priority) и
+ *    прокидываем value/timers/execIds на блоки.
  */
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import YAML from 'yaml'; // <<< НОВОЕ: фолбэк-парсер YAML
+import YAML from 'yaml';
 
 import './PprEditorPage.css';
 import { usePlannedTaskStore } from '@/entities/PlannedTask/model/store/plannedTaskStore';
@@ -54,15 +55,14 @@ import {
 import { templateStore } from '@entities/template/model/store/templateStore';
 import YamlTemplateSelect from '@features/pprEdit/ui/yamlTemplate/YamlTemplateSelect';
 
-/** ------------------------- ЛОГИ ------------------------- */
+/** ----- ЛОГИ ----- */
 const TAG = '[PPR UI]';
 const ts = () => new Date().toISOString().slice(11, 19);
-const log  = (...a: any[]) => console.log(ts(), TAG, ...a);
+const log = (...a: any[]) => console.log(ts(), TAG, ...a);
 const warn = (...a: any[]) => console.warn(ts(), TAG, ...a);
-const err  = (...a: any[]) => console.error(ts(), TAG, ...a);
+const err = (...a: any[]) => console.error(ts(), TAG, ...a);
 
-/** ------------------------- ХЕЛПЕРЫ ------------------------- */
-
+/** ----- ХЕЛПЕРЫ ----- */
 type AnyTemplate = { key?: string; raw?: any } | undefined;
 
 const safeSetTemplateValues = (key: any, rows: any[]) => {
@@ -71,7 +71,6 @@ const safeSetTemplateValues = (key: any, rows: any[]) => {
     const tsState = templateStore.getState();
     tsState.setTemplateValues?.(tKey, rows);
 };
-
 const getTemplateValuesSafe = (key: any) => {
     const tsState = templateStore.getState();
     return tsState.getTemplateValues?.(String(key ?? '').trim()) ?? [];
@@ -87,18 +86,15 @@ const buildDefaultRowFromSchema = (schemaRaw: any) => {
     }
     return row;
 };
-
 const ensureAtLeastOneRow = (template: AnyTemplate) => {
     const tKey = (template as any)?.key;
     if (!tKey) return;
     const current = getTemplateValuesSafe(tKey);
     if (Array.isArray(current) && current.length > 0) return;
-
     const row = buildDefaultRowFromSchema((template as any)?.raw);
     const payload = Object.keys(row).length ? { ...row, __sourceKey: tKey } : { __sourceKey: tKey };
     safeSetTemplateValues(tKey, [payload]);
 };
-
 const dedupRows = (rows: any[]) => {
     const seen = new Set<string>();
     const out: any[] = [];
@@ -111,7 +107,7 @@ const dedupRows = (rows: any[]) => {
     return out;
 };
 
-/** Диагностика таймлайна (до/после addFromYaml) */
+/** диагноз таймлайна */
 function logTLState(label: string) {
     try {
         const tl = (useTimelineStore as any).getState?.();
@@ -123,170 +119,84 @@ function logTLState(label: string) {
     }
 }
 
-/** Поиск stages глубоко (если структура нестандартная) */
-function deepFindStagesBundle(root: any): { stagesField?: Record<string, any>, startKey?: string, where?: string } {
-    const visited = new Set<any>();
-    const queue: Array<{ node: any; path: string }> = [{ node: root, path: '$' }];
-
-    const looksLikeStages = (obj: any) => {
-        if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return false;
-        const vals = Object.values(obj);
-        if (vals.length < 1) return false;
+/** глубокий поиск stages (JSON/YAML) */
+function deepFindStagesBundle(root: any): { stagesField?: Record<string, any>; startKey?: string } {
+    const q: any[] = [{ n: root }];
+    const seen = new Set<any>();
+    const looks = (o: any) => {
+        if (!o || typeof o !== 'object' || Array.isArray(o)) return false;
+        const vals = Object.values(o);
+        if (!vals.length) return false;
         let hits = 0;
         for (const v of vals) {
             if (v && typeof v === 'object' && !Array.isArray(v)) {
                 const keys = Object.keys(v);
-                if (keys.some(k => k === 'if_success' || k === 'time' || k === 'executor' || k === 'fields' || k === 'description')) {
-                    hits++;
-                }
+                if (keys.some((k) => ['if_success', 'time', 'executor', 'fields', 'description'].includes(k))) hits++;
             }
         }
         return hits >= Math.max(1, Math.floor(vals.length / 2));
     };
-
-    while (queue.length) {
-        const { node, path } = queue.shift()!;
-        if (!node || typeof node !== 'object' || visited.has(node)) continue;
-        visited.add(node);
-
-        if (node.stages_field && looksLikeStages(node.stages_field)) {
-            const start = node.start || (Array.isArray(node.current_stages) ? node.current_stages[0] : node.current_stages);
-            return { stagesField: node.stages_field, startKey: start, where: `${path}.stages_field` };
+    while (q.length) {
+        const cur = q.shift()!.n;
+        if (!cur || typeof cur !== 'object' || seen.has(cur)) continue;
+        seen.add(cur);
+        if (cur.stages_field && looks(cur.stages_field)) {
+            return { stagesField: cur.stages_field, startKey: cur.start || cur.current_stages?.[0] || cur.current_stages };
         }
-        if (node.stages && looksLikeStages(node.stages)) {
-            const start = node.start || (Array.isArray(node.current_stages) ? node.current_stages[0] : node.current_stages);
-            return { stagesField: node.stages, startKey: start, where: `${path}.stages` };
+        if (cur.stages && looks(cur.stages)) {
+            return { stagesField: cur.stages, startKey: cur.start || cur.current_stages?.[0] || cur.current_stages };
         }
-        if (looksLikeStages(node)) {
-            return { stagesField: node as Record<string, any>, startKey: undefined, where: path };
-        }
-
-        for (const [k, v] of Object.entries(node)) {
-            if (v && typeof v === 'object') queue.push({ node: v, path: `${path}.${k}` });
-        }
+        if (looks(cur)) return { stagesField: cur };
+        for (const v of Object.values(cur)) if (v && typeof v === 'object') q.push({ n: v });
     }
     return {};
 }
 
-/** Чтение цепочки стадий из mainTemplateRaw: JSON → YAML → deep scan */
-function getStageChainFromMainRaw(mainRawIn: any): {
-    stageKeys: string[];
-    stagesField: Record<string, any>;
-    startKey?: string;
-} {
+/** извлекаем цепочку стадий */
+function getStageChainFromMainRaw(mainRawIn: any) {
     let raw = mainRawIn;
-
-    // Диаг: короткая "голова" сырья
-    try {
-        const head =
-            typeof raw === 'string'
-                ? raw.slice(0, 120).replace(/\n/g, '\\n')
-                : JSON.stringify(raw)?.slice(0, 120);
-        log('[TL][RAW:head]', { type: typeof raw, head });
-    } catch {}
-
-    // 1) Если строка — пробуем JSON, затем YAML
     if (typeof raw === 'string') {
-        let parsed: any = null;
-        let jsonErr: any = null;
-        try { parsed = JSON.parse(raw); }
-        catch (e) { jsonErr = e; }
-
-        if (!parsed) {
-            try { parsed = YAML.parse(raw); }
-            catch (yamlErr) {
-                warn('[TL][WARN] mainTemplateRaw строка, JSON.parse и YAML.parse не удались', {
-                    jsonErr: jsonErr?.message,
-                    yamlErr: (yamlErr as any)?.message,
-                });
-            }
-        }
-        if (parsed) {
-            raw = parsed;
-            log('[TL][INFO] mainTemplateRaw распарсен (string → object)');
+        try { raw = JSON.parse(raw); } catch {
+            try { raw = YAML.parse(raw); } catch {}
         }
     }
+    if (!raw || typeof raw !== 'object') return { stageKeys: [] as string[], stagesField: {} as Record<string, any> };
 
-    // 2) В снапшоте может лежать под полем mainTemplateRaw
-    if (raw && typeof raw === 'object' && raw.mainTemplateRaw && typeof raw.mainTemplateRaw === 'object') {
-        raw = raw.mainTemplateRaw;
-    }
-
-    // Диагностика структуры
-    try {
-        const keys = raw && typeof raw === 'object' ? Object.keys(raw) : [];
-        const types: Record<string, string> = {};
-        for (const k of keys) types[k] = typeof (raw as any)[k];
-        log('[TL][RAW]', {
-            keys,
-            types,
-            hasStages: !!raw?.stages,
-            hasStagesField: !!raw?.stages_field,
-            hasStart: !!raw?.start,
-            hasCurrent: !!raw?.current_stages,
-        });
-    } catch {}
-
-    if (!raw || typeof raw !== 'object') return { stageKeys: [], stagesField: {} };
-
-    // Основные места хранения стадий
     let stagesField: Record<string, any> | undefined =
-        (raw.stages_field && typeof raw.stages_field === 'object') ? raw.stages_field :
-            (raw.stages && typeof raw.stages === 'object') ? raw.stages : undefined;
-
+        raw.stages_field ?? raw.stages ?? deepFindStagesBundle(raw).stagesField;
     let startKey: string | undefined =
-        (raw.start && stagesField?.[raw.start]) ? raw.start : undefined;
-
-    if (!startKey && raw.current_stages) {
-        const arr = Array.isArray(raw.current_stages) ? raw.current_stages : [raw.current_stages];
-        const cand = arr?.[0];
-        if (cand && stagesField?.[cand]) startKey = cand;
-    }
-
-    // Если не нашли — скан по объекту
-    if (!stagesField) {
-        const found = deepFindStagesBundle(raw);
-        if (found.stagesField) {
-            stagesField = found.stagesField;
-            startKey = found.startKey || startKey;
-            log('[TL][SCAN:found]', { where: found.where, count: Object.keys(found.stagesField || {}).length, startKey });
-        }
-    }
+        (raw.start && stagesField?.[raw.start]) ? raw.start : raw.current_stages?.[0];
 
     if (!stagesField) return { stageKeys: [], stagesField: {} };
 
-    // Автовычисление старта, если не задан
     if (!startKey) {
         const keys = Object.keys(stagesField);
-        const indeg = new Map<string, number>(keys.map(k => [k, 0]));
+        const indeg = new Map(keys.map((k) => [k, 0]));
         for (const k of keys) {
-            const next = stagesField[k]?.if_success;
-            const nextKey = Array.isArray(next) ? next?.[0] : next;
-            if (nextKey && indeg.has(nextKey)) indeg.set(nextKey, (indeg.get(nextKey) || 0) + 1);
+            const to = stagesField[k]?.if_success;
+            const nk = Array.isArray(to) ? to?.[0] : to;
+            if (nk && indeg.has(nk)) indeg.set(nk, (indeg.get(nk) || 0) + 1);
         }
-        const zeroIn = keys.find(k => (indeg.get(k) || 0) === 0);
-        startKey = zeroIn || keys[0];
+        startKey = keys.find((k) => (indeg.get(k) || 0) === 0) || keys[0];
     }
 
-    // Строим линейную цепочку
     const stageKeys: string[] = [];
-    let cursor = startKey;
+    let cur = startKey;
     let guard = 0;
-    while (cursor && cursor !== 'exit' && stagesField[cursor] && guard < 1000) {
-        stageKeys.push(cursor);
-        const next = stagesField[cursor]?.if_success;
-        cursor = Array.isArray(next) ? next?.[0] : next;
+    while (cur && cur !== 'exit' && stagesField[cur] && guard < 1000) {
+        stageKeys.push(cur);
+        const to = stagesField[cur]?.if_success;
+        cur = Array.isArray(to) ? to?.[0] : to;
         guard++;
     }
-
     return { stageKeys, stagesField, startKey };
 }
 
-/** value на этапы на основе правок */
+/** value на этапы (для addFromYaml) — из stageFieldEdits */
 function decorateStagesWithStageValue(
     stagesField: Record<string, any>,
     stageFieldEdits: any,
-    rowIdx = 0
+    rowIdx = 0,
 ) {
     const out: Record<string, any> = {};
     const row = stageFieldEdits?.[rowIdx] ?? {};
@@ -302,27 +212,20 @@ function decorateStagesWithStageValue(
                 if (vv !== undefined && vv !== null) { stageValue = vv; break; }
             }
         }
-        (cloned as any).value = stageValue === undefined ? null : stageValue;
+        (cloned as any).value = stageValue ?? null;
         out[stageKey] = cloned;
     }
     return out;
 }
 
-/** ------------------------- КОМПОНЕНТ ------------------------- */
-
+/** ----- КОМПОНЕНТ ----- */
 const PprEditorPage: React.FC = () => {
     const {
-        selectedTaskId,
-        setSelectedTaskId,
-        tabsConfirmed,
-        setTabsConfirmed,
-        paramsConfirmed,
-        setParamsConfirmed,
-        mainTemplate,
-        setMainTemplate,
-        currentStep,
-        step3Done,
-        step5Done,
+        selectedTaskId, setSelectedTaskId,
+        tabsConfirmed, setTabsConfirmed,
+        paramsConfirmed, setParamsConfirmed,
+        mainTemplate, setMainTemplate,
+        currentStep, step3Done, step5Done,
     } = usePprWizard();
 
     const currentUser = userStore((s) => s.user)!;
@@ -333,50 +236,32 @@ const PprEditorPage: React.FC = () => {
     const addedExecutors = useUserStore((s) => s.addedExecutors);
 
     const tasks = usePlannedTaskStore((s) => s.tasks);
-    const selectedTask = useMemo(
-        () => tasks.find((t) => t.id === selectedTaskId),
-        [tasks, selectedTaskId],
-    );
+    const selectedTask = useMemo(() => tasks.find((t) => t.id === selectedTaskId), [tasks, selectedTaskId]);
 
     const {
-        executorsByTemplate,
-        setExecutorsByTemplate,
-        tabExecutors,
-        setTabExecutors,
-        pprExecutors,
-        addExecutor,
-        removeExecutor,
-        normalizeExecId,
+        executorsByTemplate, setExecutorsByTemplate,
+        tabExecutors, setTabExecutors,
+        pprExecutors, addExecutor, removeExecutor, normalizeExecId,
     } = usePprExecutors(currentUser, mainTemplate);
 
     const addFromYaml = useTimelineStore((s) => s.addFromYaml);
     const removeBySourcePrefix = useTimelineStore((s) => (s as any).removeBySourcePrefix);
     const updateTplStageDuration = useTimelineStore((s) => (s as any).updateTplStageDuration);
     const getMergedStageOverrides = useTimelineStore((s) => (s as any).getMergedStageOverrides);
-    const getTimelineState = (useTimelineStore as any).getState;
 
     const [additionalTemplates, setAdditionalTemplates] = useState<Template[]>([]);
     const [hiddenExtraSlots, setHiddenExtraSlots] = useState<Set<number>>(new Set());
 
     const handleMoveBetweenExecutors = useTimelineMove({
-        executorsByTemplate,
-        setExecutorsByTemplate,
-        tabExecutors,
-        setTabExecutors,
-        mainTemplate,
-        additionalTemplates,
+        executorsByTemplate, setExecutorsByTemplate, tabExecutors, setTabExecutors, mainTemplate, additionalTemplates,
     });
 
     const liveRowsCount = useTimelineStore((s) => s.rows?.length ?? 0);
-    useEffect(() => {
-        if (liveRowsCount > 0) setParamsConfirmed(true);
-    }, [liveRowsCount, setParamsConfirmed]);
+    useEffect(() => { if (liveRowsCount > 0) setParamsConfirmed(true); }, [liveRowsCount, setParamsConfirmed]);
 
     const paramsRef = useRef<HTMLDivElement | null>(null);
     const [tplReadyTick, setTplReadyTick] = useState(0);
-    useEffect(() => {
-        if ((mainTemplate as any)?.raw) setTplReadyTick((t) => t + 1);
-    }, [mainTemplate]);
+    useEffect(() => { if ((mainTemplate as any)?.raw) setTplReadyTick((t) => t + 1); }, [mainTemplate]);
 
     const mainFormValuesRef = useRef<any>(null);
 
@@ -406,9 +291,7 @@ const PprEditorPage: React.FC = () => {
         const newIndex = additionalTemplates.length;
         setAdditionalTemplates((prev) => [...prev, {} as Template]);
         setExecutorsByTemplate((prev) => [...prev, currentUser ? [meExec] : []]);
-        const next = new Set(hiddenExtraSlots);
-        next.delete(newIndex);
-        setHiddenExtraSlots(next);
+        const next = new Set(hiddenExtraSlots); next.delete(newIndex); setHiddenExtraSlots(next);
         setAllowStep5(false);
     };
 
@@ -419,23 +302,16 @@ const PprEditorPage: React.FC = () => {
         if (prevKey) removeBySourcePrefix?.({ execIds, prefix: String(prevKey) });
 
         const resolved = await resolveTemplateWithRaw(newTemplate as Template, YAML_BUCKET);
-        if (!resolved) {
-            err('Не удалось загрузить YAML шаблона (extra).');
-            return message.error('Не удалось загрузить YAML шаблона.');
-        }
+        if (!resolved) { err('Не удалось загрузить YAML шаблона (extra).'); return message.error('Не удалось загрузить YAML шаблона.'); }
 
         setAdditionalTemplates((prev) => prev.map((t, i) => (i === index ? resolved : t)));
-        const next = new Set(hiddenExtraSlots);
-        next.delete(index);
-        setHiddenExtraSlots(next);
+        const next = new Set(hiddenExtraSlots); next.delete(index); setHiddenExtraSlots(next);
 
         ensureAtLeastOneRow(resolved);
         setAllowStep5(false);
     };
 
-    const [confirmState, setConfirmState] = useState<
-        { open: true; kind: 'main' | 'extra'; index?: number } | { open: false }
-    >({ open: false });
+    const [confirmState, setConfirmState] = useState<{ open: true; kind: 'main' | 'extra'; index?: number } | { open: false }>({ open: false });
 
     const timelineExecutors = useMemo(() => {
         const list = (pprExecutors as any[]) ?? [];
@@ -468,11 +344,7 @@ const PprEditorPage: React.FC = () => {
     }, []);
 
     const totals = useMemo(
-        () =>
-            Object.values(progressMap).reduce(
-                (acc, v) => ({ filled: acc.filled + (v?.filled ?? 0), required: acc.required + (v?.required ?? 0) }),
-                { filled: 0, required: 0 },
-            ),
+        () => Object.values(progressMap).reduce((acc, v) => ({ filled: acc.filled + (v?.filled ?? 0), required: acc.required + (v?.required ?? 0) }), { filled: 0, required: 0 }),
         [progressMap],
     );
 
@@ -487,10 +359,7 @@ const PprEditorPage: React.FC = () => {
         return sum;
     }, [mainTemplate, additionalTemplates]);
 
-    const effectiveRequired = useMemo(
-        () => Math.max(totals.required, yamlRequiredTotal),
-        [totals.required, yamlRequiredTotal],
-    );
+    const effectiveRequired = useMemo(() => Math.max(totals.required, yamlRequiredTotal), [totals.required, yamlRequiredTotal]);
     const totalPercent = useMemo(() => {
         if (effectiveRequired <= 0) return 0;
         const clamped = Math.min(totals.filled, effectiveRequired);
@@ -501,19 +370,13 @@ const PprEditorPage: React.FC = () => {
 
     const [allowStep5, setAllowStep5] = useState(false);
 
-    const canSave =
-        isParamsComplete && templateChosen && Boolean(selectedTaskId && authorUuid && timeWorkUuid);
+    const canSave = isParamsComplete && templateChosen && Boolean(selectedTaskId && authorUuid && timeWorkUuid);
     const saveTooltip =
-        !isParamsComplete
-            ? 'Заполните все обязательные поля (100%)'
-            : !templateChosen
-                ? 'Выберите шаблон YAML'
-                : !selectedTaskId
-                    ? 'Выберите задачу'
-                    : !authorUuid
-                        ? 'Нет author_id (UUID пользователя/исполнителя)'
-                        : !timeWorkUuid
-                            ? 'Нет time_work_id (выберите смену/интервал)'
+        !isParamsComplete ? 'Заполните все обязательные поля (100%)'
+            : !templateChosen ? 'Выберите шаблон YAML'
+                : !selectedTaskId ? 'Выберите задачу'
+                    : !authorUuid ? 'Нет author_id (UUID пользователя/исполнителя)'
+                        : !timeWorkUuid ? 'Нет time_work_id (выберите смену/интервал)'
                             : undefined;
 
     const handleSave = async () => {
@@ -526,16 +389,9 @@ const PprEditorPage: React.FC = () => {
         setStatusVerified(false);
         try {
             const result = await savePlannedTask({
-                mainTemplate,
-                selectedTask,
-                executorsByTemplate,
-                getMergedStageOverrides,
-                getTimelineState,
-                mainFormValues: mainFormValuesRef.current,
-                createNew: true,
-                selectedTaskId: selectedTaskId ?? undefined,
-                authorUuid: authorUuid ?? undefined,
-                timeWorkUuid: timeWorkUuid ?? undefined,
+                mainTemplate, selectedTask, executorsByTemplate, getMergedStageOverrides,
+                getTimelineState: (useTimelineStore as any).getState, mainFormValues: mainFormValuesRef.current,
+                createNew: true, selectedTaskId: selectedTaskId ?? undefined, authorUuid: authorUuid ?? undefined, timeWorkUuid: timeWorkUuid ?? undefined,
             });
             if (result?.createdId) setReviewForId(result.createdId);
             if (result?.updatedId) setReviewForId(result.updatedId);
@@ -547,20 +403,13 @@ const PprEditorPage: React.FC = () => {
         }
     };
 
-    /** ====== DIAG: уже есть блоки с префиксом? (учитываем несколько полей) ====== */
+    /** уже есть блоки с префиксом? */
     const timelineHasBlocksFor = (prefix: string) => {
         const tl = (useTimelineStore as any).getState?.();
         if (!tl || !Array.isArray(tl.rows)) return false;
         for (const row of tl.rows) {
             const blocks = Array.isArray(row?.blocks) ? row.blocks : [];
-            if (
-                blocks.some((b: any) => {
-                    const sk = String(b?.sourceKey ?? '');
-                    const tk = String((b as any)?.templateKey ?? '');
-                    const label = String((b as any)?.label ?? '');
-                    return sk.startsWith(prefix) || tk.startsWith(prefix) || label.includes(prefix);
-                })
-            ) return true;
+            if (blocks.some((b: any) => String(b?.sourceKey ?? '').startsWith(prefix))) return true;
         }
         return false;
     };
@@ -568,12 +417,10 @@ const PprEditorPage: React.FC = () => {
     /** ref на mainTemplateRaw */
     const mainRawForTimelineRef = useRef<any>(null);
     useEffect(() => {
-        if ((mainTemplate as any)?.raw) {
-            mainRawForTimelineRef.current = (mainTemplate as any).raw;
-        }
+        if ((mainTemplate as any)?.raw) mainRawForTimelineRef.current = (mainTemplate as any).raw;
     }, [mainTemplate]);
 
-    /** ====== АВТОПОСТРОЕНИЕ ДЛЯ ГЛАВНОГО ШАБЛОНА ====== */
+    /** ====== ПОСТРОЕНИЕ ПО RAW (когда выбрали YAML) ====== */
     useEffect(() => {
         const tKey = (mainTemplate as any)?.key;
         const rawCandidate = mainRawForTimelineRef.current || (mainTemplate as any)?.raw;
@@ -584,39 +431,16 @@ const PprEditorPage: React.FC = () => {
         log('[autoBuild] check:', { tKey, hasExec, already });
         if (already) return;
 
-        const { stageKeys, stagesField, startKey } = getStageChainFromMainRaw(rawCandidate);
-
-        log('[TL][CHAIN]', { start: startKey, stages: Object.keys(stagesField || {}).length, stageKeys });
-
-        const timeDiag = stageKeys.map((k) => {
-            const t = String(stagesField?.[k]?.time ?? '').trim();
-            const mm = Math.max(0, parseInt(t.replace(/\D+/g, ''), 10) || 0);
-            return { key: k, time: t, mm };
-        });
-        log('[TL][TIME]', timeDiag);
-
+        const { stageKeys, stagesField } = getStageChainFromMainRaw(rawCandidate);
         const tlState = (useTimelineStore as any).getState?.() || {};
         const edits = tlState?.stageFieldEdits || {};
         const decoratedStages = decorateStagesWithStageValue(stagesField, edits, 0);
 
         const execIds = (executorsByTemplate?.[0] ?? []).map((e) => String((e as any)?.id ?? e));
-        log('[TL][ADD:req]', { sourceKey: tKey, execIds, keys: stageKeys.length });
-
-        if (!stageKeys.length) {
-            warn('[TL][WARN] stageKeys пуст — не из чего строить таймлайн');
-            return;
-        }
+        if (!stageKeys.length) { warn('[TL] stageKeys пуст'); return; }
 
         try {
             logTLState('[TL][BEFORE]');
-            const addFnType = typeof addFromYaml;
-            log('[TL][ADD:call]', { addFromYaml: addFnType, hasStore: !!(useTimelineStore as any).getState, execIdsLen: execIds.length });
-
-            if (addFnType !== 'function') {
-                err('[TL][ERR] addFromYaml отсутствует или не функция');
-                return;
-            }
-
             addFromYaml({
                 label: (rawCandidate as any)?.headline || (rawCandidate as any)?.description || tKey,
                 stageKeys,
@@ -624,23 +448,13 @@ const PprEditorPage: React.FC = () => {
                 execIds,
                 sourceKey: tKey,
             });
-
-            setTimeout(() => {
-                logTLState('[TL][AFTER]');
-                const tl = (useTimelineStore as any).getState?.();
-                const rows = Array.isArray(tl?.rows) ? tl.rows : [];
-                const blocksByKey = rows
-                    .flatMap((r: any) => r?.blocks || [])
-                    .filter((b: any) => String(b?.sourceKey ?? '').startsWith(String(tKey))).length;
-                log('[TL][ADD:done]', { rows: rows.length, blocksBySourceKey: blocksByKey });
-            }, 0);
+            setTimeout(() => logTLState('[TL][AFTER]'), 0);
         } catch (e) {
-            err('[TL][ERR] addFromYaml threw', e);
+            err('[TL] addFromYaml threw', e);
         }
     }, [tplReadyTick, JSON.stringify(executorsByTemplate?.[0] ?? [])]);
 
-    /** ======== ВОССТАНОВЛЕНИЕ ИЗ localStorage (V2 only) ======== */
-
+    /** ======== ВОССТАНОВЛЕНИЕ ИЗ localStorage (V2) ======== */
     const applySnapshotToTimeline = (
         tplIdx: number,
         snap: UnifiedStagesSnapshot | undefined,
@@ -649,31 +463,28 @@ const PprEditorPage: React.FC = () => {
     ) => {
         if (!snap || !templateKey) return;
 
-        try { removeBySourcePrefix?.({ prefix: String(templateKey), execIds: execIdsForSlot }); } catch {}
+        // 1) чистим старые блоки этого шаблона для данных исполнителей
+        try { (useTimelineStore as any).getState?.().removeBySourcePrefix?.({ prefix: templateKey, execIds: execIdsForSlot }); } catch {}
 
-        const raw = snap.mainTemplateRaw || snap.mainTemplateRaw;
+        // 2) строим цепочку по raw (чтобы сохранить порядок), но данные берём из snap.stages
+        const raw = snap.mainTemplateRaw || {};
         if (tplIdx === 0 && raw) mainRawForTimelineRef.current = raw;
 
-        const { stageKeys, stagesField, startKey } = getStageChainFromMainRaw(raw);
-        log('[TL][CHAIN][restore]', { tplIdx, start: startKey, stages: Object.keys(stagesField || {}).length, stageKeys });
+        const { stageKeys, stagesField } = getStageChainFromMainRaw(raw);
 
+        // подменяем stagesField данными из snapshot.stages (таймеры, поля, value)
+        const mergedStages: Record<string, any> = { ...stagesField };
+        for (const [k, v] of Object.entries(snap.stages ?? {})) {
+            mergedStages[k] = { ...(mergedStages[k] ?? {}), ...(v as any) };
+        }
+
+        // 3) value для блока (как раньше — одна «основная» value на стадию)
+        const decoratedStages = decorateStagesWithStageValue(mergedStages, (useTimelineStore as any).getState?.().stageFieldEdits, 0);
+
+        // 4) добавляем блоки
         if (stageKeys.length) {
-            const tlState = (useTimelineStore as any).getState?.() || {};
-            const edits = tlState?.stageFieldEdits || {};
-            const decoratedStages = decorateStagesWithStageValue(stagesField, edits, 0);
-
-            log('[TL][ADD:req][restore]', { tplIdx, sourceKey: templateKey, execIds: execIdsForSlot, keys: stageKeys.length });
-
             try {
                 logTLState('[TL][BEFORE][restore]');
-                const addFnType = typeof addFromYaml;
-                log('[TL][ADD:call][restore]', { addFromYaml: addFnType, execIdsLen: execIdsForSlot.length });
-
-                if (addFnType !== 'function') {
-                    err('[TL][ERR][restore] addFromYaml отсутствует или не функция');
-                    return;
-                }
-
                 addFromYaml({
                     label: (raw as any)?.headline || (raw as any)?.description || templateKey,
                     stageKeys,
@@ -681,21 +492,13 @@ const PprEditorPage: React.FC = () => {
                     execIds: execIdsForSlot,
                     sourceKey: templateKey,
                 });
-
-                setTimeout(() => {
-                    logTLState('[TL][AFTER][restore]');
-                    const tl = (useTimelineStore as any).getState?.();
-                    const rows = Array.isArray(tl?.rows) ? tl.rows : [];
-                    const blocksByKey = rows
-                        .flatMap((r: any) => r?.blocks || [])
-                        .filter((b: any) => String(b?.sourceKey ?? '').startsWith(String(templateKey))).length;
-                    log('[TL][ADD:done][restore]', { rows: rows.length, blocksBySourceKey: blocksByKey });
-                }, 0);
+                setTimeout(() => logTLState('[TL][AFTER][restore]'), 0);
             } catch (e) {
                 err('[TL][ERR][restore] addFromYaml threw', e);
             }
         }
 
+        // 5) таймеры из снапшота — точный патч (updateTplStageDuration)
         if (snap?.stages) {
             for (const [stageKey, stage] of Object.entries(snap.stages)) {
                 const timeStr = (stage as any)?.time;
@@ -704,59 +507,33 @@ const PprEditorPage: React.FC = () => {
                 try { updateTplStageDuration?.({ tplIdx, stageKey, minutes: mm }); } catch {}
             }
         }
-
-        const tl = (useTimelineStore as any).getState?.();
-        const setStageFieldEdits = tl?.setStageFieldEdits ?? tl?.mergeStageFieldEdits;
-        if (typeof setStageFieldEdits === 'function' && snap?.stages) {
-            const perRow: Record<string, Record<string, any>> = { '0': {} };
-            for (const [stageKey, stage] of Object.entries(snap.stages)) {
-                const srcFields = ((stage as any)?.fields) || {};
-                const payload: Record<string, any> = {};
-                for (const [fieldKey, f] of Object.entries(srcFields)) {
-                    const v = f && typeof f === 'object' && 'value' in (f as any) ? (f as any).value : f;
-                    if (v !== undefined) payload[fieldKey] = v;
-                }
-                if (Object.keys(payload).length > 0) perRow['0'][stageKey] = { value: payload };
-            }
-            try { setStageFieldEdits({ tplIdx, perRow }); } catch { try { setStageFieldEdits(perRow); } catch {} }
-        }
-
-        try {
-            const setRows = (useTimelineStore as any).getState?.().setRows;
-            const rows = (useTimelineStore as any).getState?.().rows ?? [];
-            if (typeof setRows === 'function') setRows([...rows]);
-        } catch {}
     };
 
     const restoreFromLocalStorage = async (taskId: string) => {
         const v2 = loadV2Snapshots(taskId);
         if (!v2.length) return;
 
+        // набор ключей шаблонов
         const uniqueKeys: string[] = Array.from(new Set(v2.map((x) => x.templateKey))).filter(Boolean);
 
-        const resolved = await Promise.all(
-            uniqueKeys.map((k) => resolveTemplateWithRaw({ key: k } as any, YAML_BUCKET)),
-        );
+        // загрузим RAW для каждого ключа
+        const resolved = await Promise.all(uniqueKeys.map((k) => resolveTemplateWithRaw({ key: k } as any, YAML_BUCKET)));
         const [resolvedMain, ...resolvedExtras] = (resolved.filter(Boolean) as any[]) as Template[];
-        if (!resolvedMain) {
-            warn('restoreFromLocalStorage: cannot resolve main template');
-            return;
-        }
+        if (!resolvedMain) { warn('restoreFromLocalStorage: cannot resolve main template'); return; }
 
         setMainTemplate(resolvedMain);
         ensureAtLeastOneRow(resolvedMain);
-
         setAdditionalTemplates(resolvedExtras);
         resolvedExtras.forEach((tpl) => ensureAtLeastOneRow(tpl));
 
+        // восстановим исполнителей
         const withExec = v2.find((x) => Array.isArray(x.snapshot?.executorsByTemplate));
         if (withExec?.snapshot?.executorsByTemplate?.length) {
             setExecutorsByTemplate(withExec.snapshot.executorsByTemplate);
-            setTabExecutors((prev) =>
-                prev.length ? prev : withExec.snapshot.executorsByTemplate[0] || [],
-            );
+            setTabExecutors((prev) => (prev.length ? prev : withExec.snapshot.executorsByTemplate[0] || []));
         }
 
+        // значения в таблицу
         uniqueKeys.forEach((tKey) => {
             const snapForKey = v2.find((x) => x.templateKey === tKey)?.snapshot;
             if (!snapForKey) return;
@@ -766,22 +543,22 @@ const PprEditorPage: React.FC = () => {
             safeSetTemplateValues(tKey, merged);
         });
 
+        // обновим ref на RAW из main снапшота
         const mainSnap = v2.find((x) => x.templateKey === (resolvedMain as any).key)?.snapshot;
         if (mainSnap?.mainTemplateRaw) mainRawForTimelineRef.current = mainSnap.mainTemplateRaw;
 
         setTplReadyTick((t) => t + 1);
 
-        const ebt =
-            (executorsByTemplate?.length ? executorsByTemplate : withExec?.snapshot?.executorsByTemplate) || [];
+        // фактическая отрисовка блоков ПО SNAPSHOT.STAGES (важно!)
+        const ebt = (withExec?.snapshot?.executorsByTemplate?.length ? withExec!.snapshot!.executorsByTemplate : executorsByTemplate) || [];
         const allTemplates: Template[] = [resolvedMain, ...resolvedExtras];
+
         allTemplates.forEach((tpl, i) => {
             const tKey = (tpl as any)?.key;
             if (!tKey) return;
             const execIdsForSlot = (ebt[i] ?? []).map((e: any) => String(e?.id ?? e));
             const firstId = execIdsForSlot[0];
-            const found =
-                (firstId && v2.find((x) => x.templateKey === tKey && x.executorId === firstId)) ||
-                v2.find((x) => x.templateKey === tKey);
+            const found = (firstId && v2.find((x) => x.templateKey === tKey && x.executorId === firstId)) || v2.find((x) => x.templateKey === tKey);
             applySnapshotToTimeline(i, found?.snapshot, tKey, execIdsForSlot);
         });
 
@@ -793,7 +570,7 @@ const PprEditorPage: React.FC = () => {
         setTimeout(() => (useTimelineStore as any).getState?.()?.rebuildAll?.(), 0);
     };
 
-    // steps / прогресс
+    // шаги
     const computedStepsCurrent = (() => {
         let computed = currentStep;
         if (statusVerified) computed = Math.max(computed, 5);
@@ -808,14 +585,8 @@ const PprEditorPage: React.FC = () => {
     const showStep4Progress = currentStep >= 3;
     const paramsStepIcon = showStep4Progress ? (
         <span className="ppr-steps__progress-icon" style={{ display: 'flex' }}>
-      <Progress
-          type="circle"
-          percent={totalPercent}
-          size={STEP_ICON_SIZE}
-          strokeLinecap="round"
-          status={totalPercent === 100 ? 'success' : 'normal'}
-          format={(p) => `${p ?? 0}%`}
-      />
+      <Progress type="circle" percent={totalPercent} size={STEP_ICON_SIZE} strokeLinecap="round"
+                status={totalPercent === 100 ? 'success' : 'normal'} format={(p) => `${p ?? 0}%`} />
     </span>
     ) : undefined;
 
@@ -848,10 +619,7 @@ const PprEditorPage: React.FC = () => {
                 <div className="ppr-location-divider" />
             </header>
 
-            <div
-                className="ppr-editor-card__controls"
-                style={{ display: 'flex', gap: 12, alignItems: 'center' }}
-            >
+            <div className="ppr-editor-card__controls" style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
                 <div className="ppr-editor-card__controls-left" style={{ width: '100%' }}>
                     <PlannedTaskDropdown
                         className="ppr-editor-card__select"
@@ -860,7 +628,6 @@ const PprEditorPage: React.FC = () => {
                         disabled={editingLocked}
                         onChange={async (taskId) => {
                             if (editingLocked) return;
-
                             const proceedOpen = async () => {
                                 setSelectedTaskId(taskId);
                                 setTabsConfirmed(false);
@@ -868,7 +635,6 @@ const PprEditorPage: React.FC = () => {
                                 setParamsConfirmed(false);
                                 setAllowStep5(false);
                             };
-
                             if (taskId && hasDraftForTask(taskId)) {
                                 Modal.confirm({
                                     title: 'Вы желаете продолжить редактирование?',
@@ -877,14 +643,8 @@ const PprEditorPage: React.FC = () => {
                                     cancelText: 'Начать заново',
                                     okButtonProps: { type: 'primary' },
                                     cancelButtonProps: { danger: true },
-                                    onOk: async () => {
-                                        await proceedOpen();
-                                        await restoreFromLocalStorage(taskId);
-                                    },
-                                    onCancel: async () => {
-                                        clearDraftForTask(taskId);
-                                        await proceedOpen();
-                                    },
+                                    onOk: async () => { await proceedOpen(); await restoreFromLocalStorage(taskId); },
+                                    onCancel: async () => { clearDraftForTask(taskId); await proceedOpen(); },
                                 });
                             } else {
                                 await proceedOpen();
@@ -902,10 +662,7 @@ const PprEditorPage: React.FC = () => {
 
             {!!selectedTaskId && (
                 <div style={{ marginTop: 12 }}>
-                    <div
-                        className="ppr-editor-card__controls-right"
-                        style={{ ...(editingLocked ? { pointerEvents: 'none', opacity: 0.6 } : {}) }}
-                    >
+                    <div className="ppr-editor-card__controls-right" style={{ ...(editingLocked ? { pointerEvents: 'none', opacity: 0.6 } : {}) }}>
                         <div className="ppr-editor-card__tabs">
                             <PprEditorTabs
                                 taskId={selectedTaskId}
@@ -913,9 +670,7 @@ const PprEditorPage: React.FC = () => {
                                 executors={tabExecutors}
                                 addExecutor={(executorToAdd) =>
                                     setTabExecutors((prev) =>
-                                        prev.some((e) => String(e.id) === String((executorToAdd as any).id))
-                                            ? prev
-                                            : [...prev, normalizeExec(executorToAdd)],
+                                        prev.some((e) => String(e.id) === String((executorToAdd as any).id)) ? prev : [normalizeExec(executorToAdd), ...prev],
                                     )
                                 }
                                 removeExecutor={(executorId) =>
@@ -926,13 +681,7 @@ const PprEditorPage: React.FC = () => {
 
                         {!tabsConfirmed && (
                             <div style={{ marginTop: 12 }}>
-                                <Button
-                                    type="primary"
-                                    onClick={() => {
-                                        setTabsConfirmed(true);
-                                    }}
-                                    disabled={editingLocked}
-                                >
+                                <Button type="primary" onClick={() => setTabsConfirmed(true)} disabled={editingLocked}>
                                     Перейти к выбору шаблона
                                 </Button>
                             </div>
@@ -942,10 +691,7 @@ const PprEditorPage: React.FC = () => {
             )}
 
             {tabsConfirmed && (
-                <div
-                    className="ppr-template-wrap"
-                    style={{ marginTop: 16, ...(editingLocked ? { pointerEvents: 'none', opacity: 0.6 } : {}) }}
-                >
+                <div className="ppr-template-wrap" style={{ marginTop: 16, ...(editingLocked ? { pointerEvents: 'none', opacity: 0.6 } : {}) }}>
                     <YamlTemplateSelect
                         bucket={YAML_BUCKET}
                         value={(mainTemplate as any)?.key}
@@ -955,9 +701,7 @@ const PprEditorPage: React.FC = () => {
 
                             const prevMainKey = (mainTemplate as any)?.key;
                             const execIds = (executorsByTemplate[0] ?? []).map(normalizeExecId);
-                            if (prevMainKey) {
-                                removeBySourcePrefix?.({ execIds, prefix: String(prevMainKey) });
-                            }
+                            if (prevMainKey) removeBySourcePrefix?.({ execIds, prefix: String(prevMainKey) });
 
                             if (currentUser) {
                                 const meExec = normalizeExec(currentUser);
@@ -968,16 +712,11 @@ const PprEditorPage: React.FC = () => {
                                     next[0] = hasMe ? mainList : [meExec, ...mainList];
                                     return next;
                                 });
-                                setTabExecutors((prev) =>
-                                    prev.some((e) => String(e.id) === String(meExec.id)) ? prev : [meExec, ...prev],
-                                );
+                                setTabExecutors((prev) => (prev.some((e) => String(e.id) === String(meExec.id)) ? prev : [meExec, ...prev]));
                             }
 
                             const resolved = await resolveTemplateWithRaw(selectedTemplate as Template, YAML_BUCKET);
-                            if (!resolved) {
-                                err('Не удалось загрузить YAML шаблона (main).');
-                                return message.error('Не удалось загрузить YAML шаблона.');
-                            }
+                            if (!resolved) { err('Не удалось загрузить YAML шаблона (main).'); return message.error('Не удалось загрузить YAML шаблона.'); }
 
                             setMainTemplate(resolved);
                             mainRawForTimelineRef.current = (resolved as any)?.raw || null;
@@ -993,12 +732,8 @@ const PprEditorPage: React.FC = () => {
                         removeExecutor={(executorId) => removeExecutor(0, executorId)}
                         tabCandidates={tabExecutors}
                     />
-                    <Button
-                        className="ppr-template-wrap__delete"
-                        danger
-                        ghost
-                        disabled={editingLocked || !(mainTemplate as any)?.key}
-                        onClick={() => setConfirmState({ open: true, kind: 'main' })}
+                    <Button className="ppr-template-wrap__delete" danger ghost disabled={editingLocked || !(mainTemplate as any)?.key}
+                            onClick={() => setConfirmState({ open: true, kind: 'main' })}
                     >
                         Удалить шаблон
                     </Button>
@@ -1006,24 +741,15 @@ const PprEditorPage: React.FC = () => {
             )}
 
             {step3Done && (
-                <div
-                    ref={paramsRef}
-                    style={editingLocked ? { pointerEvents: 'none', opacity: 0.6 } : undefined}
-                >
+                <div ref={paramsRef} style={editingLocked ? { pointerEvents: 'none', opacity: 0.6 } : undefined}>
                     {(mainTemplate as any)?.key && (mainTemplate as any)?.raw && (
                         <DynamicYamlForm
                             key={`main-${(mainTemplate as any)?.key}-${tplReadyTick}`}
                             schema={(mainTemplate as any)?.raw}
                             templateKey={(mainTemplate as any)?.key}
                             executors={(executorsByTemplate[0] ?? []).map(normalizeExec)}
-                            onRowCountChange={(rowCount: number) => {
-                                if (!paramsConfirmed && rowCount > 0) setParamsConfirmed(true);
-                            }}
-                            onValuesChange={(formValues: any) => {
-                                if (editingLocked) return;
-                                mainFormValuesRef.current = formValues;
-                                setAllowStep5(false);
-                            }}
+                            onRowCountChange={(rowCount: number) => { if (!paramsConfirmed && rowCount > 0) setParamsConfirmed(true); }}
+                            onValuesChange={(formValues: any) => { if (editingLocked) return; mainFormValuesRef.current = formValues; setAllowStep5(false); }}
                         />
                     )}
                 </div>
@@ -1033,31 +759,19 @@ const PprEditorPage: React.FC = () => {
                 if (hiddenExtraSlots.has(templateIndex)) return null;
                 return (
                     <React.Fragment key={templateIndex}>
-                        <div
-                            className="ppr-template-wrap"
-                            style={{ marginTop: 12, ...(editingLocked ? { pointerEvents: 'none', opacity: 0.6 } : {}) }}
-                        >
+                        <div className="ppr-template-wrap" style={{ marginTop: 12, ...(editingLocked ? { pointerEvents: 'none', opacity: 0.6 } : {}) }}>
                             <YamlTemplateSelect
                                 bucket={YAML_BUCKET}
                                 value={(templateItem as any).key}
                                 disabled={editingLocked as any}
-                                onChange={(newTemplate) => {
-                                    changeTemplate(templateIndex, newTemplate);
-                                    setAllowStep5(false);
-                                }}
+                                onChange={(newTemplate) => { changeTemplate(templateIndex, newTemplate); setAllowStep5(false); }}
                                 executors={(executorsByTemplate[templateIndex + 1] ?? []).map(normalizeExec)}
                                 addExecutor={(executor) => addExecutor(templateIndex + 1, executor)}
                                 removeExecutor={(executorId) => removeExecutor(templateIndex + 1, executorId)}
                                 tabCandidates={tabExecutors}
                             />
-                            <Button
-                                className="ppr-template-wrap__delete"
-                                danger
-                                ghost
-                                disabled={editingLocked || !(templateItem as any)?.key}
-                                onClick={() =>
-                                    setConfirmState({ open: true, kind: 'extra', index: templateIndex })
-                                }
+                            <Button className="ppr-template-wrap__delete" danger ghost disabled={editingLocked || !(templateItem as any)?.key}
+                                    onClick={() => setConfirmState({ open: true, kind: 'extra', index: templateIndex })}
                             >
                                 Удалить шаблон
                             </Button>
@@ -1082,10 +796,7 @@ const PprEditorPage: React.FC = () => {
                         Добавить шаблон
                     </Button>
 
-                    <div
-                        className="ppr-editor-card__timeline"
-                        style={editingLocked ? { pointerEvents: 'none', opacity: 0.6 } : undefined}
-                    >
+                    <div className="ppr-editor-card__timeline" style={editingLocked ? { pointerEvents: 'none', opacity: 0.6 } : undefined}>
                         <PprPage
                             gridStart={timelineWindow.start}
                             gridEnd={timelineWindow.end}
@@ -1094,12 +805,7 @@ const PprEditorPage: React.FC = () => {
                             onBlockClick={() => {}}
                             onTimerChange={(templateIdx, stageKey, newTimerMinutes) => {
                                 if (editingLocked) return;
-                                updateTplStageDuration?.({
-                                    tplIdx: templateIdx,
-                                    stageKey,
-                                    minutes: Number(newTimerMinutes) || 0,
-                                });
-
+                                updateTplStageDuration?.({ tplIdx: templateIdx, stageKey, minutes: Number(newTimerMinutes) || 0 });
                                 if (selectedTaskId) {
                                     patchStageTimeInLocalStorage({
                                         taskId: selectedTaskId,
